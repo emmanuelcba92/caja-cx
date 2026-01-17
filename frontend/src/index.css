@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@layer base {
+    body {
+        @apply bg-slate-50;
+    }
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+@media print {
+    @page {
+        margin: 0.5cm;
+    }
+
+    .no-print {
+        display: none !important;
+    }
+
+    aside,
+    header {
+        display: none !important;
+    }
+
+    main {
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    body,
+    #root {
+        overflow: visible !important;
+        height: auto !important;
+        background: white !important;
+    }
+
+    /* Optimize tables for print */
+    table {
+        width: 100% !important;
+        font-size: 10px !important;
+        border: 1px solid #ccc;
+    }
+
+    th {
+        background-color: #f0f0f0 !important;
+        color: black !important;
+        -webkit-print-color-adjust: exact;
+    }
+
+    td,
+    th {
+        padding: 4px !important;
+        border: 1px solid #eee;
+    }
+
+    /* Hide scrollbars */
+    ::-webkit-scrollbar {
+        display: none;
+    }
+}
