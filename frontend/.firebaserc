@@ -1,0 +1,21 @@
+{
+  "projects": {
+    "default": "caja-de-cirugia"
+  },
+  "targets": {
+    "caja-de-cirugia": {
+      "hosting": {
+        "old-app": [
+          "caja-de-cirugia"
+        ],
+        "live": [
+          "cajacx"
+        ],
+        "test": [
+          "cajacxtest"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

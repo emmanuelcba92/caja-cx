@@ -1,10 +1,50 @@
 @import "tailwindcss";
 
+@theme {
+    /* Tailwind v4 theme extension for Chrome 109 fallbacks */
+    --color-slate-50: #f8fafc;
+    --color-slate-100: #f1f5f9;
+    --color-slate-200: #e2e8f0;
+    --color-slate-300: #cbd5e1;
+    --color-slate-400: #94a3b8;
+    --color-slate-500: #64748b;
+    --color-slate-600: #475569;
+    --color-slate-700: #334155;
+    --color-slate-800: #1e293b;
+    --color-slate-900: #0f172a;
+
+    --color-blue-50: #eff6ff;
+    --color-blue-100: #dbeafe;
+    --color-blue-200: #bfdbfe;
+    --color-blue-500: #3b82f6;
+    --color-blue-600: #2563eb;
+    --color-blue-700: #1d4ed8;
+
+    --color-emerald-50: #ecfdf5;
+    --color-emerald-100: #d1fae5;
+    --color-emerald-400: #34d399;
+    --color-emerald-500: #10b981;
+    --color-emerald-600: #059669;
+    --color-emerald-700: #047857;
+
+    --color-purple-600: #9333ea;
+    --color-purple-700: #7e22ce;
+
+    --color-red-50: #fef2f2;
+    --color-red-100: #fee2e2;
+    --color-red-400: #f87171;
+    --color-red-600: #dc2626;
+    --color-red-700: #b91c1c;
+}
+
 @layer base {
     body {
         @apply bg-slate-50;
+        font-family: Arial, sans-serif;
     }
 }
+
+
 
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
@@ -12,24 +52,58 @@ input[type="number"]::-webkit-outer-spin-button {
     margin: 0;
 }
 
+/* Screen-only: hidden when printing */
+.screen-only {
+    display: block;
+}
+
+/* Print-only: hidden on screen */
+.print-only,
+.print-section {
+    display: none;
+}
+
 @media print {
     @page {
+        size: landscape;
         margin: 0.5cm;
     }
 
-    .no-print {
+    /* Hide everything we don't want to print */
+    .no-print,
+    .screen-only {
         display: none !important;
     }
 
+    /* Ensure print content is visible */
+    .print-only,
+    .print-section,
+    #print-content {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        background: white !important;
+        padding: 2rem !important;
+        color: black !important;
+    }
+
+    .print\\:block,
+    [class*="print:block"] {
+        display: block !important;
+    }
+
+    /* Hide non-print sidebar and nav */
     aside,
-    header {
+    nav {
         display: none !important;
     }
 
+    /* Show main content properly */
     main {
         margin: 0 !important;
         padding: 0 !important;
         overflow: visible !important;
+        width: 100% !important;
     }
 
     body,
@@ -37,6 +111,12 @@ input[type="number"]::-webkit-outer-spin-button {
         overflow: visible !important;
         height: auto !important;
         background: white !important;
+    }
+
+    /* Ensure hidden is overridden for print */
+    .hidden.print\\:block,
+    .hidden[class*="print:block"] {
+        display: block !important;
     }
 
     /* Optimize tables for print */
@@ -50,6 +130,7 @@ input[type="number"]::-webkit-outer-spin-button {
         background-color: #f0f0f0 !important;
         color: black !important;
         -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
 
     td,

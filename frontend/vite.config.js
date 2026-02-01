@@ -8,5 +8,5 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: './', // Ensures relative paths for GitHub Pages
+  base: '/', // Use absolute path for Firebase Hosting to avoid 404s on deep links
 })

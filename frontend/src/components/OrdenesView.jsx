@@ -1,0 +1,1338 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder } from 'lucide-react';
+import { db } from '../firebase/config';
+import { collection, getDocs, addDoc, updateDoc, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
+import { createPortal } from 'react-dom';
+import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA } from '../data/codigos';
+import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
+
+// Map professional names to their signature image files
+const FIRMAS_MAP = {
+    // 'Dra. Valenzuela': 'valenzuela.png',
+};
+
+const OrdenesView = () => {
+    const { viewingUid, catalogOwnerUid, isSuperAdmin } = useAuth();
+    const [profesionales, setProfesionales] = useState([]);
+    const [ordenes, setOrdenes] = useState([]);
+    const [showForm, setShowForm] = useState(false);
+    const [showPreview, setShowPreview] = useState(false);
+    const [previewData, setPreviewData] = useState(null);
+    const [previewType, setPreviewType] = useState('internacion'); // 'internacion' | 'material'
+    const [loading, setLoading] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+
+    // Filter State
+    const [filterProfesional, setFilterProfesional] = useState('');
+    const [filterObraSocial, setFilterObraSocial] = useState('');
+    const [filterDate, setFilterDate] = useState('');
+    const [filterStatus, setFilterStatus] = useState('');
+    const [searchPaciente, setSearchPaciente] = useState('');
+
+    // Autocomplete State
+    const [suggestions, setSuggestions] = useState([]);
+    const [showProfSuggestions, setShowProfSuggestions] = useState(false);
+    const [activeRow, setActiveRow] = useState(null); // { index: 0, field: 'codigo' | 'nombre' }
+    const [includeGenerico, setIncludeGenerico] = useState(false); // Checkbox for generic consent
+    const searchTimeoutRef = useRef(null);
+
+    // Form State
+    const emptyForm = {
+        profesional: '',
+        afiliado: '',
+        obraSocial: '',
+        numeroAfiliado: '',
+        dni: '',
+        codigosCirugia: [
+            { codigo: '', nombre: '' },
+            { codigo: '', nombre: '' },
+            { codigo: '', nombre: '' }
+        ],
+        tipoAnestesia: 'general',
+        fechaCirugia: '',
+        incluyeMaterial: false, // Toggle for material order
+        descripcionMaterial: '', // Material description
+        diagnostico: '',
+        observaciones: '',
+        fechaDocumento: new Date().toISOString().split('T')[0]
+    };
+
+    const [formData, setFormData] = useState(emptyForm);
+
+    const printStyle = `
+        @media print {
+            @page { size: A4; margin: 0; }
+            .no-print { display: none !important; }
+            #root { display: none !important; }
+            .print-orden {
+                display: block !important;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: auto !important;
+                background: white;
+                color: black;
+                overflow: visible !important;
+                z-index: 9999;
+            }
+            body { background: white !important; overflow: visible !important; }
+            .page-break { 
+                display: block !important;
+                page-break-after: always !important; 
+                break-after: page !important;
+                height: 0; 
+                width: 100%;
+                clear: both;
+                visibility: hidden;
+            }
+        }
+    `;
+
+    // Fetch Professionals
+    useEffect(() => {
+        const fetchProfs = async () => {
+            const ownerToUse = catalogOwnerUid || viewingUid;
+            if (!ownerToUse) return;
+            try {
+                const q = query(collection(db, "profesionales"), where("userId", "==", ownerToUse));
+                const snapshot = await getDocs(q);
+                const profs = snapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() }))
+                    .filter(p => p.categoria === 'ORL' || p.categoria === 'Estetica')
+                    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+                setProfesionales(profs);
+            } catch (error) {
+                console.error("Error fetching professionals:", error);
+            }
+        };
+        fetchProfs();
+    }, [viewingUid, catalogOwnerUid]);
+
+    // Fetch Orders History
+    const fetchOrdenes = async () => {
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return;
+        try {
+            const q = query(
+                collection(db, "ordenes_internacion"),
+                where("userId", "==", ownerToUse)
+            );
+            const snapshot = await getDocs(q);
+            const items = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => {
+                    const dateA = a.fechaCirugia || a.createdAt;
+                    const dateB = b.fechaCirugia || b.createdAt;
+                    return new Date(dateB) - new Date(dateA);
+                });
+            setOrdenes(items);
+        } catch (error) {
+            console.error("Error fetching orders:", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchOrdenes();
+    }, [viewingUid, catalogOwnerUid]);
+
+    const handleInputChange = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleCodigoChange = (index, field, value) => {
+        setFormData(prev => {
+            const newCodigos = [...prev.codigosCirugia];
+            newCodigos[index] = { ...newCodigos[index], [field]: value };
+            return { ...prev, codigosCirugia: newCodigos };
+        });
+    };
+
+    const addCodigo = () => {
+        setFormData(prev => ({
+            ...prev,
+            codigosCirugia: [...prev.codigosCirugia, { codigo: '', nombre: '' }]
+        }));
+    };
+
+    const removeCodigo = (index) => {
+        if (formData.codigosCirugia.length === 1) return;
+        setFormData(prev => ({
+            ...prev,
+            codigosCirugia: prev.codigosCirugia.filter((_, i) => i !== index)
+        }));
+    };
+
+    const resetForm = () => {
+        setFormData(emptyForm);
+        setEditingId(null);
+        setShowForm(false);
+        setSuggestions([]);
+        setActiveRow(null);
+    };
+
+    const handleCodigoChangeAndSearch = (index, field, value) => {
+        // Update form state directly
+        setFormData(prev => {
+            const newCodigos = [...prev.codigosCirugia];
+            newCodigos[index] = { ...newCodigos[index], [field]: value };
+            return { ...prev, [field === 'obraSocial' ? 'obraSocial' : '_ignore']: field === 'obraSocial' ? value : prev.obraSocial, codigosCirugia: newCodigos };
+        });
+
+        // Setup autocomplete
+        setActiveRow({ index, field });
+
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+        const currentOS = field === 'obraSocial' ? value : formData.obraSocial;
+
+        searchTimeoutRef.current = setTimeout(() => {
+            handleSearch(value, field, currentOS);
+        }, 300);
+    };
+
+    // Autocomplete Logic
+    const handleSearch = (value, field, currentOS) => {
+        try {
+            if (!value || value.length < 2) {
+                setSuggestions([]);
+                return;
+            }
+
+            const term = value.toLowerCase();
+            const os = (currentOS || formData.obraSocial || '').toLowerCase();
+
+            const isSwissMedical = os.includes('swiss');
+            const isIOSFA = os.includes('iosfa');
+
+            // Search in General Codes
+            const generalMatches = (CODIGOS_CIRUGIA || []).filter(c => {
+                if (field === 'codigo') {
+                    return c.codigo && c.codigo.toString().startsWith(term);
+                } else {
+                    return c.nombre && c.nombre.toLowerCase().includes(term);
+                }
+            }).map(surgery => {
+                // REVERSE LOOKUP: Only check for SM Modules if the patient belongs to Swiss Medical
+                if (isSwissMedical && MODULOS_SM) {
+                    const parentModule = MODULOS_SM.find(m => m.incluye && m.incluye.includes(surgery.codigo));
+                    if (parentModule) {
+                        return { ...surgery, parentModule };
+                    }
+                }
+                return surgery;
+            });
+
+            // Search in Swiss Medical Modules (Only if Swiss Medical)
+            let smMatches = [];
+            if (isSwissMedical && MODULOS_SM) {
+                smMatches = MODULOS_SM.filter(c => {
+                    if (field === 'codigo') {
+                        return c.codigo && c.codigo.toString().startsWith(term);
+                    } else {
+                        return c.nombre && c.nombre.toLowerCase().includes(term);
+                    }
+                }).map(m => ({ ...m, isModule: true }));
+            }
+
+            // Search in IOSFA Codes (Only if IOSFA)
+            let iosfaMatches = [];
+            if (isIOSFA && Array.isArray(CODIGOS_IOSFA)) {
+                iosfaMatches = CODIGOS_IOSFA.filter(c => {
+                    const codeMatch = c.codigo && c.codigo.toString().toLowerCase().startsWith(term);
+                    // Remove dots for comparison (e.g. 03.13.01 matches 031301)
+                    const cleanGeneral = c.codigoGeneral ? c.codigoGeneral.replace(/\./g, '') : '';
+                    const generalCodeMatch = cleanGeneral.startsWith(term);
+                    const nameMatch = c.nombre && c.nombre.toLowerCase().includes(term);
+                    return codeMatch || generalCodeMatch || nameMatch;
+                }).map(c => ({
+                    ...c,
+                    isIOSFA: true,
+                    // Display label helper
+                    displayLabel: `${c.codigo} (${c.codigoGeneral}) - ${c.nombre}`
+                }));
+            }
+
+            // Combine: IOSFA -> Modules -> General
+            const combined = [...iosfaMatches, ...smMatches, ...generalMatches].slice(0, 15);
+            setSuggestions(combined);
+        } catch (error) {
+            console.error("Auto-search error handled:", error);
+            setSuggestions([]);
+        }
+    };
+
+    const selectSuggestion = (suggestion, index) => {
+        // CASE 1: Reference to a Module with children (drill-down)
+        if (suggestion.isModule && suggestion.incluye && suggestion.incluye.length > 0) {
+            const childSurgeries = suggestion.incluye.map(code => {
+                const found = CODIGOS_CIRUGIA.find(c => c.codigo === code);
+                return found || { codigo: code, nombre: 'Consultar Nomenclador' };
+            });
+
+            // Update suggestions to show children and keep dropdown open
+            // We tag them with the parent module so we know how to format the final string
+            setSuggestions(childSurgeries.map(s => ({ ...s, parentModule: suggestion })));
+            return;
+        }
+
+        // CASE 2: Child surgery selected (drill-down complete)
+        if (suggestion.parentModule) {
+            setFormData(prev => {
+                const newCodigos = [...prev.codigosCirugia];
+                newCodigos[index] = {
+                    codigo: suggestion.parentModule.codigo,
+                    nombre: `${suggestion.parentModule.nombre} - ${suggestion.codigo} ${suggestion.nombre}`
+                };
+                return { ...prev, codigosCirugia: newCodigos };
+            });
+        }
+        else if (suggestion.isIOSFA) {
+            setFormData(prev => {
+                const newCodigos = [...prev.codigosCirugia];
+                // Save format: IOSFA_CODE in code field, GENERAL_CODE + NAME in name field
+                newCodigos[index] = {
+                    codigo: suggestion.codigo,
+                    nombre: `${suggestion.codigoGeneral} ${suggestion.nombre}`
+                };
+                return { ...prev, codigosCirugia: newCodigos };
+            });
+        }
+        // CASE 3: Standard selection
+        else {
+            setFormData(prev => {
+                const newCodigos = [...prev.codigosCirugia];
+                newCodigos[index] = { codigo: suggestion.codigo, nombre: suggestion.nombre };
+                return { ...prev, codigosCirugia: newCodigos };
+            });
+        }
+
+        setSuggestions([]);
+        setActiveRow(null);
+    };
+
+    const handleKeyDown = (e, index) => {
+        if (e.key === 'Enter' && suggestions.length > 0) {
+            e.preventDefault();
+            selectSuggestion(suggestions[0], index);
+        }
+    };
+
+    // Hide suggestions on click outside
+    useEffect(() => {
+        const handleClick = (e) => {
+            if (!e.target.closest('.suggestions-container') && !e.target.closest('input')) {
+                setSuggestions([]);
+                setActiveRow(null);
+                setShowProfSuggestions(false);
+            }
+        };
+        document.addEventListener('click', handleClick);
+        return () => document.removeEventListener('click', handleClick);
+    }, []);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.profesional || !formData.afiliado) {
+            alert("Completa al menos el profesional y el afiliado.");
+            return;
+        }
+
+        setLoading(true);
+        const ownerToUse = catalogOwnerUid || viewingUid;
+
+        try {
+            const cleanedCodigos = formData.codigosCirugia.filter(c => c.codigo || c.nombre);
+
+            const orderData = {
+                ...formData,
+                codigosCirugia: cleanedCodigos.length > 0 ? cleanedCodigos : [{ codigo: '', nombre: '' }],
+                userId: ownerToUse,
+                updatedAt: new Date().toISOString()
+            };
+
+            if (editingId) {
+                await updateDoc(doc(db, "ordenes_internacion", editingId), orderData);
+            } else {
+                orderData.createdAt = new Date().toISOString();
+                await addDoc(collection(db, "ordenes_internacion"), orderData);
+            }
+
+            await fetchOrdenes();
+
+            setPreviewData(orderData);
+            if (orderData.incluyeMaterial && orderData.descripcionMaterial) {
+                setPreviewType('ambas');
+            } else {
+                setPreviewType('internacion');
+            }
+            setShowPreview(true);
+            resetForm();
+
+        } catch (error) {
+            console.error("Error saving order:", error);
+            alert("Error al guardar la orden.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEdit = (orden) => {
+        let codigosCirugia = orden.codigosCirugia;
+        if (!codigosCirugia || !Array.isArray(codigosCirugia)) {
+            codigosCirugia = orden.codigoCirugia
+                ? [{ codigo: orden.codigoCirugia, nombre: '' }]
+                : [{ codigo: '', nombre: '' }];
+        }
+
+        // Ensure at least 3 rows
+        while (codigosCirugia.length < 3) {
+            codigosCirugia.push({ codigo: '', nombre: '' });
+        }
+
+        setFormData({
+            profesional: orden.profesional || '',
+            afiliado: orden.afiliado || '',
+            obraSocial: orden.obraSocial || '',
+            numeroAfiliado: orden.numeroAfiliado || '',
+            dni: orden.dni || '',
+            codigosCirugia,
+            tipoAnestesia: orden.tipoAnestesia || 'general',
+            fechaCirugia: orden.fechaCirugia || '',
+            incluyeMaterial: orden.incluyeMaterial || false,
+            descripcionMaterial: orden.descripcionMaterial || '',
+            diagnostico: orden.diagnostico || '',
+            observaciones: orden.observaciones || '',
+            fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
+        });
+        setEditingId(orden.id);
+        setShowForm(true);
+    };
+
+    const handlePreview = (orden, type = 'internacion') => {
+        let codigosCirugia = orden.codigosCirugia;
+        if (!codigosCirugia || !Array.isArray(codigosCirugia)) {
+            codigosCirugia = orden.codigoCirugia
+                ? [{ codigo: orden.codigoCirugia, nombre: '' }]
+                : [];
+        }
+        setPreviewData({ ...orden, codigosCirugia });
+        setPreviewType(type);
+        setShowPreview(true);
+    };
+
+    const handleToggleStatus = async (orden) => {
+        const newStatus = !orden.enviada;
+        // Optimistic update
+        setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: newStatus } : o));
+
+        try {
+            const ordenRef = doc(db, "ordenes_internacion", orden.id);
+            await updateDoc(ordenRef, { enviada: newStatus });
+        } catch (error) {
+            console.error("Error updating status:", error);
+            // Revert on error
+            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: !newStatus } : o));
+            alert("Error al actualizar el estado.");
+        }
+    };
+
+    const handleToggleField = async (orden, field) => {
+        const newValue = !orden[field];
+        // Optimistic update
+        setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: newValue } : o));
+
+        try {
+            const ordenRef = doc(db, "ordenes_internacion", orden.id);
+            await updateDoc(ordenRef, { [field]: newValue });
+        } catch (error) {
+            console.error(`Error updating ${field}:`, error);
+            // Revert on error
+            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: !newValue } : o));
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm("¿Eliminar esta orden?")) return;
+        try {
+            await deleteDoc(doc(db, "ordenes_internacion", id));
+            setOrdenes(prev => prev.filter(o => o.id !== id));
+        } catch (error) {
+            console.error("Error deleting order:", error);
+            alert("Error al eliminar.");
+        }
+    };
+
+
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        const [y, m, d] = dateStr.split('-');
+        return `${d}/${m}/${y}`;
+    };
+
+    const getSignatureUrl = (profesionalName) => {
+        if (FIRMAS_MAP[profesionalName]) {
+            return `/firmas/${FIRMAS_MAP[profesionalName]}`;
+        }
+        const filename = profesionalName
+            .toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_|_$/g, '');
+        return `/firmas/${filename}.png`;
+    };
+
+    const getProfesionalData = (profesionalName) => {
+        return profesionales.find(p => p.nombre === profesionalName) || {};
+    };
+
+    // Get applicable consents based on order codes
+    // Get applicable consents based on order codes
+    const getApplicableConsents = (orden) => {
+        if (!orden?.codigosCirugia) return [];
+        const consents = [];
+        const addedNames = new Set();
+
+        // Resolve effective codes for each order item
+        const resolvedCodes = orden.codigosCirugia.map(item => {
+            if (!item.codigo) return null;
+
+            // 1. Direct match
+            if (CONSENTIMIENTOS_MAP[item.codigo]) return item.codigo;
+
+            // 2. IOSFA lookup
+            const iosfaMatch = CODIGOS_IOSFA.find(c => c.codigo === item.codigo);
+            if (iosfaMatch && CONSENTIMIENTOS_MAP[iosfaMatch.codigoGeneral]) {
+                return iosfaMatch.codigoGeneral;
+            }
+
+            // 3. Name Regex Search (for Swiss Medical modules like "MODULO 1 ... 031301 ...")
+            // Search for patterns like "03XXXX" in the name
+            if (item.nombre) {
+                const codeMatch = item.nombre.match(/\b(03\d{4})\b/);
+                if (codeMatch && CONSENTIMIENTOS_MAP[codeMatch[1]]) {
+                    return codeMatch[1];
+                }
+            }
+
+            return item.codigo; // Return original if no better resolution found
+        }).filter(Boolean);
+
+        const usedCodes = new Set();
+
+        // First check for COMBO consents (require multiple codes together)
+        CONSENTIMIENTOS_COMBO.forEach(combo => {
+            const hasAllCodes = combo.codigos.every(code => resolvedCodes.includes(code));
+            if (hasAllCodes && !addedNames.has(combo.nombre)) {
+                addedNames.add(combo.nombre);
+                consents.push(combo);
+                // Mark these codes as used so they don't show individual consents
+                combo.codigos.forEach(code => usedCodes.add(code));
+            }
+        });
+
+        // Then check individual consents using resolved codes
+        resolvedCodes.forEach(code => {
+            if (CONSENTIMIENTOS_MAP[code] && !usedCodes.has(code)) {
+                const consent = CONSENTIMIENTOS_MAP[code];
+                // Only add if it has at least one PDF and hasn't been added
+                if ((consent.adulto || consent.menor) && !addedNames.has(consent.nombre)) {
+                    addedNames.add(consent.nombre);
+                    consents.push(consent);
+                }
+            }
+        });
+        return consents;
+    };
+
+    // Open consent PDF(s) for printing
+    const handlePrintConsent = (tipo) => {
+        const consents = getApplicableConsents(previewData);
+        const pdfUrls = [];
+
+        consents.forEach(consent => {
+            const file = tipo === 'adulto' ? consent.adulto : consent.menor;
+            if (file) {
+                pdfUrls.push(`/consentimientos/${encodeURIComponent(file)}`);
+            }
+        });
+
+        if (includeGenerico) {
+            pdfUrls.push(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`);
+        }
+
+        // Open each PDF in a new tab
+        pdfUrls.forEach(url => {
+            window.open(url, '_blank');
+        });
+    };
+
+    const renderPrintContent = (type) => {
+        // Handle Carátula separately
+        if (type === 'caratula') {
+            return (
+                <div className="max-w-[210mm] mx-auto bg-white print:max-w-none flex flex-col items-center text-center" style={{ minHeight: '297mm', fontFamily: 'Arial, sans-serif', paddingTop: '4cm', lineHeight: '1.0' }}>
+                    <span style={{ fontSize: '24pt' }}>{(previewData.afiliado || '').toUpperCase()}</span><br />
+                    <span style={{ fontSize: '24pt' }}>DNI {previewData.dni || '-'}</span><br />
+                    <span style={{ fontSize: '24pt' }}>{(previewData.obraSocial || '').toUpperCase()}</span><br />
+                    <span style={{ fontSize: '24pt' }}>{(previewData.profesional || '').toUpperCase()}</span><br />
+                    <span style={{ fontSize: '24pt' }}>{formatDate(previewData.fechaCirugia || previewData.fechaDocumento)}</span><br />
+                    <span style={{ fontSize: '24pt' }}>ALERGIA (-)</span>
+                </div>
+            );
+        }
+
+        const isInternacion = type === 'internacion';
+        const title = isInternacion ? 'ORDEN DE INTERNACIÓN' : 'ORDEN DE PEDIDO DE MATERIAL';
+
+        return (
+            <div className="max-w-[210mm] mx-auto bg-white px-16 py-12 print:max-w-none" style={{ minHeight: '297mm', fontFamily: 'Times New Roman, serif' }}>
+                <div className="mb-8">
+                    <img
+                        src="/coat_logo.png"
+                        alt="COAT"
+                        className="h-16 object-contain"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <p className="text-sm text-right -mt-4" style={{ color: '#333' }}>
+                        Córdoba, {formatDate(previewData.fechaDocumento)}
+                    </p>
+                </div>
+
+                <h1 className="text-center text-base font-normal mb-10 tracking-wide" style={{ color: '#000' }}>
+                    {title}
+                </h1>
+
+                <div className="space-y-2 text-sm leading-relaxed" style={{ color: '#333' }}>
+                    <p><span className="font-semibold">Afiliado:</span> {previewData.afiliado}</p>
+                    <p><span className="font-semibold">Obra social:</span> {previewData.obraSocial}</p>
+                    <p><span className="font-semibold">Número de afiliado:</span> {previewData.numeroAfiliado}</p>
+                    {previewData.dni && <p><span className="font-semibold">DNI:</span> {previewData.dni}</p>}
+
+                    {isInternacion ? (
+                        <div className="pt-4">
+                            <span className="font-semibold">Códigos de cirugía:</span>
+                            {previewData.codigosCirugia && previewData.codigosCirugia.length > 0 ? (
+                                <div className="ml-32 -mt-5">
+                                    {previewData.codigosCirugia.map((cod, idx) => (
+                                        <p key={idx}>{cod.codigo}{cod.nombre ? ` ${cod.nombre}` : ''}</p>
+                                    ))}
+                                </div>
+                            ) : <span className="ml-2">-</span>}
+                        </div>
+                    ) : (
+                        <p className="pt-4 whitespace-pre-wrap">{previewData.descripcionMaterial}</p>
+                    )}
+
+                    <p className="pt-4"><span className="font-semibold">Tipo de anestesia:</span> {previewData.tipoAnestesia}</p>
+                    <p className="pt-4"><span className="font-semibold">Fecha de cirugía:</span> {formatDate(previewData.fechaCirugia)}</p>
+                    <p className="pt-4"><span className="font-semibold">Material:</span> {previewData.incluyeMaterial ? 'sí' : 'no'}</p>
+                    <p className="pt-4"><span className="font-semibold">Diagnóstico:</span> {previewData.diagnostico}</p>
+                </div>
+
+                <div className="mt-24 flex justify-end">
+                    <div className="text-center">
+                        <img
+                            src={getSignatureUrl(previewData.profesional)}
+                            alt={`Firma ${previewData.profesional}`}
+                            className="h-20 object-contain mx-auto mb-1"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        <p className="text-sm font-bold" style={{ color: '#000' }}>{previewData.profesional}</p>
+                        {(() => {
+                            const profData = getProfesionalData(previewData.profesional);
+                            return (
+                                <>
+                                    {profData.especialidad && (
+                                        <p className="text-xs" style={{ color: '#000' }}>{profData.especialidad}</p>
+                                    )}
+                                    {(profData.mp || profData.me) && (
+                                        <p className="text-xs" style={{ color: '#000' }}>
+                                            {profData.mp && `MP ${profData.mp}`}{profData.mp && profData.me && ' - '}{profData.me && `ME ${profData.me}`}
+                                        </p>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    if (!isSuperAdmin) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center text-slate-400">
+                    <FileText size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>No tienes acceso a esta sección.</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-gradient-to-br from-teal-600 to-teal-700 text-white p-6 rounded-2xl shadow-lg">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 className="text-2xl font-bold flex items-center gap-3">
+                            <FileText size={28} />
+                            Órdenes de Internación
+                        </h2>
+                        <p className="text-teal-100 text-sm mt-1">Crea órdenes de internación y pedidos de material.</p>
+                    </div>
+                    <button
+                        onClick={() => { resetForm(); setShowForm(true); }}
+                        className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-lg"
+                    >
+                        <Plus size={20} />
+                        Nueva Orden
+                    </button>
+                </div>
+            </div>
+
+            {/* Orders History */}
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+                <div className="p-4 border-b border-slate-100 bg-slate-50">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                        <h3 className="font-bold text-slate-700">Historial de Órdenes</h3>
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Filter by Date */}
+                            <input
+                                type="date"
+                                value={filterDate}
+                                onChange={(e) => setFilterDate(e.target.value)}
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            />
+                            {/* Filter by Professional */}
+                            <select
+                                value={filterProfesional}
+                                onChange={(e) => setFilterProfesional(e.target.value)}
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            >
+                                <option value="">Todos los profesionales</option>
+                                {profesionales.map(p => (
+                                    <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                                ))}
+                            </select>
+                            {/* Filter by Obra Social */}
+                            <select
+                                value={filterObraSocial}
+                                onChange={(e) => setFilterObraSocial(e.target.value)}
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            >
+                                <option value="">Todas las Obras Sociales</option>
+                                {[...new Set(ordenes.map(o => o.obraSocial?.trim()).filter(Boolean))].sort().map(os => (
+                                    <option key={os} value={os}>{os}</option>
+                                ))}
+                            </select>
+                            <select
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            >
+                                <option value="">Todos los estados</option>
+                                <option value="pendientes">Pendientes</option>
+                                <option value="enviadas">Enviadas</option>
+                            </select>
+                            {/* Search by Patient */}
+                            <div className="relative">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar paciente..."
+                                    value={searchPaciente}
+                                    onChange={(e) => setSearchPaciente(e.target.value)}
+                                    className="pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 w-48"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {(() => {
+                    // Apply filters
+                    const filteredOrdenes = ordenes.filter(orden => {
+                        const matchProfesional = !filterProfesional || orden.profesional === filterProfesional;
+                        const matchObraSocial = !filterObraSocial || orden.obraSocial === filterObraSocial;
+                        const matchDate = !filterDate || orden.fechaCirugia === filterDate;
+                        const matchStatus = !filterStatus || (filterStatus === 'enviadas' ? orden.enviada : !orden.enviada);
+                        const matchPaciente = !searchPaciente || orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase());
+
+                        return matchProfesional && matchObraSocial && matchDate && matchStatus && matchPaciente;
+                    });
+
+                    if (filteredOrdenes.length === 0) {
+                        return (
+                            <div className="p-12 text-center text-slate-400">
+                                <ClipboardList size={48} className="mx-auto mb-4 opacity-50" />
+                                <p>{ordenes.length === 0 ? 'No hay órdenes creadas aún.' : 'No se encontraron órdenes con los filtros aplicados.'}</p>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div className="divide-y divide-slate-100">
+                            {filteredOrdenes.map(orden => (
+                                <div
+                                    key={orden.id}
+                                    className={`p-4 flex items-center justify-between transition-colors ${orden.enviada ? 'bg-slate-50 opacity-75 grayscale-[0.5]' : 'hover:bg-slate-50'
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600'
+                                            }`}>
+                                            {orden.enviada ? <CheckCircle2 size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />)}
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <p className={`font-bold ${orden.enviada ? 'text-slate-500' : 'text-slate-800'}`}>
+                                                    {orden.afiliado}
+                                                </p>
+                                                {orden.enviada ? (
+                                                    <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                        Enviada
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                        Pendiente
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-sm text-slate-500">
+                                                {orden.profesional} • {orden.obraSocial} • Cx: {formatDate(orden.fechaCirugia)}
+                                                {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
+                                            </p>
+                                            {orden.observaciones && (
+                                                <div className="mt-1 p-2 bg-blue-50 border-l-2 border-blue-400 text-xs text-blue-700 italic rounded">
+                                                    <strong>Nota:</strong> {orden.observaciones}
+                                                </div>
+                                            )}
+
+                                            {/* Status Toggles */}
+                                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                <button
+                                                    onClick={() => handleToggleField(orden, 'autorizada')}
+                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
+                                                        ? 'bg-blue-600 text-white border-blue-700 shadow-sm hover:bg-blue-700'
+                                                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
+                                                        }`}
+                                                >
+                                                    <ShieldCheck size={12} strokeWidth={2.5} />
+                                                    {orden.autorizada ? 'Autorizada' : 'Autorizar'}
+                                                </button>
+
+                                                {orden.incluyeMaterial && (
+                                                    <button
+                                                        onClick={() => handleToggleField(orden, 'materialSolicitado')}
+                                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
+                                                            ? 'bg-purple-600 text-white border-purple-700 shadow-sm hover:bg-purple-700'
+                                                            : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
+                                                            }`}
+                                                    >
+                                                        <Truck size={12} strokeWidth={2.5} />
+                                                        {orden.materialSolicitado ? 'Mat. Solicitado' : 'Solicitar Material'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => handleToggleStatus(orden)}
+                                            className={`p-2 rounded-lg transition-colors ${orden.enviada
+                                                ? 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
+                                                : 'text-slate-400 hover:bg-green-50 hover:text-green-600'
+                                                }`}
+                                            title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
+                                        >
+                                            {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
+                                        </button>
+                                        <button
+                                            onClick={() => handleEdit(orden)}
+                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+
+                                            title="Editar"
+                                        >
+                                            <Edit3 size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => handlePreview(orden, 'internacion')}
+                                            className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                            title="Ver Internación"
+                                        >
+                                            <Printer size={18} />
+                                        </button>
+                                        {orden.incluyeMaterial && orden.descripcionMaterial && (
+                                            <button
+                                                onClick={() => handlePreview(orden, 'material')}
+                                                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                                title="Ver Material"
+                                            >
+                                                <Package size={18} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => handlePreview(orden, 'caratula')}
+                                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                            title="Ver Carátula"
+                                        >
+                                            <Folder size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDelete(orden.id)}
+                                            className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })()}
+            </div>
+
+            {/* NEW/EDIT ORDER MODAL */}
+            {showForm && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                            <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                                {editingId ? <Edit3 size={24} className="text-blue-600" /> : <Plus size={24} className="text-teal-600" />}
+                                {editingId ? 'Editar Orden' : 'Nueva Orden'}
+                            </h3>
+                            <button onClick={resetForm} className="p-2 hover:bg-slate-100 rounded-full">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                            {/* Professional */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <User size={14} className="inline mr-1" /> Profesional
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={formData.profesional}
+                                        onChange={(e) => {
+                                            handleInputChange('profesional', e.target.value);
+                                            setShowProfSuggestions(true);
+                                        }}
+                                        onFocus={() => setShowProfSuggestions(true)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                const filtered = profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()));
+                                                if (filtered.length > 0) {
+                                                    handleInputChange('profesional', filtered[0].nombre);
+                                                    setShowProfSuggestions(false);
+                                                }
+                                            }
+                                        }}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="Escribe para buscar..."
+                                        required
+                                    />
+                                    {showProfSuggestions && (
+                                        <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container">
+                                            {profesionales
+                                                .filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()))
+                                                .map(p => (
+                                                    <div
+                                                        key={p.id}
+                                                        onClick={() => {
+                                                            handleInputChange('profesional', p.nombre);
+                                                            setShowProfSuggestions(false);
+                                                        }}
+                                                        className="px-4 py-3 cursor-pointer hover:bg-teal-50 border-b border-slate-50 last:border-0"
+                                                    >
+                                                        <p className="text-sm font-medium text-slate-700">{p.nombre}</p>
+                                                    </div>
+                                                ))}
+                                            {profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase())).length === 0 && (
+                                                <div className="px-4 py-3 text-sm text-slate-400 italic">
+                                                    No se encontraron coincidencias
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Patient Info */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <User size={14} className="inline mr-1" /> Afiliado
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.afiliado}
+                                        onChange={(e) => handleInputChange('afiliado', e.target.value.toUpperCase())}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
+                                        placeholder="APELLIDO Nombre"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Building2 size={14} className="inline mr-1" /> Obra Social
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.obraSocial}
+                                        onChange={(e) => handleInputChange('obraSocial', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="Galeno, OSDE, etc."
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Hash size={14} className="inline mr-1" /> N° Afiliado
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.numeroAfiliado}
+                                        onChange={(e) => handleInputChange('numeroAfiliado', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="14843"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Hash size={14} className="inline mr-1" /> DNI
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.dni}
+                                        onChange={(e) => handleInputChange('dni', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="45836670"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Surgery Codes */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                        <Hash size={14} className="inline mr-1" /> Códigos de Cirugía
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={addCodigo}
+                                        className="text-xs px-3 py-1 bg-teal-100 text-teal-700 rounded-lg font-bold hover:bg-teal-200 transition-colors flex items-center gap-1"
+                                    >
+                                        <Plus size={14} /> Agregar
+                                    </button>
+                                </div>
+
+                                {formData.codigosCirugia.map((cod, index) => (
+                                    <div key={index} className="flex gap-2 items-start relative">
+                                        <div className="w-28">
+                                            <input
+                                                type="text"
+                                                value={cod.codigo}
+                                                onChange={(e) => handleCodigoChangeAndSearch(index, 'codigo', e.target.value)}
+                                                onKeyDown={(e) => handleKeyDown(e, index)}
+                                                autoComplete="off"
+                                                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm font-mono"
+                                                placeholder="031301"
+                                            />
+                                        </div>
+                                        <div className="flex-1">
+                                            <input
+                                                type="text"
+                                                value={cod.nombre}
+                                                onChange={(e) => handleCodigoChangeAndSearch(index, 'nombre', e.target.value)}
+                                                onKeyDown={(e) => handleKeyDown(e, index)}
+                                                autoComplete="off"
+                                                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                placeholder="Amigdalectomía"
+                                            />
+                                        </div>
+
+                                        {/* Suggestions Dropdown */}
+                                        {activeRow?.index === index && suggestions.length > 0 && (
+                                            <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container transform translate-y-1">
+                                                {suggestions.map((s, i) => (
+                                                    <div
+                                                        key={i}
+                                                        onClick={() => selectSuggestion(s, index)}
+                                                        className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${s.isModule ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-teal-50 bg-white'}`}
+                                                    >
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${s.isModule ? 'text-indigo-600 bg-indigo-100 border-indigo-200' : 'text-teal-600 bg-teal-50 border-teal-100'}`}>
+                                                                    {s.codigo}
+                                                                </span>
+                                                                <span className={`text-sm font-medium ${s.isModule ? 'text-indigo-900' : 'text-slate-700'}`}>
+                                                                    {s.nombre}
+                                                                </span>
+                                                                {s.isModule && <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1 rounded-sm uppercase font-bold">Módulo</span>}
+                                                                {s.isIOSFA && <span className="text-[10px] bg-sky-200 text-sky-800 px-1 rounded-sm uppercase font-bold">IOSFA</span>}
+                                                            </div>
+                                                            {s.parentModule && (
+                                                                <div className="text-xs text-slate-400 italic mt-0.5">
+                                                                    ↳ Incluido en {s.parentModule.nombre}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {formData.codigosCirugia.length > 1 && (
+                                            <button type="button" onClick={() => removeCodigo(index)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
+                                                <X size={18} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Surgery Details */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Stethoscope size={14} className="inline mr-1" /> Tipo de Anestesia
+                                    </label>
+                                    <select
+                                        value={formData.tipoAnestesia}
+                                        onChange={(e) => handleInputChange('tipoAnestesia', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    >
+                                        <option value="general">General</option>
+                                        <option value="local">Local</option>
+                                        <option value="regional">Regional</option>
+                                        <option value="sedación">Sedación</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Calendar size={14} className="inline mr-1" /> Fecha de Cirugía
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={formData.fechaCirugia}
+                                        onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* MATERIAL SECTION */}
+                            <div className={`p-4 rounded-xl border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-300 bg-purple-50' : 'border-slate-200 bg-slate-50'}`}>
+                                <label className="flex items-center gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.incluyeMaterial}
+                                        onChange={(e) => handleInputChange('incluyeMaterial', e.target.checked)}
+                                        className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                                    />
+                                    <span className="font-bold text-slate-700 flex items-center gap-2">
+                                        <Package size={18} className="text-purple-600" />
+                                        Incluir Orden de Material
+                                    </span>
+                                </label>
+
+                                {formData.incluyeMaterial && (
+                                    <div className="mt-4">
+                                        <label className="block text-xs font-bold text-purple-600 uppercase tracking-wider mb-2">
+                                            Descripción del Material
+                                        </label>
+                                        <textarea
+                                            value={formData.descripcionMaterial}
+                                            onChange={(e) => handleInputChange('descripcionMaterial', e.target.value)}
+                                            className="w-full px-4 py-3 bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
+                                            placeholder="1 (un) tubo de ventilación en T&#10;2 (dos) prótesis de titanio..."
+                                        />
+                                        <p className="text-xs text-purple-500 mt-2">
+                                            💡 Se generará una Orden de Pedido de Material adicional con esta descripción.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Diagnosis */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <ClipboardList size={14} className="inline mr-1" /> Diagnóstico
+                                </label>
+                                <textarea
+                                    value={formData.diagnostico}
+                                    onChange={(e) => handleInputChange('diagnostico', e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 min-h-[80px]"
+                                    placeholder="SAHOS, IVN, etc."
+                                />
+                            </div>
+
+                            {/* Observations */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <Edit3 size={14} className="inline mr-1" /> Observaciones (Privado - No se imprime)
+                                </label>
+                                <textarea
+                                    value={formData.observaciones}
+                                    onChange={(e) => handleInputChange('observaciones', e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] text-slate-700"
+                                    placeholder="Notas internas, indicaciones del profesional, etc."
+                                />
+                            </div>
+
+                            {/* Document Date */}
+                            <div className="w-48">
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <Calendar size={14} className="inline mr-1" /> Fecha Documento
+                                </label>
+                                <input
+                                    type="date"
+                                    value={formData.fechaDocumento}
+                                    onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                />
+                            </div>
+
+                            {/* Submit */}
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={resetForm}
+                                    className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className={`flex-1 py-3 text-white font-bold rounded-xl transition-colors shadow-lg disabled:opacity-50 ${formData.incluyeMaterial ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}
+                                >
+                                    {loading ? 'Guardando...' : formData.incluyeMaterial ? 'Crear 2 Órdenes' : editingId ? 'Guardar Cambios' : 'Crear Orden'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* PRINT PREVIEW MODAL */}
+            {showPreview && previewData && createPortal(
+                <div className="fixed inset-0 bg-white z-[100] overflow-auto print-orden">
+                    <style>{printStyle}</style>
+                    <div className="p-8 print:p-0">
+                        {/* Header Controls */}
+                        <div className="flex justify-between items-center mb-8 no-print border-b pb-4">
+                            <div>
+                                <h2 className="text-2xl font-bold">Vista Previa</h2>
+                                {previewData.incluyeMaterial && previewData.descripcionMaterial && (
+                                    <div className="flex gap-2 mt-2">
+                                        <button
+                                            onClick={() => setPreviewType('internacion')}
+                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'internacion' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                        >
+                                            Internación
+                                        </button>
+                                        <button
+                                            onClick={() => setPreviewType('material')}
+                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                        >
+                                            Material
+                                        </button>
+                                        <button
+                                            onClick={() => setPreviewType('ambas')}
+                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                        >
+                                            📄 Ambas (2 pág.)
+                                        </button>
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => setPreviewType('caratula')}
+                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    📂 Carátula
+                                </button>
+
+                                {/* Consent Printing Section - one button per surgery */}
+                                {getApplicableConsents(previewData).length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-2 ml-4 pl-4 border-l border-slate-300">
+                                        <span className="text-xs font-bold text-slate-500 uppercase">Consentimientos:</span>
+                                        {getApplicableConsents(previewData).map((consent, idx) => (
+                                            <div key={idx} className="flex items-center gap-1">
+                                                <span className="text-xs text-slate-600">{consent.nombre}:</span>
+                                                {consent.adulto && (
+                                                    <button
+                                                        onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.adulto)}`, '_blank')}
+                                                        className="px-2 py-1 rounded-md font-bold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all"
+                                                    >
+                                                        Adulto
+                                                    </button>
+                                                )}
+                                                {consent.menor && (
+                                                    <button
+                                                        onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.menor)}`, '_blank')}
+                                                        className="px-2 py-1 rounded-md font-bold text-xs bg-pink-100 text-pink-700 hover:bg-pink-200 transition-all"
+                                                    >
+                                                        Menor
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Generic consent button - always visible */}
+                                <button
+                                    onClick={() => window.open(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`, '_blank')}
+                                    className="px-3 py-1.5 rounded-lg font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all ml-2"
+                                >
+                                    📋 Genérico
+                                </button>
+                            </div>
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => window.print()}
+                                    className={`flex items-center gap-2 px-6 py-2 text-white rounded-xl font-bold ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600' : previewType === 'material' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-teal-600 hover:bg-teal-700'}`}
+                                >
+                                    <Printer size={20} /> Imprimir / PDF
+                                </button>
+                                <button
+                                    onClick={() => setShowPreview(false)}
+                                    className="flex items-center gap-2 px-6 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200"
+                                >
+                                    <X size={20} /> Cerrar
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Render content based on type */}
+                        {previewType === 'ambas' ? (
+                            <>
+                                {renderPrintContent('internacion')}
+                                <div className="page-break" style={{ pageBreakAfter: 'always', breakAfter: 'page' }}></div>
+                                {renderPrintContent('material')}
+                            </>
+                        ) : (
+                            renderPrintContent(previewType)
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
+        </div>
+    );
+};
+
+export default OrdenesView;
