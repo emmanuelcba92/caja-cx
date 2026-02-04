@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder } from 'lucide-react';
+import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +22,8 @@ const OrdenesView = () => {
     const [previewType, setPreviewType] = useState('internacion'); // 'internacion' | 'material'
     const [loading, setLoading] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [whatsappModal, setWhatsappModal] = useState(null); // { orden: ordenData } when open
+
 
     // Filter State
     const [filterProfesional, setFilterProfesional] = useState('');
@@ -44,6 +46,7 @@ const OrdenesView = () => {
         obraSocial: '',
         numeroAfiliado: '',
         dni: '',
+        telefono: '', // Patient phone number for WhatsApp
         codigosCirugia: [
             { codigo: '', nombre: '' },
             { codigo: '', nombre: '' },
@@ -894,6 +897,15 @@ const OrdenesView = () => {
                                         >
                                             <Folder size={18} />
                                         </button>
+                                        {orden.telefono && (
+                                            <button
+                                                onClick={() => setWhatsappModal(orden)}
+                                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                title="Enviar WhatsApp"
+                                            >
+                                                <MessageCircle size={18} />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => handleDelete(orden.id)}
                                             className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
@@ -1032,6 +1044,21 @@ const OrdenesView = () => {
                                         placeholder="45836670"
                                     />
                                 </div>
+                            </div>
+
+                            {/* Phone Number */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <Phone size={14} className="inline mr-1" /> Teléfono (WhatsApp)
+                                </label>
+                                <input
+                                    type="tel"
+                                    value={formData.telefono}
+                                    onChange={(e) => handleInputChange('telefono', e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    placeholder="3512345678 (sin 0 ni 15)"
+                                />
+                                <p className="text-xs text-slate-400 mt-1">Formato: código de área + número (ej: 3512345678)</p>
                             </div>
 
                             {/* Surgery Codes */}
@@ -1341,6 +1368,82 @@ const OrdenesView = () => {
                     </div>
                 </div>,
                 document.body
+            )}
+
+            {/* WHATSAPP MODAL */}
+            {whatsappModal && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                <MessageCircle size={20} className="text-green-600" />
+                                Enviar WhatsApp
+                            </h3>
+                            <button onClick={() => setWhatsappModal(null)} className="p-2 hover:bg-slate-100 rounded-full">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-slate-600 text-center">
+                                Enviar mensaje a <strong>{whatsappModal.afiliado}</strong>
+                            </p>
+                            <p className="text-xs text-slate-400 text-center">
+                                📱 {whatsappModal.telefono}
+                            </p>
+
+                            <div className="space-y-3">
+                                <button
+                                    onClick={() => {
+                                        const fecha = whatsappModal.fechaCirugia ?
+                                            new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+                                            : 'sin fecha';
+                                        const mensaje = `Buenos dias, le escribe Emmanuel del área de cirugías COAT.
+
+*${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*. En el caso de su obra social, la autorización la gestiona el paciente.
+
+A continuación envío orden de internación para que pueda gestionar la autorización con su obra social.`;
+                                        const phone = whatsappModal.telefono.replace(/\D/g, '');
+                                        const phoneWithCountry = phone.startsWith('54') ? phone : `54${phone}`;
+                                        window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(mensaje)}`, '_blank');
+                                        setWhatsappModal(null);
+                                    }}
+                                    className="w-full p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-bold hover:from-green-600 hover:to-green-700 transition-all flex items-center justify-center gap-3 shadow-lg"
+                                >
+                                    <User size={20} />
+                                    <span>Autoriza el Paciente</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        const fecha = whatsappModal.fechaCirugia ?
+                                            new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+                                            : 'sin fecha';
+                                        const mensaje = `Buenos dias, le escribe Emmanuel del área de cirugías COAT.
+
+*${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*. En el caso de su obra social, la autorización la gestionamos nosotros.
+
+Para poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.`;
+                                        const phone = whatsappModal.telefono.replace(/\D/g, '');
+                                        const phoneWithCountry = phone.startsWith('54') ? phone : `54${phone}`;
+                                        window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(mensaje)}`, '_blank');
+                                        setWhatsappModal(null);
+                                    }}
+                                    className="w-full p-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-3 shadow-lg"
+                                >
+                                    <Building2 size={20} />
+                                    <span>Autoriza la Institución</span>
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => setWhatsappModal(null)}
+                                className="w-full py-2 text-slate-500 text-sm hover:text-slate-700"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
