@@ -1,5 +1,5 @@
 import { db } from '../firebase/config';
-import { collection, doc, setDoc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 
 export const DEFAULT_ROLES = {
     user: {
@@ -60,13 +60,26 @@ export const seedDefaultRoles = async () => {
     try {
         const rolesCol = collection(db, 'roles');
 
+        // Delete deprecated 'doctor' role if it exists
+        const deprecatedRoles = ['doctor'];
+        for (const deprecatedRole of deprecatedRoles) {
+            const deprecatedRef = doc(rolesCol, deprecatedRole);
+            const deprecatedSnap = await getDoc(deprecatedRef);
+            if (deprecatedSnap.exists()) {
+                console.log(`Removing deprecated role: ${deprecatedRole}`);
+                await deleteDoc(deprecatedRef);
+            }
+        }
+
+        // Seed/Update default roles
         for (const [key, roleData] of Object.entries(DEFAULT_ROLES)) {
             const roleRef = doc(rolesCol, key);
             const roleSnap = await getDoc(roleRef);
 
             if (!roleSnap.exists() || roleData.isSystem) {
                 console.log(`Seeding/Updating system role: ${key}`);
-                await setDoc(roleRef, roleData, { merge: true });
+                // Use overwrite (no merge) for system roles to ensure permissions are always up to date
+                await setDoc(roleRef, roleData);
             }
         }
         console.log('Roles seeded successfully.');
