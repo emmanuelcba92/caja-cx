@@ -67,9 +67,9 @@ function AuthenticatedApp() {
       return isSuperAdmin || permissions?.can_view_admin;
     }
 
-    // 1.5. Ordenes Tab - ONLY for Super Admin
+    // 1.5. Ordenes Tab - for Super Admin or users with ordenes permissions
     if (tab.id === 'ordenes') {
-      return isSuperAdmin;
+      return isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes;
     }
 
     // 2. Shared Catalog Viewers (COAT behavior)
@@ -215,7 +215,7 @@ function AuthenticatedApp() {
             {activeTab === 'liquidaciones' && <LiquidacionView />}
             {activeTab === 'profesionales' && <ProfesionalesView />}
             {activeTab === 'compartir' && <AccessManager />}
-            {activeTab === 'ordenes' && isSuperAdmin && <OrdenesView />}
+            {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && <OrdenesView />}
             {activeTab === 'admin' && (isSuperAdmin || permissions?.can_view_admin) && <AdminView />}
           </div>
         </section>
