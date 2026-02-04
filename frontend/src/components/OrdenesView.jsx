@@ -1397,14 +1397,14 @@ const OrdenesView = () => {
                                         const fecha = whatsappModal.fechaCirugia ?
                                             new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
                                             : 'sin fecha';
-                                        const mensaje = `Buenos dias, le escribe Emmanuel del área de cirugías COAT.
+                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.
 
 *${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*. En el caso de su obra social, la autorización la gestiona el paciente.
 
 A continuación envío orden de internación para que pueda gestionar la autorización con su obra social.`;
                                         const phone = whatsappModal.telefono.replace(/\D/g, '');
                                         const phoneWithCountry = phone.startsWith('54') ? phone : `54${phone}`;
-                                        window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(mensaje)}`, '_blank');
+                                        window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(mensaje)}`, 'whatsapp');
                                         setWhatsappModal(null);
                                     }}
                                     className="w-full p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-bold hover:from-green-600 hover:to-green-700 transition-all flex items-center justify-center gap-3 shadow-lg"
@@ -1418,14 +1418,14 @@ A continuación envío orden de internación para que pueda gestionar la autoriz
                                         const fecha = whatsappModal.fechaCirugia ?
                                             new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
                                             : 'sin fecha';
-                                        const mensaje = `Buenos dias, le escribe Emmanuel del área de cirugías COAT.
+                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.
 
 *${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*. En el caso de su obra social, la autorización la gestionamos nosotros.
 
 Para poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.`;
                                         const phone = whatsappModal.telefono.replace(/\D/g, '');
                                         const phoneWithCountry = phone.startsWith('54') ? phone : `54${phone}`;
-                                        window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(mensaje)}`, '_blank');
+                                        window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(mensaje)}`, 'whatsapp');
                                         setWhatsappModal(null);
                                     }}
                                     className="w-full p-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-3 shadow-lg"
