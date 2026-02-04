@@ -13,7 +13,7 @@ const FIRMAS_MAP = {
 };
 
 const OrdenesView = () => {
-    const { viewingUid, catalogOwnerUid, isSuperAdmin } = useAuth();
+    const { viewingUid, catalogOwnerUid, isSuperAdmin, permissions } = useAuth();
     const [profesionales, setProfesionales] = useState([]);
     const [ordenes, setOrdenes] = useState([]);
     const [showForm, setShowForm] = useState(false);
@@ -663,7 +663,12 @@ const OrdenesView = () => {
         );
     };
 
-    if (!isSuperAdmin) {
+    // Allow access to Super Admin or users with can_view_ordenes permission (COAT)
+    const canViewOrdenes = isSuperAdmin || permissions?.can_view_ordenes;
+    // Allow creating orders only for Super Admin or users with can_share_ordenes permission
+    const canShareOrdenes = isSuperAdmin || permissions?.can_share_ordenes;
+
+    if (!canViewOrdenes) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
                 <div className="text-center text-slate-400">
@@ -684,15 +689,21 @@ const OrdenesView = () => {
                             <FileText size={28} />
                             Órdenes de Internación
                         </h2>
-                        <p className="text-teal-100 text-sm mt-1">Crea órdenes de internación y pedidos de material.</p>
+                        <p className="text-teal-100 text-sm mt-1">
+                            {canShareOrdenes
+                                ? 'Crea órdenes de internación y pedidos de material.'
+                                : 'Visualiza las órdenes de internación generadas.'}
+                        </p>
                     </div>
-                    <button
-                        onClick={() => { resetForm(); setShowForm(true); }}
-                        className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-lg"
-                    >
-                        <Plus size={20} />
-                        Nueva Orden
-                    </button>
+                    {canShareOrdenes && (
+                        <button
+                            onClick={() => { resetForm(); setShowForm(true); }}
+                            className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-lg"
+                        >
+                            <Plus size={20} />
+                            Nueva Orden
+                        </button>
+                    )}
                 </div>
             </div>
 

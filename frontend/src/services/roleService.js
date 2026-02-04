@@ -2,13 +2,15 @@ import { db } from '../firebase/config';
 import { collection, doc, setDoc, getDoc, getDocs } from 'firebase/firestore';
 
 export const DEFAULT_ROLES = {
-    doctor: {
-        name: 'Doctor',
+    user: {
+        name: 'Usuario',
         isSystem: true,
         permissions: {
             can_view_admin: false,
             can_manage_users: false,
             can_view_shared_catalog: false,
+            can_view_ordenes: false,
+            can_share_ordenes: false,
             can_delete_data: false,
             is_ephemeral: false
         }
@@ -20,7 +22,9 @@ export const DEFAULT_ROLES = {
             can_view_admin: true,
             can_manage_users: true,
             can_view_shared_catalog: true,
-            can_delete_data: false, // Only Super Admin can delete by default
+            can_view_ordenes: true,
+            can_share_ordenes: true,
+            can_delete_data: true,
             is_ephemeral: false
         }
     },
@@ -31,6 +35,8 @@ export const DEFAULT_ROLES = {
             can_view_admin: false,
             can_manage_users: false,
             can_view_shared_catalog: true,
+            can_view_ordenes: true,
+            can_share_ordenes: true,
             can_delete_data: false,
             is_ephemeral: false
         }
@@ -42,6 +48,8 @@ export const DEFAULT_ROLES = {
             can_view_admin: false,
             can_manage_users: false,
             can_view_shared_catalog: false,
+            can_view_ordenes: false,
+            can_share_ordenes: false,
             can_delete_data: false,
             is_ephemeral: true
         }
@@ -73,7 +81,7 @@ export const getRoles = async () => {
 };
 
 export const getRolePermissions = async (roleName) => {
-    if (!roleName) return DEFAULT_ROLES.doctor.permissions;
+    if (!roleName) return DEFAULT_ROLES.user.permissions;
     // Handle legacy/fallback if role doesn't exist in DB yet (or just read from DB)
     try {
         const roleRef = doc(db, 'roles', roleName);
@@ -86,6 +94,6 @@ export const getRolePermissions = async (roleName) => {
     }
 
     // Fallback to default if not found in DB (e.g. before seeding finishes)
-    const defaultRole = DEFAULT_ROLES[roleName] || DEFAULT_ROLES.doctor;
+    const defaultRole = DEFAULT_ROLES[roleName] || DEFAULT_ROLES.user;
     return defaultRole.permissions;
 };

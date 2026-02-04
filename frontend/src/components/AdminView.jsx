@@ -23,6 +23,8 @@ const AdminView = () => {
         can_view_admin: false,
         can_manage_users: false,
         can_view_shared_catalog: false,
+        can_view_ordenes: false,
+        can_share_ordenes: false,
         can_delete_data: false,
         is_ephemeral: false
     });
@@ -76,6 +78,12 @@ const AdminView = () => {
     }, []);
 
     const handleUpdateRole = async (id, newRoleValue) => {
+        // Find the email for this authorization
+        const authRecord = authorizedEmails.find(a => a.id === id);
+        if (authRecord?.email === SUPER_ADMIN_EMAIL) {
+            alert("No puedes cambiar el rol del Super Administrador.");
+            return;
+        }
         try {
             await updateDoc(doc(db, "authorized_emails", id), {
                 role: newRoleValue,
@@ -147,6 +155,12 @@ const AdminView = () => {
     };
 
     const handleRemoveAuthorized = async (id) => {
+        // Find the email for this authorization
+        const authRecord = authorizedEmails.find(a => a.id === id);
+        if (authRecord?.email === SUPER_ADMIN_EMAIL) {
+            alert("No puedes eliminar al Super Administrador.");
+            return;
+        }
         if (!window.confirm("¿Seguro que quieres quitar la autorización?")) return;
         try {
             await deleteDoc(doc(db, "authorized_emails", id));
@@ -170,6 +184,8 @@ const AdminView = () => {
                 can_view_admin: false,
                 can_manage_users: false,
                 can_view_shared_catalog: false,
+                can_view_ordenes: false,
+                can_share_ordenes: false,
                 can_delete_data: false,
                 is_ephemeral: false
             });
@@ -189,8 +205,37 @@ const AdminView = () => {
         }
     };
 
+    // Toggle individual permission for an existing role
+    const handleToggleRolePermission = async (roleId, permissionKey, currentValue) => {
+        try {
+            const role = roles.find(r => r.id === roleId);
+            if (!role) return;
+
+            const updatedPermissions = {
+                ...role.permissions,
+                [permissionKey]: !currentValue
+            };
+
+            await setDoc(doc(db, "roles", roleId), {
+                ...role,
+                permissions: updatedPermissions
+            });
+
+            fetchData();
+        } catch (error) {
+            alert("Error actualizando permiso: " + error.message);
+        }
+    };
+
     const handleWipeData = async (uid) => {
         const email = profiles[uid]?.email || uid;
+
+        // Protect Super Admin from being wiped
+        if (email === SUPER_ADMIN_EMAIL) {
+            alert("No puedes eliminar los datos del Super Administrador.");
+            return;
+        }
+
         if (!window.confirm(`⚠️ ADVERTENCIA CRÍTICA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR TODA LA INFORMACIÓN de: ${email}?\n\nEsta acción eliminará:\n- Registros de Caja\n- Profesionales\n- Notas\n- Permisos de Acceso\n- Perfil y Configuración\n\nESTA ACCIÓN NO SE PUEDE DESHACER.`)) return;
 
         const secondConfirm = window.prompt(`Para confirmar, escribe el email o UID del usuario (${email}):`);
@@ -468,6 +513,8 @@ const AdminView = () => {
                                                 can_view_admin: "Acceso al Panel Admin",
                                                 can_manage_users: "Gestión de Usuarios",
                                                 can_view_shared_catalog: "Ver Catálogo Compartido",
+                                                can_view_ordenes: "Ver Órdenes",
+                                                can_share_ordenes: "Compartir Órdenes (crear con profesionales)",
                                                 can_delete_data: "Borrar Información",
                                                 is_ephemeral: "Datos Temporales (24h)"
                                             }[perm] || perm}
@@ -487,34 +534,48 @@ const AdminView = () => {
                         <h3 className="text-xl font-bold dark:text-white mb-6">Roles Existentes</h3>
                         <div className="space-y-4">
                             {roles.map(role => (
-                                <div key={role.id} className="p-4 border border-slate-200 rounded-xl flex justify-between items-center bg-slate-50">
-                                    <div>
-                                        <h4 className="font-bold text-slate-800">{role.name}</h4>
-                                        <div className="flex flex-wrap gap-1 mt-2">
-                                            {Object.entries(role.permissions).filter(([_, v]) => v).map(([k]) => (
-                                                <span key={k} className="px-2 py-0.5 bg-green-100 text-green-700 text-[9px] font-bold rounded uppercase">
-                                                    {{
-                                                        can_view_admin: "ADMIN",
-                                                        can_manage_users: "USUARIOS",
-                                                        can_view_shared_catalog: "CATÁLOGO",
-                                                        can_delete_data: "BORRAR",
-                                                        is_ephemeral: "EFÍMERO"
-                                                    }[k] || k}
-                                                </span>
-                                            ))}
-                                            {Object.values(role.permissions).every(v => !v) && (
-                                                <span className="px-2 py-0.5 bg-slate-200 text-slate-500 text-[9px] font-bold rounded uppercase">Básico</span>
-                                            )}
-                                        </div>
+                                <div key={role.id} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="font-bold text-slate-800 dark:text-white">{role.name}</h4>
+                                        {!role.isSystem && (
+                                            <button
+                                                onClick={() => handleDeleteRole(role.id)}
+                                                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        )}
                                     </div>
-                                    {!role.isSystem && (
-                                        <button
-                                            onClick={() => handleDeleteRole(role.id)}
-                                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    )}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {Object.entries(role.permissions || {}).map(([permKey, permValue]) => (
+                                            <label
+                                                key={permKey}
+                                                className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all text-xs ${permValue
+                                                        ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                                    }`}
+                                                onClick={() => handleToggleRolePermission(role.id, permKey, permValue)}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={permValue}
+                                                    onChange={() => { }}
+                                                    className="w-4 h-4 accent-green-600 pointer-events-none"
+                                                />
+                                                <span className="font-medium">
+                                                    {{
+                                                        can_view_admin: "Panel Admin",
+                                                        can_manage_users: "Gestión Usuarios",
+                                                        can_view_shared_catalog: "Catálogo",
+                                                        can_view_ordenes: "Ver Órdenes",
+                                                        can_share_ordenes: "Compartir Órdenes",
+                                                        can_delete_data: "Borrar Datos",
+                                                        is_ephemeral: "Temporal (24h)"
+                                                    }[permKey] || permKey}
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
                             ))}
                         </div>
