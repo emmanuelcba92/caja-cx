@@ -58,6 +58,7 @@ const OrdenesView = () => {
         descripcionMaterial: '', // Material description
         diagnostico: '',
         observaciones: '',
+        habitacion: '',
         fechaDocumento: new Date().toISOString().split('T')[0]
     };
 
@@ -407,6 +408,7 @@ const OrdenesView = () => {
             descripcionMaterial: orden.descripcionMaterial || '',
             diagnostico: orden.diagnostico || '',
             observaciones: orden.observaciones || '',
+            habitacion: orden.habitacion || '',
             fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
         });
         setEditingId(orden.id);
@@ -577,7 +579,12 @@ const OrdenesView = () => {
         // Handle Carátula separately
         if (type === 'caratula') {
             return (
-                <div className="max-w-[210mm] mx-auto bg-white print:max-w-none flex flex-col items-center text-center" style={{ minHeight: '297mm', fontFamily: 'Arial, sans-serif', paddingTop: '4cm', lineHeight: '1.0' }}>
+                <div className="max-w-[210mm] mx-auto bg-white print:max-w-none flex flex-col items-center text-center" style={{ minHeight: '297mm', fontFamily: 'Arial, sans-serif', paddingTop: '4cm', lineHeight: '1.0', position: 'relative' }}>
+                    {previewData.habitacion && (
+                        <div style={{ position: 'absolute', top: '1cm', right: '2cm', fontSize: '18pt' }}>
+                            {previewData.habitacion}
+                        </div>
+                    )}
                     <span style={{ fontSize: '24pt' }}>{(previewData.afiliado || '').toUpperCase()}</span><br />
                     <span style={{ fontSize: '24pt' }}>DNI {previewData.dni || '-'}</span><br />
                     <span style={{ fontSize: '24pt' }}>{(previewData.obraSocial || '').toUpperCase()}</span><br />
@@ -819,6 +826,7 @@ const OrdenesView = () => {
                                             </div>
                                             <p className="text-sm text-slate-500">
                                                 {orden.profesional} • {orden.obraSocial} • Cx: {formatDate(orden.fechaCirugia)}
+                                                {orden.habitacion && <span className="ml-2 font-medium text-amber-600">• Hab: {orden.habitacion}</span>}
                                                 {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
                                             </p>
                                             {orden.observaciones && (
@@ -1019,7 +1027,7 @@ const OrdenesView = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
                                         <Hash size={14} className="inline mr-1" /> N° Afiliado
@@ -1042,6 +1050,18 @@ const OrdenesView = () => {
                                         onChange={(e) => handleInputChange('dni', e.target.value)}
                                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
                                         placeholder="45836670"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Building2 size={14} className="inline mr-1" /> Habitación
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.habitacion}
+                                        onChange={(e) => handleInputChange('habitacion', e.target.value.toUpperCase())}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
+                                        placeholder="B, 101, etc."
                                     />
                                 </div>
                             </div>
