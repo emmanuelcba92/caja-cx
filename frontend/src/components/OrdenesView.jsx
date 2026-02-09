@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle } from 'lucide-react';
+import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart } from 'lucide-react';
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { createPortal } from 'react-dom';
-import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA } from '../data/codigos';
+import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
 
 // Map professional names to their signature image files
@@ -12,7 +12,7 @@ const FIRMAS_MAP = {
     // 'Dra. Valenzuela': 'valenzuela.png',
 };
 
-const OrdenesView = () => {
+const OrdenesView = ({ initialTab = 'internacion' }) => {
     const { viewingUid, catalogOwnerUid, isSuperAdmin, permissions } = useAuth();
     const [profesionales, setProfesionales] = useState([]);
     const [ordenes, setOrdenes] = useState([]);
@@ -24,6 +24,8 @@ const OrdenesView = () => {
     const [editingId, setEditingId] = useState(null);
     const [whatsappModal, setWhatsappModal] = useState(null); // { orden: ordenData } when open
     const [copiedToast, setCopiedToast] = useState(false); // Show toast when message is copied
+    const [activeTab, setActiveTab] = useState(initialTab); // 'internacion' | 'pedidos'
+    const [pedidos, setPedidos] = useState([]); // List of medical orders (pedidos)
 
     // Filter State
     const [filterProfesional, setFilterProfesional] = useState('');
@@ -36,7 +38,8 @@ const OrdenesView = () => {
     const [suggestions, setSuggestions] = useState([]);
     const [showProfSuggestions, setShowProfSuggestions] = useState(false);
     const [activeRow, setActiveRow] = useState(null); // { index: 0, field: 'codigo' | 'nombre' }
-    const [includeGenerico, setIncludeGenerico] = useState(false); // Checkbox for generic consent
+    const [highlightedIndex, setHighlightedIndex] = useState(0);
+
     const searchTimeoutRef = useRef(null);
 
     // Form State
@@ -57,9 +60,10 @@ const OrdenesView = () => {
         incluyeMaterial: false, // Toggle for material order
         descripcionMaterial: '', // Material description
         diagnostico: '',
-        observaciones: '',
         habitacion: '',
-        fechaDocumento: new Date().toISOString().split('T')[0]
+        fechaDocumento: new Date().toISOString().split('T')[0],
+        // Additional fields for Pedidos Medicos
+        practicas: ['', '', '', '', ''], // Array of strings (practice names)
     };
 
     const [formData, setFormData] = useState(emptyForm);
@@ -137,21 +141,39 @@ const OrdenesView = () => {
         }
     };
 
+    const fetchPedidos = async () => {
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return;
+        try {
+            const q = query(
+                collection(db, "pedidos_medicos"),
+                where("userId", "==", ownerToUse)
+            );
+            const snapshot = await getDocs(q);
+            const items = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => {
+                    const dateA = a.fechaDocumento || a.createdAt;
+                    const dateB = b.fechaDocumento || b.createdAt;
+                    // Sort descending by date (newest first)
+                    return new Date(dateB) - new Date(dateA);
+                });
+            setPedidos(items);
+        } catch (error) {
+            console.error("Error fetching medical orders:", error);
+        }
+    };
+
     useEffect(() => {
         fetchOrdenes();
+        fetchPedidos();
     }, [viewingUid, catalogOwnerUid]);
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleCodigoChange = (index, field, value) => {
-        setFormData(prev => {
-            const newCodigos = [...prev.codigosCirugia];
-            newCodigos[index] = { ...newCodigos[index], [field]: value };
-            return { ...prev, codigosCirugia: newCodigos };
-        });
-    };
+
 
     const addCodigo = () => {
         setFormData(prev => ({
@@ -205,8 +227,19 @@ const OrdenesView = () => {
             }
 
             const term = value.toLowerCase();
-            const os = (currentOS || formData.obraSocial || '').toLowerCase();
 
+            // IF WE ARE IN "PEDIDOS" TAB: Search ONLY in PRACTICAS_MEDICAS
+            if (activeTab === 'pedidos') {
+                const practiceMatches = (PRACTICAS_MEDICAS || []).filter(p =>
+                    p.nombre && p.nombre.toLowerCase().includes(term)
+                );
+                setSuggestions(practiceMatches.slice(0, 15));
+                setHighlightedIndex(0);
+                return;
+            }
+
+            // IF WE ARE IN "INTERNACION" TAB: Standard behavior
+            const os = (currentOS || formData.obraSocial || '').toLowerCase();
             const isSwissMedical = os.includes('swiss');
             const isIOSFA = os.includes('iosfa');
 
@@ -261,6 +294,7 @@ const OrdenesView = () => {
             // Combine: IOSFA -> Modules -> General
             const combined = [...iosfaMatches, ...smMatches, ...generalMatches].slice(0, 15);
             setSuggestions(combined);
+            setHighlightedIndex(0);
         } catch (error) {
             console.error("Auto-search error handled:", error);
             setSuggestions([]);
@@ -316,10 +350,35 @@ const OrdenesView = () => {
         setActiveRow(null);
     };
 
+    const selectPedidoSuggestion = (suggestion, index) => {
+        setFormData(prev => {
+            const newPracticas = [...prev.practicas];
+            newPracticas[index] = suggestion.nombre;
+            return { ...prev, practicas: newPracticas };
+        });
+        setSuggestions([]);
+        setActiveRow(null);
+    };
+
     const handleKeyDown = (e, index) => {
-        if (e.key === 'Enter' && suggestions.length > 0) {
+        if (suggestions.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
             e.preventDefault();
-            selectSuggestion(suggestions[0], index);
+            setHighlightedIndex(prev => (prev + 1) % suggestions.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setHighlightedIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (activeTab === 'pedidos') {
+                selectPedidoSuggestion(suggestions[highlightedIndex], index);
+            } else {
+                selectSuggestion(suggestions[highlightedIndex], index);
+            }
+        } else if (e.key === 'Escape') {
+            setSuggestions([]);
+            setActiveRow(null);
         }
     };
 
@@ -357,20 +416,29 @@ const OrdenesView = () => {
             };
 
             if (editingId) {
-                await updateDoc(doc(db, "ordenes_internacion", editingId), orderData);
+                if (activeTab === 'pedidos') {
+                    await updateDoc(doc(db, "pedidos_medicos", editingId), orderData);
+                } else {
+                    await updateDoc(doc(db, "ordenes_internacion", editingId), orderData);
+                }
             } else {
                 orderData.createdAt = new Date().toISOString();
-                await addDoc(collection(db, "ordenes_internacion"), orderData);
+                if (activeTab === 'pedidos') {
+                    await addDoc(collection(db, "pedidos_medicos"), orderData);
+                } else {
+                    await addDoc(collection(db, "ordenes_internacion"), orderData);
+                }
             }
 
-            await fetchOrdenes();
+            if (activeTab === 'pedidos') {
+                await fetchPedidos();
+                setPreviewType('pedido');
+            } else {
+                await fetchOrdenes();
+                setPreviewType(orderData.incluyeMaterial && orderData.descripcionMaterial ? 'ambas' : 'internacion');
+            }
 
             setPreviewData(orderData);
-            if (orderData.incluyeMaterial && orderData.descripcionMaterial) {
-                setPreviewType('ambas');
-            } else {
-                setPreviewType('internacion');
-            }
             setShowPreview(true);
             resetForm();
 
@@ -383,34 +451,54 @@ const OrdenesView = () => {
     };
 
     const handleEdit = (orden) => {
-        let codigosCirugia = orden.codigosCirugia;
-        if (!codigosCirugia || !Array.isArray(codigosCirugia)) {
-            codigosCirugia = orden.codigoCirugia
-                ? [{ codigo: orden.codigoCirugia, nombre: '' }]
-                : [{ codigo: '', nombre: '' }];
-        }
+        if (activeTab === 'pedidos') {
+            // Ensure at least 5 rows for practices
+            let practicas = orden.practicas || [];
+            while (practicas.length < 5) practicas.push('');
 
-        // Ensure at least 3 rows
-        while (codigosCirugia.length < 3) {
-            codigosCirugia.push({ codigo: '', nombre: '' });
-        }
+            setFormData({
+                profesional: orden.profesional || '',
+                afiliado: orden.afiliado || '',
+                obraSocial: orden.obraSocial || '',
+                numeroAfiliado: orden.numeroAfiliado || '',
+                dni: orden.dni || '',
+                habitacion: orden.habitacion || '',
+                practicas, // Only for Pedidos
+                codigosCirugia: emptyForm.codigosCirugia, // Reset surgery codes
+                diagnostico: orden.diagnostico || '',
+                fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
+            });
+        } else {
+            let codigosCirugia = orden.codigosCirugia;
+            if (!codigosCirugia || !Array.isArray(codigosCirugia)) {
+                codigosCirugia = orden.codigoCirugia
+                    ? [{ codigo: orden.codigoCirugia, nombre: '' }]
+                    : [{ codigo: '', nombre: '' }];
+            }
 
-        setFormData({
-            profesional: orden.profesional || '',
-            afiliado: orden.afiliado || '',
-            obraSocial: orden.obraSocial || '',
-            numeroAfiliado: orden.numeroAfiliado || '',
-            dni: orden.dni || '',
-            codigosCirugia,
-            tipoAnestesia: orden.tipoAnestesia || 'general',
-            fechaCirugia: orden.fechaCirugia || '',
-            incluyeMaterial: orden.incluyeMaterial || false,
-            descripcionMaterial: orden.descripcionMaterial || '',
-            diagnostico: orden.diagnostico || '',
-            observaciones: orden.observaciones || '',
-            habitacion: orden.habitacion || '',
-            fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
-        });
+            // Ensure at least 3 rows
+            while (codigosCirugia.length < 3) {
+                codigosCirugia.push({ codigo: '', nombre: '' });
+            }
+
+            setFormData({
+                profesional: orden.profesional || '',
+                afiliado: orden.afiliado || '',
+                obraSocial: orden.obraSocial || '',
+                numeroAfiliado: orden.numeroAfiliado || '',
+                dni: orden.dni || '',
+                habitacion: orden.habitacion || '',
+                codigosCirugia,
+                practicas: emptyForm.practicas, // Reset practices
+                tipoAnestesia: orden.tipoAnestesia || 'general',
+                fechaCirugia: orden.fechaCirugia || '',
+                incluyeMaterial: orden.incluyeMaterial || false,
+                descripcionMaterial: orden.descripcionMaterial || '',
+                diagnostico: orden.diagnostico || '',
+                observaciones: orden.observaciones || '',
+                fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
+            });
+        }
         setEditingId(orden.id);
         setShowForm(true);
     };
@@ -433,7 +521,8 @@ const OrdenesView = () => {
         setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: newStatus } : o));
 
         try {
-            const ordenRef = doc(db, "ordenes_internacion", orden.id);
+            const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+            const ordenRef = doc(db, collectionName, orden.id);
             await updateDoc(ordenRef, { enviada: newStatus });
         } catch (error) {
             console.error("Error updating status:", error);
@@ -461,8 +550,13 @@ const OrdenesView = () => {
     const handleDelete = async (id) => {
         if (!window.confirm("¿Eliminar esta orden?")) return;
         try {
-            await deleteDoc(doc(db, "ordenes_internacion", id));
-            setOrdenes(prev => prev.filter(o => o.id !== id));
+            const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+            await deleteDoc(doc(db, collectionName, id));
+            if (activeTab === 'pedidos') {
+                setPedidos(prev => prev.filter(o => o.id !== id));
+            } else {
+                setOrdenes(prev => prev.filter(o => o.id !== id));
+            }
         } catch (error) {
             console.error("Error deleting order:", error);
             alert("Error al eliminar.");
@@ -554,29 +648,10 @@ const OrdenesView = () => {
     };
 
     // Open consent PDF(s) for printing
-    const handlePrintConsent = (tipo) => {
-        const consents = getApplicableConsents(previewData);
-        const pdfUrls = [];
 
-        consents.forEach(consent => {
-            const file = tipo === 'adulto' ? consent.adulto : consent.menor;
-            if (file) {
-                pdfUrls.push(`/consentimientos/${encodeURIComponent(file)}`);
-            }
-        });
-
-        if (includeGenerico) {
-            pdfUrls.push(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`);
-        }
-
-        // Open each PDF in a new tab
-        pdfUrls.forEach(url => {
-            window.open(url, '_blank');
-        });
-    };
 
     const renderPrintContent = (type) => {
-        // Handle Carátula separately
+        // Handle Carátula
         if (type === 'caratula') {
             return (
                 <div className="max-w-[210mm] mx-auto bg-white print:max-w-none flex flex-col items-center text-center" style={{ minHeight: '297mm', fontFamily: 'Arial, sans-serif', paddingTop: '4cm', lineHeight: '1.0', position: 'relative' }}>
@@ -595,6 +670,79 @@ const OrdenesView = () => {
             );
         }
 
+        // Handle Pedido Médico
+        if (type === 'pedido') {
+            return (
+                <div className="max-w-[210mm] mx-auto bg-white px-16 py-12 print:max-w-none relative" style={{ minHeight: '297mm', fontFamily: 'Arial, sans-serif' }}>
+
+                    {/* Header: Logo and Date */}
+                    <div className="mb-12 text-center relative">
+                        <img
+                            src="/coat_logo.png"
+                            alt="COAT"
+                            className="h-20 object-contain mx-auto mb-4"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        <p className="text-sm text-right absolute right-0 top-20" style={{ color: '#000' }}>
+                            Córdoba, {new Date(previewData.fechaDocumento).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </p>
+                    </div>
+
+                    {/* Patient Info */}
+                    <div className="space-y-1 text-base mb-12" style={{ color: '#000', lineHeight: '1.6' }}>
+                        <p><span className="font-bold">Paciente:</span> {previewData.afiliado}</p>
+                        <p><span className="font-bold">Obra social:</span> {previewData.obraSocial}</p>
+                        <p><span className="font-bold">Nº de af:</span> {previewData.numeroAfiliado}</p>
+                        <p><span className="font-bold">Diagnóstico:</span> {previewData.diagnostico}</p>
+                    </div>
+
+                    {/* Body: Practices */}
+                    <div className="mb-12">
+                        <h3 className="font-bold underline mb-4 text-lg">Rp/</h3>
+                        <div className="pl-8 space-y-2 uppercase text-lg">
+                            {previewData.practicas && previewData.practicas.map((p, idx) => (
+                                p && <p key={idx}>{p}</p>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Footer: Diagnosis and Signature */}
+                    <div className="absolute bottom-32 left-16 right-16">
+                        <div className="flex justify-end items-end">
+
+                            <div className="text-center">
+                                <img
+                                    src={getSignatureUrl(previewData.profesional)}
+                                    alt={`Firma ${previewData.profesional}`}
+                                    className="h-24 object-contain mx-auto mb-1"
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                />
+                                <div className="border-t border-black pt-1 mt-1 inline-block min-w-[200px]">
+                                    <p className="text-sm font-bold" style={{ color: '#000' }}>{previewData.profesional}</p>
+                                    {(() => {
+                                        const profData = getProfesionalData(previewData.profesional);
+                                        return (
+                                            <>
+                                                {profData.especialidad && (
+                                                    <p className="text-xs" style={{ color: '#000' }}>{profData.especialidad}</p>
+                                                )}
+                                                {(profData.mp || profData.me) && (
+                                                    <p className="text-xs" style={{ color: '#000' }}>
+                                                        {profData.mp && `MP ${profData.mp}`}{profData.mp && profData.me && ' - '}{profData.me && `ME ${profData.me}`}
+                                                    </p>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Handle Default (Internacion / Material)
         const isInternacion = type === 'internacion';
         const title = isInternacion ? 'ORDEN DE INTERNACIÓN' : 'ORDEN DE PEDIDO DE MATERIAL';
 
@@ -696,22 +844,37 @@ const OrdenesView = () => {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                         <h2 className="text-2xl font-bold flex items-center gap-3">
-                            <FileText size={28} />
-                            Órdenes de Internación
+                            {activeTab === 'pedidos' ? <FileHeart size={28} /> : <FileText size={28} />}
+                            {activeTab === 'pedidos' ? 'Pedidos' : 'Órdenes de Internación'}
                         </h2>
                         <p className="text-teal-100 text-sm mt-1">
                             {canShareOrdenes
-                                ? 'Crea órdenes de internación y pedidos de material.'
-                                : 'Visualiza las órdenes de internación generadas.'}
+                                ? (activeTab === 'pedidos' ? 'Genera pedidos y recetas.' : 'Crea órdenes de internación y pedidos de material.')
+                                : 'Visualiza el historial de documentos.'}
                         </p>
                     </div>
+                    <div className="flex bg-teal-800/30 p-1 rounded-xl">
+                        <button
+                            onClick={() => setActiveTab('internacion')}
+                            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'internacion' ? 'bg-white text-teal-700 shadow-md' : 'text-teal-100 hover:bg-white/10'}`}
+                        >
+                            Internación
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('pedidos')}
+                            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'pedidos' ? 'bg-white text-teal-700 shadow-md' : 'text-teal-100 hover:bg-white/10'}`}
+                        >
+                            Pedidos
+                        </button>
+                    </div>
+
                     {canShareOrdenes && (
                         <button
                             onClick={() => { resetForm(); setShowForm(true); }}
                             className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-lg"
                         >
                             <Plus size={20} />
-                            Nueva Orden
+                            {activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden'}
                         </button>
                     )}
                 </div>
@@ -776,8 +939,11 @@ const OrdenesView = () => {
                     </div>
                 </div>
                 {(() => {
+                    // Decide which list to filter
+                    const listToFilter = activeTab === 'pedidos' ? pedidos : ordenes;
+
                     // Apply filters
-                    const filteredOrdenes = ordenes.filter(orden => {
+                    const filteredOrdenes = listToFilter.filter(orden => {
                         const matchProfesional = !filterProfesional || orden.profesional === filterProfesional;
                         const matchObraSocial = !filterObraSocial || orden.obraSocial === filterObraSocial;
                         const matchDate = !filterDate || orden.fechaCirugia === filterDate;
@@ -791,7 +957,7 @@ const OrdenesView = () => {
                         return (
                             <div className="p-12 text-center text-slate-400">
                                 <ClipboardList size={48} className="mx-auto mb-4 opacity-50" />
-                                <p>{ordenes.length === 0 ? 'No hay órdenes creadas aún.' : 'No se encontraron órdenes con los filtros aplicados.'}</p>
+                                <p>{listToFilter.length === 0 ? 'No hay documentos creados aún.' : 'No se encontraron documentos con los filtros aplicados.'}</p>
                             </div>
                         );
                     }
@@ -805,9 +971,9 @@ const OrdenesView = () => {
                                         }`}
                                 >
                                     <div className="flex items-center gap-4">
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600'
+                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600')
                                             }`}>
-                                            {orden.enviada ? <CheckCircle2 size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />)}
+                                            {orden.enviada ? <CheckCircle2 size={20} /> : (activeTab === 'pedidos' ? <FileHeart size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />))}
                                         </div>
                                         <div>
                                             <div className="flex items-center gap-2">
@@ -825,7 +991,8 @@ const OrdenesView = () => {
                                                 )}
                                             </div>
                                             <p className="text-sm text-slate-500">
-                                                {orden.profesional} • {orden.obraSocial} • Cx: {formatDate(orden.fechaCirugia)}
+                                                {orden.profesional} • {orden.obraSocial} • Fecha: {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
+                                                {activeTab === 'pedidos' && <span className="ml-2 font-medium text-pink-600">• Pedido Médico</span>}
                                                 {orden.habitacion && <span className="ml-2 font-medium text-amber-600">• Hab: {orden.habitacion}</span>}
                                                 {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
                                             </p>
@@ -848,7 +1015,7 @@ const OrdenesView = () => {
                                                     {orden.autorizada ? 'Autorizada' : 'Autorizar'}
                                                 </button>
 
-                                                {orden.incluyeMaterial && (
+                                                {orden.incluyeMaterial && activeTab !== 'pedidos' && (
                                                     <button
                                                         onClick={() => handleToggleField(orden, 'materialSolicitado')}
                                                         className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
@@ -877,27 +1044,28 @@ const OrdenesView = () => {
                                         <button
                                             onClick={() => handleEdit(orden)}
                                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-
                                             title="Editar"
                                         >
                                             <Edit3 size={18} />
                                         </button>
                                         <button
-                                            onClick={() => handlePreview(orden, 'internacion')}
+                                            onClick={() => handlePreview(orden, activeTab === 'pedidos' ? 'pedido' : 'internacion')}
                                             className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                                            title="Ver Internación"
+                                            title="Ver Documento"
                                         >
                                             <Printer size={18} />
                                         </button>
-                                        {orden.incluyeMaterial && orden.descripcionMaterial && (
-                                            <button
-                                                onClick={() => handlePreview(orden, 'material')}
-                                                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                                                title="Ver Material"
-                                            >
-                                                <Package size={18} />
-                                            </button>
-                                        )}
+                                        {orden.incluyeMaterial &&
+                                            orden.descripcionMaterial &&
+                                            activeTab !== 'pedidos' && (
+                                                <button
+                                                    onClick={() => handlePreview(orden, 'material')}
+                                                    className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                                    title="Ver Material"
+                                                >
+                                                    <Package size={18} />
+                                                </button>
+                                            )}
                                         <button
                                             onClick={() => handlePreview(orden, 'caratula')}
                                             className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
@@ -930,551 +1098,639 @@ const OrdenesView = () => {
             </div>
 
             {/* NEW/EDIT ORDER MODAL */}
-            {showForm && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
-                            <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                                {editingId ? <Edit3 size={24} className="text-blue-600" /> : <Plus size={24} className="text-teal-600" />}
-                                {editingId ? 'Editar Orden' : 'Nueva Orden'}
-                            </h3>
-                            <button onClick={resetForm} className="p-2 hover:bg-slate-100 rounded-full">
-                                <X size={20} />
-                            </button>
-                        </div>
+            {
+                showForm && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                                    {editingId ? <Edit3 size={24} className="text-blue-600" /> : <Plus size={24} className="text-teal-600" />}
+                                    {editingId ? 'Editar Documento' : (activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden')}
+                                </h3>
+                                <button onClick={resetForm} className="p-2 hover:bg-slate-100 rounded-full">
+                                    <X size={20} />
+                                </button>
+                            </div>
 
-                        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                            {/* Professional */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                    <User size={14} className="inline mr-1" /> Profesional
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={formData.profesional}
-                                        onChange={(e) => {
-                                            handleInputChange('profesional', e.target.value);
-                                            setShowProfSuggestions(true);
-                                        }}
-                                        onFocus={() => setShowProfSuggestions(true)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                const filtered = profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()));
-                                                if (filtered.length > 0) {
-                                                    handleInputChange('profesional', filtered[0].nombre);
-                                                    setShowProfSuggestions(false);
+                            <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                                {/* Professional */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <User size={14} className="inline mr-1" /> Profesional
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={formData.profesional}
+                                            onChange={(e) => {
+                                                handleInputChange('profesional', e.target.value);
+                                                setShowProfSuggestions(true);
+                                            }}
+                                            onFocus={() => setShowProfSuggestions(true)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const filtered = profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()));
+                                                    if (filtered.length > 0) {
+                                                        handleInputChange('profesional', filtered[0].nombre);
+                                                        setShowProfSuggestions(false);
+                                                    }
                                                 }
-                                            }
-                                        }}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                        placeholder="Escribe para buscar..."
-                                        required
-                                    />
-                                    {showProfSuggestions && (
-                                        <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container">
-                                            {profesionales
-                                                .filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()))
-                                                .map(p => (
-                                                    <div
-                                                        key={p.id}
-                                                        onClick={() => {
-                                                            handleInputChange('profesional', p.nombre);
-                                                            setShowProfSuggestions(false);
-                                                        }}
-                                                        className="px-4 py-3 cursor-pointer hover:bg-teal-50 border-b border-slate-50 last:border-0"
-                                                    >
-                                                        <p className="text-sm font-medium text-slate-700">{p.nombre}</p>
-                                                    </div>
-                                                ))}
-                                            {profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase())).length === 0 && (
-                                                <div className="px-4 py-3 text-sm text-slate-400 italic">
-                                                    No se encontraron coincidencias
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Patient Info */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <User size={14} className="inline mr-1" /> Afiliado
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.afiliado}
-                                        onChange={(e) => handleInputChange('afiliado', e.target.value.toUpperCase())}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
-                                        placeholder="APELLIDO Nombre"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Building2 size={14} className="inline mr-1" /> Obra Social
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.obraSocial}
-                                        onChange={(e) => handleInputChange('obraSocial', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                        placeholder="Galeno, OSDE, etc."
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Hash size={14} className="inline mr-1" /> N° Afiliado
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.numeroAfiliado}
-                                        onChange={(e) => handleInputChange('numeroAfiliado', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                        placeholder="14843"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Hash size={14} className="inline mr-1" /> DNI
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.dni}
-                                        onChange={(e) => handleInputChange('dni', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                        placeholder="45836670"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Building2 size={14} className="inline mr-1" /> Habitación
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.habitacion}
-                                        onChange={(e) => handleInputChange('habitacion', e.target.value.toUpperCase())}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
-                                        placeholder="B, 101, etc."
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Phone Number */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                    <Phone size={14} className="inline mr-1" /> Teléfono (WhatsApp)
-                                </label>
-                                <input
-                                    type="tel"
-                                    value={formData.telefono}
-                                    onChange={(e) => handleInputChange('telefono', e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    placeholder="3512345678 (sin 0 ni 15)"
-                                />
-                                <p className="text-xs text-slate-400 mt-1">Formato: código de área + número (ej: 3512345678)</p>
-                            </div>
-
-                            {/* Surgery Codes */}
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                        <Hash size={14} className="inline mr-1" /> Códigos de Cirugía
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={addCodigo}
-                                        className="text-xs px-3 py-1 bg-teal-100 text-teal-700 rounded-lg font-bold hover:bg-teal-200 transition-colors flex items-center gap-1"
-                                    >
-                                        <Plus size={14} /> Agregar
-                                    </button>
-                                </div>
-
-                                {formData.codigosCirugia.map((cod, index) => (
-                                    <div key={index} className="flex gap-2 items-start relative">
-                                        <div className="w-28">
-                                            <input
-                                                type="text"
-                                                value={cod.codigo}
-                                                onChange={(e) => handleCodigoChangeAndSearch(index, 'codigo', e.target.value)}
-                                                onKeyDown={(e) => handleKeyDown(e, index)}
-                                                autoComplete="off"
-                                                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm font-mono"
-                                                placeholder="031301"
-                                            />
-                                        </div>
-                                        <div className="flex-1">
-                                            <input
-                                                type="text"
-                                                value={cod.nombre}
-                                                onChange={(e) => handleCodigoChangeAndSearch(index, 'nombre', e.target.value)}
-                                                onKeyDown={(e) => handleKeyDown(e, index)}
-                                                autoComplete="off"
-                                                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
-                                                placeholder="Amigdalectomía"
-                                            />
-                                        </div>
-
-                                        {/* Suggestions Dropdown */}
-                                        {activeRow?.index === index && suggestions.length > 0 && (
-                                            <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container transform translate-y-1">
-                                                {suggestions.map((s, i) => (
-                                                    <div
-                                                        key={i}
-                                                        onClick={() => selectSuggestion(s, index)}
-                                                        className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${s.isModule ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-teal-50 bg-white'}`}
-                                                    >
-                                                        <div className="flex flex-col gap-0.5">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${s.isModule ? 'text-indigo-600 bg-indigo-100 border-indigo-200' : 'text-teal-600 bg-teal-50 border-teal-100'}`}>
-                                                                    {s.codigo}
-                                                                </span>
-                                                                <span className={`text-sm font-medium ${s.isModule ? 'text-indigo-900' : 'text-slate-700'}`}>
-                                                                    {s.nombre}
-                                                                </span>
-                                                                {s.isModule && <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1 rounded-sm uppercase font-bold">Módulo</span>}
-                                                                {s.isIOSFA && <span className="text-[10px] bg-sky-200 text-sky-800 px-1 rounded-sm uppercase font-bold">IOSFA</span>}
-                                                            </div>
-                                                            {s.parentModule && (
-                                                                <div className="text-xs text-slate-400 italic mt-0.5">
-                                                                    ↳ Incluido en {s.parentModule.nombre}
-                                                                </div>
-                                                            )}
+                                            }}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            placeholder="Escribe para buscar..."
+                                            required
+                                        />
+                                        {showProfSuggestions && (
+                                            <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container">
+                                                {profesionales
+                                                    .filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()))
+                                                    .map(p => (
+                                                        <div
+                                                            key={p.id}
+                                                            onClick={() => {
+                                                                handleInputChange('profesional', p.nombre);
+                                                                setShowProfSuggestions(false);
+                                                            }}
+                                                            className="px-4 py-3 cursor-pointer hover:bg-teal-50 border-b border-slate-50 last:border-0"
+                                                        >
+                                                            <p className="text-sm font-medium text-slate-700">{p.nombre}</p>
                                                         </div>
+                                                    ))}
+                                                {profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase())).length === 0 && (
+                                                    <div className="px-4 py-3 text-sm text-slate-400 italic">
+                                                        No se encontraron coincidencias
                                                     </div>
-                                                ))}
+                                                )}
                                             </div>
                                         )}
-
-                                        {formData.codigosCirugia.length > 1 && (
-                                            <button type="button" onClick={() => removeCodigo(index)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
-                                                <X size={18} />
-                                            </button>
-                                        )}
                                     </div>
-                                ))}
-                            </div>
-
-                            {/* Surgery Details */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Stethoscope size={14} className="inline mr-1" /> Tipo de Anestesia
-                                    </label>
-                                    <select
-                                        value={formData.tipoAnestesia}
-                                        onChange={(e) => handleInputChange('tipoAnestesia', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    >
-                                        <option value="general">General</option>
-                                        <option value="local">Local</option>
-                                        <option value="regional">Regional</option>
-                                        <option value="sedación">Sedación</option>
-                                    </select>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Calendar size={14} className="inline mr-1" /> Fecha de Cirugía
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.fechaCirugia}
-                                        onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    />
-                                </div>
-                            </div>
 
-                            {/* MATERIAL SECTION */}
-                            <div className={`p-4 rounded-xl border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-300 bg-purple-50' : 'border-slate-200 bg-slate-50'}`}>
-                                <label className="flex items-center gap-3 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.incluyeMaterial}
-                                        onChange={(e) => handleInputChange('incluyeMaterial', e.target.checked)}
-                                        className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
-                                    />
-                                    <span className="font-bold text-slate-700 flex items-center gap-2">
-                                        <Package size={18} className="text-purple-600" />
-                                        Incluir Orden de Material
-                                    </span>
-                                </label>
-
-                                {formData.incluyeMaterial && (
-                                    <div className="mt-4">
-                                        <label className="block text-xs font-bold text-purple-600 uppercase tracking-wider mb-2">
-                                            Descripción del Material
+                                {/* Patient Info */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                            <User size={14} className="inline mr-1" /> Afiliado
                                         </label>
-                                        <textarea
-                                            value={formData.descripcionMaterial}
-                                            onChange={(e) => handleInputChange('descripcionMaterial', e.target.value)}
-                                            className="w-full px-4 py-3 bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
-                                            placeholder="1 (un) tubo de ventilación en T&#10;2 (dos) prótesis de titanio..."
+                                        <input
+                                            type="text"
+                                            value={formData.afiliado}
+                                            onChange={(e) => handleInputChange('afiliado', e.target.value.toUpperCase())}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
+                                            placeholder="APELLIDO Nombre"
+                                            required
                                         />
-                                        <p className="text-xs text-purple-500 mt-2">
-                                            💡 Se generará una Orden de Pedido de Material adicional con esta descripción.
-                                        </p>
                                     </div>
-                                )}
-                            </div>
-
-                            {/* Diagnosis */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                    <ClipboardList size={14} className="inline mr-1" /> Diagnóstico
-                                </label>
-                                <textarea
-                                    value={formData.diagnostico}
-                                    onChange={(e) => handleInputChange('diagnostico', e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 min-h-[80px]"
-                                    placeholder="SAHOS, IVN, etc."
-                                />
-                            </div>
-
-                            {/* Observations */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                    <Edit3 size={14} className="inline mr-1" /> Observaciones (Privado - No se imprime)
-                                </label>
-                                <textarea
-                                    value={formData.observaciones}
-                                    onChange={(e) => handleInputChange('observaciones', e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] text-slate-700"
-                                    placeholder="Notas internas, indicaciones del profesional, etc."
-                                />
-                            </div>
-
-                            {/* Document Date */}
-                            <div className="w-48">
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                    <Calendar size={14} className="inline mr-1" /> Fecha Documento
-                                </label>
-                                <input
-                                    type="date"
-                                    value={formData.fechaDocumento}
-                                    onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                />
-                            </div>
-
-                            {/* Submit */}
-                            <div className="flex gap-3 pt-4">
-                                <button
-                                    type="button"
-                                    onClick={resetForm}
-                                    className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className={`flex-1 py-3 text-white font-bold rounded-xl transition-colors shadow-lg disabled:opacity-50 ${formData.incluyeMaterial ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}
-                                >
-                                    {loading ? 'Guardando...' : formData.incluyeMaterial ? 'Crear 2 Órdenes' : editingId ? 'Guardar Cambios' : 'Crear Orden'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* PRINT PREVIEW MODAL */}
-            {showPreview && previewData && createPortal(
-                <div className="fixed inset-0 bg-white z-[100] overflow-auto print-orden">
-                    <style>{printStyle}</style>
-                    <div className="p-8 print:p-0">
-                        {/* Header Controls */}
-                        <div className="flex justify-between items-center mb-8 no-print border-b pb-4">
-                            <div>
-                                <h2 className="text-2xl font-bold">Vista Previa</h2>
-                                {previewData.incluyeMaterial && previewData.descripcionMaterial && (
-                                    <div className="flex gap-2 mt-2">
-                                        <button
-                                            onClick={() => setPreviewType('internacion')}
-                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'internacion' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                        >
-                                            Internación
-                                        </button>
-                                        <button
-                                            onClick={() => setPreviewType('material')}
-                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                        >
-                                            Material
-                                        </button>
-                                        <button
-                                            onClick={() => setPreviewType('ambas')}
-                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                        >
-                                            📄 Ambas (2 pág.)
-                                        </button>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                            <Building2 size={14} className="inline mr-1" /> Obra Social
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.obraSocial}
+                                            onChange={(e) => handleInputChange('obraSocial', e.target.value)}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            placeholder="Galeno, OSDE, etc."
+                                        />
                                     </div>
-                                )}
-                                <button
-                                    onClick={() => setPreviewType('caratula')}
-                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                >
-                                    📂 Carátula
-                                </button>
+                                </div>
 
-                                {/* Consent Printing Section - one button per surgery */}
-                                {getApplicableConsents(previewData).length > 0 && (
-                                    <div className="flex flex-wrap items-center gap-2 ml-4 pl-4 border-l border-slate-300">
-                                        <span className="text-xs font-bold text-slate-500 uppercase">Consentimientos:</span>
-                                        {getApplicableConsents(previewData).map((consent, idx) => (
-                                            <div key={idx} className="flex items-center gap-1">
-                                                <span className="text-xs text-slate-600">{consent.nombre}:</span>
-                                                {consent.adulto && (
-                                                    <button
-                                                        onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.adulto)}`, '_blank')}
-                                                        className="px-2 py-1 rounded-md font-bold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all"
-                                                    >
-                                                        Adulto
-                                                    </button>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                            <Hash size={14} className="inline mr-1" /> N° Afiliado
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.numeroAfiliado}
+                                            onChange={(e) => handleInputChange('numeroAfiliado', e.target.value)}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            placeholder="14843"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                            <Hash size={14} className="inline mr-1" /> DNI
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.dni}
+                                            onChange={(e) => handleInputChange('dni', e.target.value)}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            placeholder="45836670"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                            <Building2 size={14} className="inline mr-1" /> Habitación
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.habitacion}
+                                            onChange={(e) => handleInputChange('habitacion', e.target.value.toUpperCase())}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
+                                            placeholder="B, 101, etc."
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Phone Number */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Phone size={14} className="inline mr-1" /> Teléfono (WhatsApp)
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        value={formData.telefono}
+                                        onChange={(e) => handleInputChange('telefono', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="3512345678 (sin 0 ni 15)"
+                                    />
+                                    <p className="text-xs text-slate-400 mt-1">Formato: código de área + número (ej: 3512345678)</p>
+                                </div>
+
+                                {/* CONDITIONAL CONTENT BASED ON TAB */}
+                                {activeTab === 'pedidos' ? (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                                <FileHeart size={14} className="inline mr-1" /> Prácticas (Rp/)
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({ ...prev, practicas: [...prev.practicas, ''] }))}
+                                                className="text-xs px-3 py-1 bg-pink-100 text-pink-700 rounded-lg font-bold hover:bg-pink-200 transition-colors flex items-center gap-1"
+                                            >
+                                                <Plus size={14} /> Agregar
+                                            </button>
+                                        </div>
+
+                                        {formData.practicas && formData.practicas.map((practica, index) => (
+                                            <div key={index} className="flex gap-2 items-start relative">
+                                                <div className="flex-1">
+                                                    <input
+                                                        type="text"
+                                                        value={practica}
+                                                        onChange={(e) => {
+                                                            const newVal = e.target.value;
+                                                            setFormData(prev => {
+                                                                const newPracticas = [...prev.practicas];
+                                                                newPracticas[index] = newVal;
+                                                                return { ...prev, practicas: newPracticas };
+                                                            });
+                                                            setActiveRow({ index, field: 'practica' });
+                                                            if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                                                            searchTimeoutRef.current = setTimeout(() => {
+                                                                handleSearch(newVal, 'nombre', formData.obraSocial);
+                                                            }, 300);
+                                                        }}
+                                                        onKeyDown={(e) => handleKeyDown(e, index)}
+                                                        autoComplete="off"
+                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 text-sm uppercase font-medium"
+                                                        placeholder="Ingrese práctica..."
+                                                    />
+                                                </div>
+
+                                                {/* Suggestions Dropdown for Practices */}
+                                                {activeRow?.index === index && activeRow?.field === 'practica' && suggestions.length > 0 && (
+                                                    <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container transform translate-y-1">
+                                                        {suggestions.map((s, i) => (
+                                                            <div
+                                                                key={i}
+                                                                onClick={() => selectPedidoSuggestion(s, index)}
+                                                                onMouseEnter={() => setHighlightedIndex(i)}
+                                                                className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${highlightedIndex === i ? 'bg-pink-50' : 'bg-white'
+                                                                    }`}
+                                                            >
+                                                                <p className="text-sm font-bold text-slate-800">{s.nombre}</p>
+                                                                {s.codigo && <p className="text-xs text-slate-400">Código: {s.codigo}</p>}
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 )}
-                                                {consent.menor && (
-                                                    <button
-                                                        onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.menor)}`, '_blank')}
-                                                        className="px-2 py-1 rounded-md font-bold text-xs bg-pink-100 text-pink-700 hover:bg-pink-200 transition-all"
-                                                    >
-                                                        Menor
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData(prev => ({
+                                                        ...prev,
+                                                        practicas: prev.practicas.filter((_, i) => i !== index)
+                                                    }))}
+                                                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg"
+                                                >
+                                                    <X size={18} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    /* Surgery Codes - Only for Internacion */
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                                <Hash size={14} className="inline mr-1" /> Códigos de Cirugía
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={addCodigo}
+                                                className="text-xs px-3 py-1 bg-teal-100 text-teal-700 rounded-lg font-bold hover:bg-teal-200 transition-colors flex items-center gap-1"
+                                            >
+                                                <Plus size={14} /> Agregar
+                                            </button>
+                                        </div>
+
+                                        {formData.codigosCirugia.map((cod, index) => (
+                                            <div key={index} className="flex gap-2 items-start relative">
+                                                <div className="w-28">
+                                                    <input
+                                                        type="text"
+                                                        value={cod.codigo}
+                                                        onChange={(e) => handleCodigoChangeAndSearch(index, 'codigo', e.target.value)}
+                                                        onKeyDown={(e) => handleKeyDown(e, index)}
+                                                        autoComplete="off"
+                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm font-mono"
+                                                        placeholder="031301"
+                                                    />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <input
+                                                        type="text"
+                                                        value={cod.nombre}
+                                                        onChange={(e) => handleCodigoChangeAndSearch(index, 'nombre', e.target.value)}
+                                                        onKeyDown={(e) => handleKeyDown(e, index)}
+                                                        autoComplete="off"
+                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                        placeholder="Amigdalectomía"
+                                                    />
+                                                </div>
+
+                                                {/* Suggestions Dropdown */}
+                                                {activeRow?.index === index && suggestions.length > 0 && (
+                                                    <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container transform translate-y-1">
+                                                        {suggestions.map((s, i) => (
+                                                            <div
+                                                                key={i}
+                                                                onClick={() => selectSuggestion(s, index)}
+                                                                onMouseEnter={() => setHighlightedIndex(i)}
+                                                                className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${s.isModule ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-teal-50 bg-white'} ${highlightedIndex === i ? (s.isModule ? 'bg-indigo-100' : 'bg-teal-50') : ''}`}
+                                                            >
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${s.isModule ? 'text-indigo-600 bg-indigo-100 border-indigo-200' : 'text-teal-600 bg-teal-50 border-teal-100'}`}>
+                                                                            {s.codigo}
+                                                                        </span>
+                                                                        <span className={`text-sm font-medium ${s.isModule ? 'text-indigo-900' : 'text-slate-700'}`}>
+                                                                            {s.nombre}
+                                                                        </span>
+                                                                        {s.isModule && <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1 rounded-sm uppercase font-bold">Módulo</span>}
+                                                                        {s.isIOSFA && <span className="text-[10px] bg-sky-200 text-sky-800 px-1 rounded-sm uppercase font-bold">IOSFA</span>}
+                                                                    </div>
+                                                                    {s.parentModule && (
+                                                                        <div className="text-xs text-slate-400 italic mt-0.5">
+                                                                            ↳ Incluido en {s.parentModule.nombre}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {formData.codigosCirugia.length > 1 && (
+                                                    <button type="button" onClick={() => removeCodigo(index)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
+                                                        <X size={18} />
                                                     </button>
                                                 )}
                                             </div>
                                         ))}
                                     </div>
+
                                 )}
 
-                                {/* Generic consent button - always visible */}
-                                <button
-                                    onClick={() => window.open(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`, '_blank')}
-                                    className="px-3 py-1.5 rounded-lg font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all ml-2"
-                                >
-                                    📋 Genérico
-                                </button>
-                            </div>
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={() => window.print()}
-                                    className={`flex items-center gap-2 px-6 py-2 text-white rounded-xl font-bold ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600' : previewType === 'material' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-teal-600 hover:bg-teal-700'}`}
-                                >
-                                    <Printer size={20} /> Imprimir / PDF
-                                </button>
-                                <button
-                                    onClick={() => setShowPreview(false)}
-                                    className="flex items-center gap-2 px-6 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200"
-                                >
-                                    <X size={20} /> Cerrar
-                                </button>
-                            </div>
-                        </div>
+                                {/* CONDITIONAL RENDER CONTINUES */}
+                                {activeTab !== 'pedidos' && (
+                                    /* Surgery Details - Only for Internacion */
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                                <Stethoscope size={14} className="inline mr-1" /> Tipo de Anestesia
+                                            </label>
+                                            <select
+                                                value={formData.tipoAnestesia}
+                                                onChange={(e) => handleInputChange('tipoAnestesia', e.target.value)}
+                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            >
+                                                <option value="general">General</option>
+                                                <option value="local">Local</option>
+                                                <option value="regional">Regional</option>
+                                                <option value="sedación">Sedación</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                                <Calendar size={14} className="inline mr-1" /> Fecha de Cirugía
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={formData.fechaCirugia}
+                                                onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
+                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
 
-                        {/* Render content based on type */}
-                        {previewType === 'ambas' ? (
-                            <>
-                                {renderPrintContent('internacion')}
-                                <div className="page-break" style={{ pageBreakAfter: 'always', breakAfter: 'page' }}></div>
-                                {renderPrintContent('material')}
-                            </>
-                        ) : (
-                            renderPrintContent(previewType)
-                        )}
-                    </div>
-                </div>,
-                document.body
-            )}
+                                {activeTab !== 'pedidos' && (
+                                    /* MATERIAL SECTION - Only for Internacion */
+                                    <div className={`p-4 rounded-xl border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-300 bg-purple-50' : 'border-slate-200 bg-slate-50'}`}>
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.incluyeMaterial}
+                                                onChange={(e) => handleInputChange('incluyeMaterial', e.target.checked)}
+                                                className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                                            />
+                                            <span className="font-bold text-slate-700 flex items-center gap-2">
+                                                <Package size={18} className="text-purple-600" />
+                                                Incluir Orden de Material
+                                            </span>
+                                        </label>
+
+                                        {formData.incluyeMaterial && (
+                                            <div className="mt-4">
+                                                <label className="block text-xs font-bold text-purple-600 uppercase tracking-wider mb-2">
+                                                    Descripción del Material
+                                                </label>
+                                                <textarea
+                                                    value={formData.descripcionMaterial}
+                                                    onChange={(e) => handleInputChange('descripcionMaterial', e.target.value)}
+                                                    className="w-full px-4 py-3 bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
+                                                    placeholder="1 (un) tubo de ventilación en T&#10;2 (dos) prótesis de titanio..."
+                                                />
+                                                <p className="text-xs text-purple-500 mt-2">
+                                                    💡 Se generará una Orden de Pedido de Material adicional con esta descripción.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Diagnosis */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <ClipboardList size={14} className="inline mr-1" /> Diagnóstico
+                                    </label>
+                                    <textarea
+                                        value={formData.diagnostico}
+                                        onChange={(e) => handleInputChange('diagnostico', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 min-h-[80px]"
+                                        placeholder="SAHOS, IVN, etc."
+                                    />
+                                </div>
+
+                                {/* Observations */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Edit3 size={14} className="inline mr-1" /> Observaciones (Privado - No se imprime)
+                                    </label>
+                                    <textarea
+                                        value={formData.observaciones}
+                                        onChange={(e) => handleInputChange('observaciones', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] text-slate-700"
+                                        placeholder="Notas internas, indicaciones del profesional, etc."
+                                    />
+                                </div>
+
+                                {/* Document Date */}
+                                <div className="w-48">
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Calendar size={14} className="inline mr-1" /> Fecha Documento
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={formData.fechaDocumento}
+                                        onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    />
+                                </div>
+
+                                {/* Submit */}
+                                <div className="flex gap-3 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={resetForm}
+                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={loading}
+                                        className={`flex-1 py-3 text-white font-bold rounded-xl transition-colors shadow-lg disabled:opacity-50 ${formData.incluyeMaterial ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}
+                                    >
+                                        {loading ? 'Guardando...' : formData.incluyeMaterial ? 'Crear 2 Órdenes' : editingId ? 'Guardar Cambios' : 'Crear Orden'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div >
+                )}
+
+            {/* PRINT PREVIEW MODAL */}
+            {
+                showPreview && previewData && createPortal(
+                    <div className="fixed inset-0 bg-white z-[100] overflow-auto print-orden">
+                        <style>{printStyle}</style>
+                        <div className="p-8 print:p-0">
+                            {/* Header Controls */}
+                            <div className="flex justify-between items-center mb-8 no-print border-b pb-4">
+                                <div>
+                                    <h2 className="text-2xl font-bold">Vista Previa</h2>
+                                    {previewData.incluyeMaterial && previewData.descripcionMaterial && (
+                                        <div className="flex gap-2 mt-2">
+                                            <button
+                                                onClick={() => setPreviewType('internacion')}
+                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'internacion' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                Internación
+                                            </button>
+                                            <button
+                                                onClick={() => setPreviewType('material')}
+                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                Material
+                                            </button>
+                                            <button
+                                                onClick={() => setPreviewType('ambas')}
+                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                📄 Ambas (2 pág.)
+                                            </button>
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={() => setPreviewType('caratula')}
+                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                    >
+                                        📂 Carátula
+                                    </button>
+
+                                    {/* Consent Printing Section - one button per surgery */}
+                                    {getApplicableConsents(previewData).length > 0 && (
+                                        <div className="flex flex-wrap items-center gap-2 ml-4 pl-4 border-l border-slate-300">
+                                            <span className="text-xs font-bold text-slate-500 uppercase">Consentimientos:</span>
+                                            {getApplicableConsents(previewData).map((consent, idx) => (
+                                                <div key={idx} className="flex items-center gap-1">
+                                                    <span className="text-xs text-slate-600">{consent.nombre}:</span>
+                                                    {consent.adulto && (
+                                                        <button
+                                                            onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.adulto)}`, '_blank')}
+                                                            className="px-2 py-1 rounded-md font-bold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all"
+                                                        >
+                                                            Adulto
+                                                        </button>
+                                                    )}
+                                                    {consent.menor && (
+                                                        <button
+                                                            onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.menor)}`, '_blank')}
+                                                            className="px-2 py-1 rounded-md font-bold text-xs bg-pink-100 text-pink-700 hover:bg-pink-200 transition-all"
+                                                        >
+                                                            Menor
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Generic consent button - always visible */}
+                                    <button
+                                        onClick={() => window.open(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`, '_blank')}
+                                        className="px-3 py-1.5 rounded-lg font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all ml-2"
+                                    >
+                                        📋 Genérico
+                                    </button>
+                                </div>
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => window.print()}
+                                        className={`flex items-center gap-2 px-6 py-2 text-white rounded-xl font-bold ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600' : previewType === 'material' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-teal-600 hover:bg-teal-700'}`}
+                                    >
+                                        <Printer size={20} /> Imprimir / PDF
+                                    </button>
+                                    <button
+                                        onClick={() => setShowPreview(false)}
+                                        className="flex items-center gap-2 px-6 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200"
+                                    >
+                                        <X size={20} /> Cerrar
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Render content based on type */}
+                            {previewType === 'ambas' ? (
+                                <>
+                                    {renderPrintContent('internacion')}
+                                    <div className="page-break" style={{ pageBreakAfter: 'always', breakAfter: 'page' }}></div>
+                                    {renderPrintContent('material')}
+                                </>
+                            ) : (
+                                renderPrintContent(previewType)
+                            )}
+                        </div>
+                    </div>,
+                    document.body
+                )
+            }
 
             {/* WHATSAPP MODAL */}
-            {whatsappModal && (
-                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                <MessageCircle size={20} className="text-green-600" />
-                                Enviar WhatsApp
-                            </h3>
-                            <button onClick={() => setWhatsappModal(null)} className="p-2 hover:bg-slate-100 rounded-full">
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-slate-600 text-center">
-                                Enviar mensaje a <strong>{whatsappModal.afiliado}</strong>
-                            </p>
-                            <p className="text-xs text-slate-400 text-center">
-                                📱 {whatsappModal.telefono}
-                            </p>
+            {
+                whatsappModal && (
+                    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200">
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                    <MessageCircle size={20} className="text-green-600" />
+                                    Enviar WhatsApp
+                                </h3>
+                                <button onClick={() => setWhatsappModal(null)} className="p-2 hover:bg-slate-100 rounded-full">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <p className="text-sm text-slate-600 text-center">
+                                    Enviar mensaje a <strong>{whatsappModal.afiliado}</strong>
+                                </p>
+                                <p className="text-xs text-slate-400 text-center">
+                                    📱 {whatsappModal.telefono}
+                                </p>
 
-                            <div className="space-y-3">
-                                <button
-                                    onClick={async () => {
-                                        const fecha = whatsappModal.fechaCirugia ?
-                                            new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
-                                            : 'sin fecha';
-                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.
+                                <div className="space-y-3">
+                                    <button
+                                        onClick={async () => {
+                                            const fecha = whatsappModal.fechaCirugia ?
+                                                new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+                                                : 'sin fecha';
+                                            const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.
 
 *${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*. En el caso de su obra social, la autorización la gestiona el paciente.
 
 A continuación envío orden de internación para que pueda gestionar la autorización con su obra social.`;
-                                        await navigator.clipboard.writeText(mensaje);
-                                        setWhatsappModal(null);
-                                        setCopiedToast(true);
-                                        setTimeout(() => setCopiedToast(false), 3000);
-                                    }}
-                                    className="w-full p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-bold hover:from-green-600 hover:to-green-700 transition-all flex items-center justify-center gap-3 shadow-lg"
-                                >
-                                    <User size={20} />
-                                    <span>Autoriza el Paciente</span>
-                                </button>
+                                            await navigator.clipboard.writeText(mensaje);
+                                            setWhatsappModal(null);
+                                            setCopiedToast(true);
+                                            setTimeout(() => setCopiedToast(false), 3000);
+                                        }}
+                                        className="w-full p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-bold hover:from-green-600 hover:to-green-700 transition-all flex items-center justify-center gap-3 shadow-lg"
+                                    >
+                                        <User size={20} />
+                                        <span>Autoriza el Paciente</span>
+                                    </button>
 
-                                <button
-                                    onClick={async () => {
-                                        const fecha = whatsappModal.fechaCirugia ?
-                                            new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
-                                            : 'sin fecha';
-                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.
+                                    <button
+                                        onClick={async () => {
+                                            const fecha = whatsappModal.fechaCirugia ?
+                                                new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+                                                : 'sin fecha';
+                                            const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.
 
 *${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*. En el caso de su obra social, la autorización la gestionamos nosotros.
 
 Para poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.`;
-                                        await navigator.clipboard.writeText(mensaje);
-                                        setWhatsappModal(null);
-                                        setCopiedToast(true);
-                                        setTimeout(() => setCopiedToast(false), 3000);
-                                    }}
-                                    className="w-full p-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-3 shadow-lg"
+                                            await navigator.clipboard.writeText(mensaje);
+                                            setWhatsappModal(null);
+                                            setCopiedToast(true);
+                                            setTimeout(() => setCopiedToast(false), 3000);
+                                        }}
+                                        className="w-full p-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-3 shadow-lg"
+                                    >
+                                        <Building2 size={20} />
+                                        <span>Autoriza la Institución</span>
+                                    </button>
+                                </div>
+
+                                <button
+                                    onClick={() => setWhatsappModal(null)}
+                                    className="w-full py-2 text-slate-500 text-sm hover:text-slate-700"
                                 >
-                                    <Building2 size={20} />
-                                    <span>Autoriza la Institución</span>
+                                    Cancelar
                                 </button>
                             </div>
-
-                            <button
-                                onClick={() => setWhatsappModal(null)}
-                                className="w-full py-2 text-slate-500 text-sm hover:text-slate-700"
-                            >
-                                Cancelar
-                            </button>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* COPIED TO CLIPBOARD TOAST */}
-            {copiedToast && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 duration-300">
-                    <div className="bg-green-600 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 font-medium">
-                        <CheckCircle2 size={20} />
-                        <span>✅ Mensaje copiado. Pegalo en WhatsApp (Ctrl+V)</span>
+            {
+                copiedToast && (
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 duration-300">
+                        <div className="bg-green-600 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 font-medium">
+                            <CheckCircle2 size={20} />
+                            <span>✅ Mensaje copiado. Pegalo en WhatsApp (Ctrl+V)</span>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
         </div>
     );
 };

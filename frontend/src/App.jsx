@@ -14,7 +14,7 @@ import AdminView from './components/AdminView';
 import { ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
 
 import UserMenu from './components/UserMenu';
-import { Users, LayoutDashboard, FileText, History, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList } from 'lucide-react';
+import { Users, LayoutDashboard, FileText, History, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, FileHeart } from 'lucide-react';
 
 
 function AuthenticatedApp() {
@@ -56,6 +56,7 @@ function AuthenticatedApp() {
     { id: 'liquidaciones', icon: FileText, label: 'Liquidaciones' },
     { id: 'profesionales', icon: Users, label: 'Profesionales' },
     { id: 'ordenes', icon: ClipboardList, label: 'Órdenes' },
+    { id: 'pedidos', icon: FileHeart, label: 'Pedidos (PM)' },
     { id: 'compartir', icon: Share2, label: 'Compartir' },
     { id: 'admin', icon: ShieldAlert, label: 'Administración' }
   ];
@@ -68,7 +69,7 @@ function AuthenticatedApp() {
     }
 
     // 1.5. Ordenes Tab - for Super Admin or users with ordenes permissions
-    if (tab.id === 'ordenes') {
+    if (tab.id === 'ordenes' || tab.id === 'pedidos') {
       return isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes;
     }
 
@@ -215,7 +216,8 @@ function AuthenticatedApp() {
             {activeTab === 'liquidaciones' && <LiquidacionView />}
             {activeTab === 'profesionales' && <ProfesionalesView />}
             {activeTab === 'compartir' && <AccessManager />}
-            {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && <OrdenesView />}
+            {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && <OrdenesView initialTab="internacion" />}
+            {activeTab === 'pedidos' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && <OrdenesView initialTab="pedidos" />}
             {activeTab === 'admin' && (isSuperAdmin || permissions?.can_view_admin) && <AdminView />}
           </div>
         </section>
