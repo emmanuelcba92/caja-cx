@@ -714,27 +714,9 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                 <img
                                     src={getSignatureUrl(previewData.profesional)}
                                     alt={`Firma ${previewData.profesional}`}
-                                    className="h-24 object-contain mx-auto mb-1"
+                                    className="h-32 object-contain mx-auto"
                                     onError={(e) => { e.target.style.display = 'none'; }}
                                 />
-                                <div className="border-t border-black pt-1 mt-1 inline-block min-w-[200px]">
-                                    <p className="text-sm font-bold" style={{ color: '#000' }}>{previewData.profesional}</p>
-                                    {(() => {
-                                        const profData = getProfesionalData(previewData.profesional);
-                                        return (
-                                            <>
-                                                {profData.especialidad && (
-                                                    <p className="text-xs" style={{ color: '#000' }}>{profData.especialidad}</p>
-                                                )}
-                                                {(profData.mp || profData.me) && (
-                                                    <p className="text-xs" style={{ color: '#000' }}>
-                                                        {profData.mp && `MP ${profData.mp}`}{profData.mp && profData.me && ' - '}{profData.me && `ME ${profData.me}`}
-                                                    </p>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -796,25 +778,9 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                         <img
                             src={getSignatureUrl(previewData.profesional)}
                             alt={`Firma ${previewData.profesional}`}
-                            className="h-20 object-contain mx-auto mb-1"
+                            className="h-32 object-contain mx-auto"
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
-                        <p className="text-sm font-bold" style={{ color: '#000' }}>{previewData.profesional}</p>
-                        {(() => {
-                            const profData = getProfesionalData(previewData.profesional);
-                            return (
-                                <>
-                                    {profData.especialidad && (
-                                        <p className="text-xs" style={{ color: '#000' }}>{profData.especialidad}</p>
-                                    )}
-                                    {(profData.mp || profData.me) && (
-                                        <p className="text-xs" style={{ color: '#000' }}>
-                                            {profData.mp && `MP ${profData.mp}`}{profData.mp && profData.me && ' - '}{profData.me && `ME ${profData.me}`}
-                                        </p>
-                                    )}
-                                </>
-                            );
-                        })()}
                     </div>
                 </div>
             </div>
