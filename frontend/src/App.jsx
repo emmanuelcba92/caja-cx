@@ -65,7 +65,7 @@ function AuthenticatedApp() {
   const visibleTabs = allTabs.filter(tab => {
     // 1. Admin Tab Security
     if (tab.id === 'admin') {
-      return isSuperAdmin || permissions?.can_view_admin;
+      return isSuperAdmin;
     }
 
     // 1.5. Ordenes Tab - for Super Admin or users with ordenes permissions

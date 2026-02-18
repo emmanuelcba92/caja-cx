@@ -264,6 +264,21 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                     <Key size={16} /> Vincular Contraseña
                                 </button>
                             )}
+
+                            {/* Migrar a coat.com.ar */}
+                            {!currentUser?.email?.endsWith('@coat.com.ar') && (
+                                <button
+                                    onClick={() => {
+                                        const base = currentUser.email.split('@')[0];
+                                        setNewEmail(`${base}@coat.com.ar`);
+                                        setShowEmailModal(true);
+                                        setIsOpen(false);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors border border-amber-100 dark:border-amber-900/50 mt-1"
+                                >
+                                    <Shield size={16} /> Migrar a @coat.com.ar
+                                </button>
+                            )}
                         </div>
 
                         <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />

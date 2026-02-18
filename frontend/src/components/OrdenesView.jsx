@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart } from 'lucide-react';
+import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -919,7 +919,39 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                         return matchProfesional && matchObraSocial && matchDate && matchStatus && matchPaciente;
                     });
 
-                    if (filteredOrdenes.length === 0) {
+                    // Urgency logic: less than 14 days and not authorized
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    const checkUrgency = (orden) => {
+                        if (orden.autorizada || orden.enviada) return false;
+                        const surgeryDateStr = orden.fechaCirugia || orden.fechaDocumento;
+                        if (!surgeryDateStr) return false;
+
+                        const surgDate = new Date(surgeryDateStr);
+                        surgDate.setHours(0, 0, 0, 0);
+
+                        const diffTime = surgDate - today;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                        return diffDays <= 14;
+                    };
+
+                    // Sort: Urgent first, then by date (already sorted by fetch but we re-sort here)
+                    const sortedOrdenes = [...filteredOrdenes].sort((a, b) => {
+                        const urgentA = checkUrgency(a);
+                        const urgentB = checkUrgency(b);
+
+                        if (urgentA && !urgentB) return -1;
+                        if (!urgentA && urgentB) return 1;
+
+                        // Fallback to original date sort (newest first)
+                        const dateA = a.fechaCirugia || a.createdAt;
+                        const dateB = b.fechaCirugia || b.createdAt;
+                        return new Date(dateB) - new Date(dateA);
+                    });
+
+                    if (sortedOrdenes.length === 0) {
                         return (
                             <div className="p-12 text-center text-slate-400">
                                 <ClipboardList size={48} className="mx-auto mb-4 opacity-50" />
@@ -930,577 +962,586 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
 
                     return (
                         <div className="divide-y divide-slate-100">
-                            {filteredOrdenes.map(orden => (
-                                <div
-                                    key={orden.id}
-                                    className={`p-4 flex items-center justify-between transition-colors ${orden.enviada ? 'bg-slate-50 opacity-75 grayscale-[0.5]' : 'hover:bg-slate-50'
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600')
-                                            }`}>
-                                            {orden.enviada ? <CheckCircle2 size={20} /> : (activeTab === 'pedidos' ? <FileHeart size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />))}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <p className={`font-bold ${orden.enviada ? 'text-slate-500' : 'text-slate-800'}`}>
-                                                    {orden.afiliado}
-                                                </p>
-                                                {orden.enviada ? (
-                                                    <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-wide rounded-full">
-                                                        Enviada
-                                                    </span>
-                                                ) : (
-                                                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
-                                                        Pendiente
-                                                    </span>
-                                                )}
+                            {sortedOrdenes.map(orden => {
+                                const isUrgent = checkUrgency(orden);
+                                return (
+                                    <div
+                                        key={orden.id}
+                                        className={`p-4 flex items-center justify-between transition-colors ${orden.enviada ? 'bg-slate-50 opacity-75 grayscale-[0.5]' :
+                                            isUrgent ? 'bg-red-50 hover:bg-red-100 border-l-4 border-red-500' : 'hover:bg-slate-50'
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isUrgent ? 'bg-red-100 text-red-600 animate-pulse' :
+                                                activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600')
+                                                }`}>
+                                                {isUrgent ? <AlertCircle size={20} /> : (orden.enviada ? <CheckCircle2 size={20} /> : (activeTab === 'pedidos' ? <FileHeart size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />)))}
                                             </div>
-                                            <p className="text-sm text-slate-500">
-                                                {orden.profesional} • {orden.obraSocial} • Fecha: {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
-                                                {activeTab === 'pedidos' && <span className="ml-2 font-medium text-pink-600">• Pedido Médico</span>}
-                                                {orden.habitacion && <span className="ml-2 font-medium text-amber-600">• Hab: {orden.habitacion}</span>}
-                                                {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
-                                            </p>
-                                            {orden.observaciones && (
-                                                <div className="mt-1 p-2 bg-blue-50 border-l-2 border-blue-400 text-xs text-blue-700 italic rounded">
-                                                    <strong>Nota:</strong> {orden.observaciones}
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <p className={`font-bold ${orden.enviada ? 'text-slate-500' : isUrgent ? 'text-red-700' : 'text-slate-800'}`}>
+                                                        {orden.afiliado}
+                                                    </p>
+                                                    {isUrgent ? (
+                                                        <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold uppercase tracking-wide rounded-full flex items-center gap-1 animate-pulse">
+                                                            <AlertCircle size={10} /> Urgente - Sin Autorizar
+                                                        </span>
+                                                    ) : orden.enviada ? (
+                                                        <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                            Enviada
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                            Pendiente
+                                                        </span>
+                                                    )}
                                                 </div>
-                                            )}
+                                                <p className="text-sm text-slate-500">
+                                                    {orden.profesional} • {orden.obraSocial} • Fecha: {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
+                                                    {activeTab === 'pedidos' && <span className="ml-2 font-medium text-pink-600">• Pedido Médico</span>}
+                                                    {orden.habitacion && <span className="ml-2 font-medium text-amber-600">• Hab: {orden.habitacion}</span>}
+                                                    {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
+                                                </p>
+                                                {orden.observaciones && (
+                                                    <div className="mt-1 p-2 bg-blue-50 border-l-2 border-blue-400 text-xs text-blue-700 italic rounded">
+                                                        <strong>Nota:</strong> {orden.observaciones}
+                                                    </div>
+                                                )}
 
-                                            {/* Status Toggles */}
-                                            <div className="flex flex-wrap items-center gap-2 mt-2">
-                                                <button
-                                                    onClick={() => handleToggleField(orden, 'autorizada')}
-                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
-                                                        ? 'bg-blue-600 text-white border-blue-700 shadow-sm hover:bg-blue-700'
-                                                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
-                                                        }`}
-                                                >
-                                                    <ShieldCheck size={12} strokeWidth={2.5} />
-                                                    {orden.autorizada ? 'Autorizada' : 'Autorizar'}
-                                                </button>
-
-                                                {orden.incluyeMaterial && activeTab !== 'pedidos' && (
+                                                {/* Status Toggles */}
+                                                <div className="flex flex-wrap items-center gap-2 mt-2">
                                                     <button
-                                                        onClick={() => handleToggleField(orden, 'materialSolicitado')}
-                                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
-                                                            ? 'bg-purple-600 text-white border-purple-700 shadow-sm hover:bg-purple-700'
+                                                        onClick={() => handleToggleField(orden, 'autorizada')}
+                                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
+                                                            ? 'bg-blue-600 text-white border-blue-700 shadow-sm hover:bg-blue-700'
                                                             : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
                                                             }`}
                                                     >
-                                                        <Truck size={12} strokeWidth={2.5} />
-                                                        {orden.materialSolicitado ? 'Mat. Solicitado' : 'Solicitar Material'}
+                                                        <ShieldCheck size={12} strokeWidth={2.5} />
+                                                        {orden.autorizada ? 'Autorizada' : 'Autorizar'}
+                                                    </button>
+
+                                                    {orden.incluyeMaterial && activeTab !== 'pedidos' && (
+                                                        <button
+                                                            onClick={() => handleToggleField(orden, 'materialSolicitado')}
+                                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
+                                                                ? 'bg-purple-600 text-white border-purple-700 shadow-sm hover:bg-purple-700'
+                                                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
+                                                                }`}
+                                                        >
+                                                            <Truck size={12} strokeWidth={2.5} />
+                                                            {orden.materialSolicitado ? 'Mat. Solicitado' : 'Solicitar Material'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => handleToggleStatus(orden)}
+                                                    className={`p-2 rounded-lg transition-colors ${orden.enviada
+                                                        ? 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
+                                                        : 'text-slate-400 hover:bg-green-50 hover:text-green-600'
+                                                        }`}
+                                                    title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
+                                                >
+                                                    {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleEdit(orden)}
+                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    title="Editar"
+                                                >
+                                                    <Edit3 size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handlePreview(orden, activeTab === 'pedidos' ? 'pedido' : 'internacion')}
+                                                    className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                                    title="Ver Documento"
+                                                >
+                                                    <Printer size={18} />
+                                                </button>
+                                                {orden.incluyeMaterial &&
+                                                    orden.descripcionMaterial &&
+                                                    activeTab !== 'pedidos' && (
+                                                        <button
+                                                            onClick={() => handlePreview(orden, 'material')}
+                                                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                                            title="Ver Material"
+                                                        >
+                                                            <Package size={18} />
+                                                        </button>
+                                                    )}
+                                                <button
+                                                    onClick={() => handlePreview(orden, 'caratula')}
+                                                    className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                    title="Ver Carátula"
+                                                >
+                                                    <Folder size={18} />
+                                                </button>
+                                                {orden.telefono && (
+                                                    <button
+                                                        onClick={() => setWhatsappModal(orden)}
+                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                        title="Enviar WhatsApp"
+                                                    >
+                                                        <MessageCircle size={18} />
                                                     </button>
                                                 )}
+                                                <button
+                                                    onClick={() => handleDelete(orden.id)}
+                                                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Eliminar"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                        <button
-                                            onClick={() => handleToggleStatus(orden)}
-                                            className={`p-2 rounded-lg transition-colors ${orden.enviada
-                                                ? 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
-                                                : 'text-slate-400 hover:bg-green-50 hover:text-green-600'
-                                                }`}
-                                            title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
-                                        >
-                                            {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
-                                        </button>
-                                        <button
-                                            onClick={() => handleEdit(orden)}
-                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                            title="Editar"
-                                        >
-                                            <Edit3 size={18} />
-                                        </button>
-                                        <button
-                                            onClick={() => handlePreview(orden, activeTab === 'pedidos' ? 'pedido' : 'internacion')}
-                                            className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                                            title="Ver Documento"
-                                        >
-                                            <Printer size={18} />
-                                        </button>
-                                        {orden.incluyeMaterial &&
-                                            orden.descripcionMaterial &&
-                                            activeTab !== 'pedidos' && (
-                                                <button
-                                                    onClick={() => handlePreview(orden, 'material')}
-                                                    className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                                                    title="Ver Material"
-                                                >
-                                                    <Package size={18} />
-                                                </button>
-                                            )}
-                                        <button
-                                            onClick={() => handlePreview(orden, 'caratula')}
-                                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                            title="Ver Carátula"
-                                        >
-                                            <Folder size={18} />
-                                        </button>
-                                        {orden.telefono && (
-                                            <button
-                                                onClick={() => setWhatsappModal(orden)}
-                                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                                title="Enviar WhatsApp"
-                                            >
-                                                <MessageCircle size={18} />
-                                            </button>
-                                        )}
-                                        <button
-                                            onClick={() => handleDelete(orden.id)}
-                                            className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
-                                            title="Eliminar"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     );
                 })()}
             </div>
 
             {/* NEW/EDIT ORDER MODAL */}
-            {
-                showForm && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                            <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
-                                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                                    {editingId ? <Edit3 size={24} className="text-blue-600" /> : <Plus size={24} className="text-teal-600" />}
-                                    {editingId ? 'Editar Documento' : (activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden')}
-                                </h3>
-                                <button onClick={resetForm} className="p-2 hover:bg-slate-100 rounded-full">
-                                    <X size={20} />
-                                </button>
+            {showForm && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                            <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                                {editingId ? <Edit3 size={24} className="text-blue-600" /> : <Plus size={24} className="text-teal-600" />}
+                                {editingId ? 'Editar Documento' : (activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden')}
+                            </h3>
+                            <button onClick={resetForm} className="p-2 hover:bg-slate-100 rounded-full">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                            {/* Professional */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <User size={14} className="inline mr-1" /> Profesional
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={formData.profesional}
+                                        onChange={(e) => {
+                                            handleInputChange('profesional', e.target.value);
+                                            setShowProfSuggestions(true);
+                                        }}
+                                        onFocus={() => setShowProfSuggestions(true)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                const filtered = profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()));
+                                                if (filtered.length > 0) {
+                                                    handleInputChange('profesional', filtered[0].nombre);
+                                                    setShowProfSuggestions(false);
+                                                }
+                                            }
+                                        }}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="Escribe para buscar..."
+                                        required
+                                    />
+                                    {showProfSuggestions && (
+                                        <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container">
+                                            {profesionales
+                                                .filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()))
+                                                .map(p => (
+                                                    <div
+                                                        key={p.id}
+                                                        onClick={() => {
+                                                            handleInputChange('profesional', p.nombre);
+                                                            setShowProfSuggestions(false);
+                                                        }}
+                                                        className="px-4 py-3 cursor-pointer hover:bg-teal-50 border-b border-slate-50 last:border-0"
+                                                    >
+                                                        <p className="text-sm font-medium text-slate-700">{p.nombre}</p>
+                                                    </div>
+                                                ))}
+                                            {profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase())).length === 0 && (
+                                                <div className="px-4 py-3 text-sm text-slate-400 italic">
+                                                    No se encontraron coincidencias
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
-                            <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                                {/* Professional */}
+                            {/* Patient Info */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <User size={14} className="inline mr-1" /> Profesional
+                                        <User size={14} className="inline mr-1" /> Afiliado
                                     </label>
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            value={formData.profesional}
-                                            onChange={(e) => {
-                                                handleInputChange('profesional', e.target.value);
-                                                setShowProfSuggestions(true);
-                                            }}
-                                            onFocus={() => setShowProfSuggestions(true)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    const filtered = profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()));
-                                                    if (filtered.length > 0) {
-                                                        handleInputChange('profesional', filtered[0].nombre);
-                                                        setShowProfSuggestions(false);
-                                                    }
-                                                }
-                                            }}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                            placeholder="Escribe para buscar..."
-                                            required
-                                        />
-                                        {showProfSuggestions && (
-                                            <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container">
-                                                {profesionales
-                                                    .filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()))
-                                                    .map(p => (
+                                    <input
+                                        type="text"
+                                        value={formData.afiliado}
+                                        onChange={(e) => handleInputChange('afiliado', e.target.value.toUpperCase())}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
+                                        placeholder="APELLIDO Nombre"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Building2 size={14} className="inline mr-1" /> Obra Social
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.obraSocial}
+                                        onChange={(e) => handleInputChange('obraSocial', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="Galeno, OSDE, etc."
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Hash size={14} className="inline mr-1" /> N° Afiliado
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.numeroAfiliado}
+                                        onChange={(e) => handleInputChange('numeroAfiliado', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="14843"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Hash size={14} className="inline mr-1" /> DNI
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.dni}
+                                        onChange={(e) => handleInputChange('dni', e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        placeholder="45836670"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                        <Building2 size={14} className="inline mr-1" /> Habitación
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.habitacion}
+                                        onChange={(e) => handleInputChange('habitacion', e.target.value.toUpperCase())}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
+                                        placeholder="B, 101, etc."
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Phone Number */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <Phone size={14} className="inline mr-1" /> Teléfono (WhatsApp)
+                                </label>
+                                <input
+                                    type="tel"
+                                    value={formData.telefono}
+                                    onChange={(e) => handleInputChange('telefono', e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    placeholder="3512345678 (sin 0 ni 15)"
+                                />
+                                <p className="text-xs text-slate-400 mt-1">Formato: código de área + número (ej: 3512345678)</p>
+                            </div>
+
+                            {/* CONDITIONAL CONTENT BASED ON TAB */}
+                            {activeTab === 'pedidos' ? (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            <FileHeart size={14} className="inline mr-1" /> Prácticas (Rp/)
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, practicas: [...prev.practicas, ''] }))}
+                                            className="text-xs px-3 py-1 bg-pink-100 text-pink-700 rounded-lg font-bold hover:bg-pink-200 transition-colors flex items-center gap-1"
+                                        >
+                                            <Plus size={14} /> Agregar
+                                        </button>
+                                    </div>
+
+                                    {formData.practicas && formData.practicas.map((practica, index) => (
+                                        <div key={index} className="flex gap-2 items-start relative">
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    value={practica}
+                                                    onChange={(e) => {
+                                                        const newVal = e.target.value;
+                                                        setFormData(prev => {
+                                                            const newPracticas = [...prev.practicas];
+                                                            newPracticas[index] = newVal;
+                                                            return { ...prev, practicas: newPracticas };
+                                                        });
+                                                        setActiveRow({ index, field: 'practica' });
+                                                        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                                                        searchTimeoutRef.current = setTimeout(() => {
+                                                            handleSearch(newVal, 'nombre', formData.obraSocial);
+                                                        }, 300);
+                                                    }}
+                                                    onKeyDown={(e) => handleKeyDown(e, index)}
+                                                    autoComplete="off"
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 text-sm uppercase font-medium"
+                                                    placeholder="Ingrese práctica..."
+                                                />
+                                            </div>
+
+                                            {/* Suggestions Dropdown for Practices */}
+                                            {activeRow?.index === index && activeRow?.field === 'practica' && suggestions.length > 0 && (
+                                                <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container transform translate-y-1">
+                                                    {suggestions.map((s, i) => (
                                                         <div
-                                                            key={p.id}
-                                                            onClick={() => {
-                                                                handleInputChange('profesional', p.nombre);
-                                                                setShowProfSuggestions(false);
-                                                            }}
-                                                            className="px-4 py-3 cursor-pointer hover:bg-teal-50 border-b border-slate-50 last:border-0"
+                                                            key={i}
+                                                            onClick={() => selectPedidoSuggestion(s, index)}
+                                                            onMouseEnter={() => setHighlightedIndex(i)}
+                                                            className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${highlightedIndex === i ? 'bg-pink-50' : 'bg-white'
+                                                                }`}
                                                         >
-                                                            <p className="text-sm font-medium text-slate-700">{p.nombre}</p>
+                                                            <p className="text-sm font-bold text-slate-800">{s.nombre}</p>
+                                                            {s.codigo && <p className="text-xs text-slate-400">Código: {s.codigo}</p>}
                                                         </div>
                                                     ))}
-                                                {profesionales.filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase())).length === 0 && (
-                                                    <div className="px-4 py-3 text-sm text-slate-400 italic">
-                                                        No se encontraron coincidencias
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
+                                                </div>
+                                            )}
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({
+                                                    ...prev,
+                                                    practicas: prev.practicas.filter((_, i) => i !== index)
+                                                }))}
+                                                className="p-2 text-red-400 hover:bg-red-50 rounded-lg"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                /* Surgery Codes - Only for Internacion */
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            <Hash size={14} className="inline mr-1" /> Códigos de Cirugía
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={addCodigo}
+                                            className="text-xs px-3 py-1 bg-teal-100 text-teal-700 rounded-lg font-bold hover:bg-teal-200 transition-colors flex items-center gap-1"
+                                        >
+                                            <Plus size={14} /> Agregar
+                                        </button>
                                     </div>
+
+                                    {formData.codigosCirugia.map((cod, index) => (
+                                        <div key={index} className="flex gap-2 items-start relative">
+                                            <div className="w-28">
+                                                <input
+                                                    type="text"
+                                                    value={cod.codigo}
+                                                    onChange={(e) => handleCodigoChangeAndSearch(index, 'codigo', e.target.value)}
+                                                    onKeyDown={(e) => handleKeyDown(e, index)}
+                                                    autoComplete="off"
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm font-mono"
+                                                    placeholder="031301"
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    value={cod.nombre}
+                                                    onChange={(e) => handleCodigoChangeAndSearch(index, 'nombre', e.target.value)}
+                                                    onKeyDown={(e) => handleKeyDown(e, index)}
+                                                    autoComplete="off"
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                    placeholder="Amigdalectomía"
+                                                />
+                                            </div>
+
+                                            {/* Suggestions Dropdown */}
+                                            {activeRow?.index === index && suggestions.length > 0 && (
+                                                <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container transform translate-y-1">
+                                                    {suggestions.map((s, i) => (
+                                                        <div
+                                                            key={i}
+                                                            onClick={() => selectSuggestion(s, index)}
+                                                            onMouseEnter={() => setHighlightedIndex(i)}
+                                                            className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${s.isModule ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-teal-50 bg-white'} ${highlightedIndex === i ? (s.isModule ? 'bg-indigo-100' : 'bg-teal-50') : ''}`}
+                                                        >
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${s.isModule ? 'text-indigo-600 bg-indigo-100 border-indigo-200' : 'text-teal-600 bg-teal-50 border-teal-100'}`}>
+                                                                        {s.codigo}
+                                                                    </span>
+                                                                    <span className={`text-sm font-medium ${s.isModule ? 'text-indigo-900' : 'text-slate-700'}`}>
+                                                                        {s.nombre}
+                                                                    </span>
+                                                                    {s.isModule && <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1 rounded-sm uppercase font-bold">Módulo</span>}
+                                                                    {s.isIOSFA && <span className="text-[10px] bg-sky-200 text-sky-800 px-1 rounded-sm uppercase font-bold">IOSFA</span>}
+                                                                </div>
+                                                                {s.parentModule && (
+                                                                    <div className="text-xs text-slate-400 italic mt-0.5">
+                                                                        ↳ Incluido en {s.parentModule.nombre}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {formData.codigosCirugia.length > 1 && (
+                                                <button type="button" onClick={() => removeCodigo(index)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
+                                                    <X size={18} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
 
-                                {/* Patient Info */}
+                            )}
+
+                            {/* CONDITIONAL RENDER CONTINUES */}
+                            {activeTab !== 'pedidos' && (
+                                /* Surgery Details - Only for Internacion */
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                            <User size={14} className="inline mr-1" /> Afiliado
+                                            <Stethoscope size={14} className="inline mr-1" /> Tipo de Anestesia
                                         </label>
-                                        <input
-                                            type="text"
-                                            value={formData.afiliado}
-                                            onChange={(e) => handleInputChange('afiliado', e.target.value.toUpperCase())}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
-                                            placeholder="APELLIDO Nombre"
-                                            required
-                                        />
+                                        <select
+                                            value={formData.tipoAnestesia}
+                                            onChange={(e) => handleInputChange('tipoAnestesia', e.target.value)}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        >
+                                            <option value="general">General</option>
+                                            <option value="local">Local</option>
+                                            <option value="regional">Regional</option>
+                                            <option value="sedación">Sedación</option>
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                            <Building2 size={14} className="inline mr-1" /> Obra Social
+                                            <Calendar size={14} className="inline mr-1" /> Fecha de Cirugía
                                         </label>
                                         <input
-                                            type="text"
-                                            value={formData.obraSocial}
-                                            onChange={(e) => handleInputChange('obraSocial', e.target.value)}
+                                            type="date"
+                                            value={formData.fechaCirugia}
+                                            onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
                                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                            placeholder="Galeno, OSDE, etc."
                                         />
                                     </div>
                                 </div>
+                            )}
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                            <Hash size={14} className="inline mr-1" /> N° Afiliado
-                                        </label>
+                            {activeTab !== 'pedidos' && (
+                                /* MATERIAL SECTION - Only for Internacion */
+                                <div className={`p-4 rounded-xl border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-300 bg-purple-50' : 'border-slate-200 bg-slate-50'}`}>
+                                    <label className="flex items-center gap-3 cursor-pointer">
                                         <input
-                                            type="text"
-                                            value={formData.numeroAfiliado}
-                                            onChange={(e) => handleInputChange('numeroAfiliado', e.target.value)}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                            placeholder="14843"
+                                            type="checkbox"
+                                            checked={formData.incluyeMaterial}
+                                            onChange={(e) => handleInputChange('incluyeMaterial', e.target.checked)}
+                                            className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                            <Hash size={14} className="inline mr-1" /> DNI
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={formData.dni}
-                                            onChange={(e) => handleInputChange('dni', e.target.value)}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                            placeholder="45836670"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                            <Building2 size={14} className="inline mr-1" /> Habitación
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={formData.habitacion}
-                                            onChange={(e) => handleInputChange('habitacion', e.target.value.toUpperCase())}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 uppercase"
-                                            placeholder="B, 101, etc."
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Phone Number */}
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Phone size={14} className="inline mr-1" /> Teléfono (WhatsApp)
+                                        <span className="font-bold text-slate-700 flex items-center gap-2">
+                                            <Package size={18} className="text-purple-600" />
+                                            Incluir Orden de Material
+                                        </span>
                                     </label>
-                                    <input
-                                        type="tel"
-                                        value={formData.telefono}
-                                        onChange={(e) => handleInputChange('telefono', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                        placeholder="3512345678 (sin 0 ni 15)"
-                                    />
-                                    <p className="text-xs text-slate-400 mt-1">Formato: código de área + número (ej: 3512345678)</p>
-                                </div>
 
-                                {/* CONDITIONAL CONTENT BASED ON TAB */}
-                                {activeTab === 'pedidos' ? (
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                                <FileHeart size={14} className="inline mr-1" /> Prácticas (Rp/)
+                                    {formData.incluyeMaterial && (
+                                        <div className="mt-4">
+                                            <label className="block text-xs font-bold text-purple-600 uppercase tracking-wider mb-2">
+                                                Descripción del Material
                                             </label>
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormData(prev => ({ ...prev, practicas: [...prev.practicas, ''] }))}
-                                                className="text-xs px-3 py-1 bg-pink-100 text-pink-700 rounded-lg font-bold hover:bg-pink-200 transition-colors flex items-center gap-1"
-                                            >
-                                                <Plus size={14} /> Agregar
-                                            </button>
-                                        </div>
-
-                                        {formData.practicas && formData.practicas.map((practica, index) => (
-                                            <div key={index} className="flex gap-2 items-start relative">
-                                                <div className="flex-1">
-                                                    <input
-                                                        type="text"
-                                                        value={practica}
-                                                        onChange={(e) => {
-                                                            const newVal = e.target.value;
-                                                            setFormData(prev => {
-                                                                const newPracticas = [...prev.practicas];
-                                                                newPracticas[index] = newVal;
-                                                                return { ...prev, practicas: newPracticas };
-                                                            });
-                                                            setActiveRow({ index, field: 'practica' });
-                                                            if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-                                                            searchTimeoutRef.current = setTimeout(() => {
-                                                                handleSearch(newVal, 'nombre', formData.obraSocial);
-                                                            }, 300);
-                                                        }}
-                                                        onKeyDown={(e) => handleKeyDown(e, index)}
-                                                        autoComplete="off"
-                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 text-sm uppercase font-medium"
-                                                        placeholder="Ingrese práctica..."
-                                                    />
-                                                </div>
-
-                                                {/* Suggestions Dropdown for Practices */}
-                                                {activeRow?.index === index && activeRow?.field === 'practica' && suggestions.length > 0 && (
-                                                    <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container transform translate-y-1">
-                                                        {suggestions.map((s, i) => (
-                                                            <div
-                                                                key={i}
-                                                                onClick={() => selectPedidoSuggestion(s, index)}
-                                                                onMouseEnter={() => setHighlightedIndex(i)}
-                                                                className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${highlightedIndex === i ? 'bg-pink-50' : 'bg-white'
-                                                                    }`}
-                                                            >
-                                                                <p className="text-sm font-bold text-slate-800">{s.nombre}</p>
-                                                                {s.codigo && <p className="text-xs text-slate-400">Código: {s.codigo}</p>}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormData(prev => ({
-                                                        ...prev,
-                                                        practicas: prev.practicas.filter((_, i) => i !== index)
-                                                    }))}
-                                                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg"
-                                                >
-                                                    <X size={18} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    /* Surgery Codes - Only for Internacion */
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                                <Hash size={14} className="inline mr-1" /> Códigos de Cirugía
-                                            </label>
-                                            <button
-                                                type="button"
-                                                onClick={addCodigo}
-                                                className="text-xs px-3 py-1 bg-teal-100 text-teal-700 rounded-lg font-bold hover:bg-teal-200 transition-colors flex items-center gap-1"
-                                            >
-                                                <Plus size={14} /> Agregar
-                                            </button>
-                                        </div>
-
-                                        {formData.codigosCirugia.map((cod, index) => (
-                                            <div key={index} className="flex gap-2 items-start relative">
-                                                <div className="w-28">
-                                                    <input
-                                                        type="text"
-                                                        value={cod.codigo}
-                                                        onChange={(e) => handleCodigoChangeAndSearch(index, 'codigo', e.target.value)}
-                                                        onKeyDown={(e) => handleKeyDown(e, index)}
-                                                        autoComplete="off"
-                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm font-mono"
-                                                        placeholder="031301"
-                                                    />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <input
-                                                        type="text"
-                                                        value={cod.nombre}
-                                                        onChange={(e) => handleCodigoChangeAndSearch(index, 'nombre', e.target.value)}
-                                                        onKeyDown={(e) => handleKeyDown(e, index)}
-                                                        autoComplete="off"
-                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
-                                                        placeholder="Amigdalectomía"
-                                                    />
-                                                </div>
-
-                                                {/* Suggestions Dropdown */}
-                                                {activeRow?.index === index && suggestions.length > 0 && (
-                                                    <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto suggestions-container transform translate-y-1">
-                                                        {suggestions.map((s, i) => (
-                                                            <div
-                                                                key={i}
-                                                                onClick={() => selectSuggestion(s, index)}
-                                                                onMouseEnter={() => setHighlightedIndex(i)}
-                                                                className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${s.isModule ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-teal-50 bg-white'} ${highlightedIndex === i ? (s.isModule ? 'bg-indigo-100' : 'bg-teal-50') : ''}`}
-                                                            >
-                                                                <div className="flex flex-col gap-0.5">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${s.isModule ? 'text-indigo-600 bg-indigo-100 border-indigo-200' : 'text-teal-600 bg-teal-50 border-teal-100'}`}>
-                                                                            {s.codigo}
-                                                                        </span>
-                                                                        <span className={`text-sm font-medium ${s.isModule ? 'text-indigo-900' : 'text-slate-700'}`}>
-                                                                            {s.nombre}
-                                                                        </span>
-                                                                        {s.isModule && <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1 rounded-sm uppercase font-bold">Módulo</span>}
-                                                                        {s.isIOSFA && <span className="text-[10px] bg-sky-200 text-sky-800 px-1 rounded-sm uppercase font-bold">IOSFA</span>}
-                                                                    </div>
-                                                                    {s.parentModule && (
-                                                                        <div className="text-xs text-slate-400 italic mt-0.5">
-                                                                            ↳ Incluido en {s.parentModule.nombre}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {formData.codigosCirugia.length > 1 && (
-                                                    <button type="button" onClick={() => removeCodigo(index)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
-                                                        <X size={18} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                )}
-
-                                {/* CONDITIONAL RENDER CONTINUES */}
-                                {activeTab !== 'pedidos' && (
-                                    /* Surgery Details - Only for Internacion */
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                                <Stethoscope size={14} className="inline mr-1" /> Tipo de Anestesia
-                                            </label>
-                                            <select
-                                                value={formData.tipoAnestesia}
-                                                onChange={(e) => handleInputChange('tipoAnestesia', e.target.value)}
-                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                            >
-                                                <option value="general">General</option>
-                                                <option value="local">Local</option>
-                                                <option value="regional">Regional</option>
-                                                <option value="sedación">Sedación</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                                <Calendar size={14} className="inline mr-1" /> Fecha de Cirugía
-                                            </label>
-                                            <input
-                                                type="date"
-                                                value={formData.fechaCirugia}
-                                                onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
-                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            <textarea
+                                                value={formData.descripcionMaterial}
+                                                onChange={(e) => handleInputChange('descripcionMaterial', e.target.value)}
+                                                className="w-full px-4 py-3 bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
+                                                placeholder="1 (un) tubo de ventilación en T&#10;2 (dos) prótesis de titanio..."
                                             />
+                                            <p className="text-xs text-purple-500 mt-2">
+                                                💡 Se generará una Orden de Pedido de Material adicional con esta descripción.
+                                            </p>
                                         </div>
-                                    </div>
-                                )}
-
-                                {activeTab !== 'pedidos' && (
-                                    /* MATERIAL SECTION - Only for Internacion */
-                                    <div className={`p-4 rounded-xl border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-300 bg-purple-50' : 'border-slate-200 bg-slate-50'}`}>
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={formData.incluyeMaterial}
-                                                onChange={(e) => handleInputChange('incluyeMaterial', e.target.checked)}
-                                                className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
-                                            />
-                                            <span className="font-bold text-slate-700 flex items-center gap-2">
-                                                <Package size={18} className="text-purple-600" />
-                                                Incluir Orden de Material
-                                            </span>
-                                        </label>
-
-                                        {formData.incluyeMaterial && (
-                                            <div className="mt-4">
-                                                <label className="block text-xs font-bold text-purple-600 uppercase tracking-wider mb-2">
-                                                    Descripción del Material
-                                                </label>
-                                                <textarea
-                                                    value={formData.descripcionMaterial}
-                                                    onChange={(e) => handleInputChange('descripcionMaterial', e.target.value)}
-                                                    className="w-full px-4 py-3 bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
-                                                    placeholder="1 (un) tubo de ventilación en T&#10;2 (dos) prótesis de titanio..."
-                                                />
-                                                <p className="text-xs text-purple-500 mt-2">
-                                                    💡 Se generará una Orden de Pedido de Material adicional con esta descripción.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Diagnosis */}
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <ClipboardList size={14} className="inline mr-1" /> Diagnóstico
-                                    </label>
-                                    <textarea
-                                        value={formData.diagnostico}
-                                        onChange={(e) => handleInputChange('diagnostico', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 min-h-[80px]"
-                                        placeholder="SAHOS, IVN, etc."
-                                    />
+                                    )}
                                 </div>
+                            )}
 
-                                {/* Observations */}
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Edit3 size={14} className="inline mr-1" /> Observaciones (Privado - No se imprime)
-                                    </label>
-                                    <textarea
-                                        value={formData.observaciones}
-                                        onChange={(e) => handleInputChange('observaciones', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] text-slate-700"
-                                        placeholder="Notas internas, indicaciones del profesional, etc."
-                                    />
-                                </div>
+                            {/* Diagnosis */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <ClipboardList size={14} className="inline mr-1" /> Diagnóstico
+                                </label>
+                                <textarea
+                                    value={formData.diagnostico}
+                                    onChange={(e) => handleInputChange('diagnostico', e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 min-h-[80px]"
+                                    placeholder="SAHOS, IVN, etc."
+                                />
+                            </div>
 
-                                {/* Document Date */}
-                                <div className="w-48">
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        <Calendar size={14} className="inline mr-1" /> Fecha Documento
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.fechaDocumento}
-                                        onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    />
-                                </div>
+                            {/* Observations */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <Edit3 size={14} className="inline mr-1" /> Observaciones (Privado - No se imprime)
+                                </label>
+                                <textarea
+                                    value={formData.observaciones}
+                                    onChange={(e) => handleInputChange('observaciones', e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] text-slate-700"
+                                    placeholder="Notas internas, indicaciones del profesional, etc."
+                                />
+                            </div>
 
-                                {/* Submit */}
-                                <div className="flex gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        onClick={resetForm}
-                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={loading}
-                                        className={`flex-1 py-3 text-white font-bold rounded-xl transition-colors shadow-lg disabled:opacity-50 ${formData.incluyeMaterial ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}
-                                    >
-                                        {loading ? 'Guardando...' : formData.incluyeMaterial ? 'Crear 2 Órdenes' : editingId ? 'Guardar Cambios' : 'Crear Orden'}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div >
-                )}
+                            {/* Document Date */}
+                            <div className="w-48">
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    <Calendar size={14} className="inline mr-1" /> Fecha Documento
+                                </label>
+                                <input
+                                    type="date"
+                                    value={formData.fechaDocumento}
+                                    onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                />
+                            </div>
+
+                            {/* Submit */}
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={resetForm}
+                                    className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className={`flex-1 py-3 text-white font-bold rounded-xl transition-colors shadow-lg disabled:opacity-50 ${formData.incluyeMaterial ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}
+                                >
+                                    {loading ? 'Guardando...' : formData.incluyeMaterial ? 'Crear 2 Órdenes' : editingId ? 'Guardar Cambios' : 'Crear Orden'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div >
+            )
+            }
 
             {/* PRINT PREVIEW MODAL */}
             {
@@ -1697,7 +1738,7 @@ Para poder comenzar la gestión con su obra social le voy a solicitar que envíe
                     </div>
                 )
             }
-        </div>
+        </div >
     );
 };
 

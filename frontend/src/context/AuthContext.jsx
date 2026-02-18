@@ -18,7 +18,8 @@ export const AuthProvider = ({ children }) => {
     const [userRole, setUserRole] = useState('user'); // 'user', 'admin', 'coat', 'prueba'
     const [permissions, setPermissions] = useState({}); // New Permissions Object
     const [catalogOwnerUid, setCatalogOwnerUid] = useState(null);
-    const SUPER_ADMIN_EMAIL = "emmanuel.ag92@gmail.com";
+    const SUPER_ADMIN_EMAILS = ["emmanuel.ag92@gmail.com", "egomez@coat.com.ar"];
+    const isSuperAdminEmail = (email) => SUPER_ADMIN_EMAILS.includes(email);
 
     const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
     const logout = () => signOut(auth);
@@ -52,7 +53,7 @@ export const AuthProvider = ({ children }) => {
                     let role = 'user';
                     let authorized = false;
 
-                    if (user.email === SUPER_ADMIN_EMAIL) {
+                    if (isSuperAdminEmail(user.email)) {
                         authorized = true;
                         role = 'superadmin';
                         setCatalogOwnerUid(user.uid);
@@ -84,7 +85,7 @@ export const AuthProvider = ({ children }) => {
                                     setCatalogOwnerUid(authData.ownerUid);
                                 } else {
                                     // Fallback (Old method)
-                                    const qIdx = query(collection(db, "profiles"), where("email", "==", SUPER_ADMIN_EMAIL));
+                                    const qIdx = query(collection(db, "profiles"), where("email", "==", "emmanuel.ag92@gmail.com"));
                                     const sapSnap = await getDocs(qIdx);
                                     if (!sapSnap.empty) {
                                         setCatalogOwnerUid(sapSnap.docs[0].id);
@@ -207,7 +208,7 @@ export const AuthProvider = ({ children }) => {
         userRole,
         permissions, // Export permissions
         catalogOwnerUid,
-        isSuperAdmin: currentUser?.email === SUPER_ADMIN_EMAIL,
+        isSuperAdmin: isSuperAdminEmail(currentUser?.email),
         viewingUid: viewingUid || (currentUser ? currentUser.uid : null),
         sharedAccounts,
         permission: currentPermission, // Export permission
