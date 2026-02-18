@@ -14,8 +14,11 @@ const AdminView = () => {
     const [profiles, setProfiles] = useState({});
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState('users'); // 'users' or 'roles'
+    const [activeTab, setActiveTab] = useState('users'); // 'users', 'roles', or 'maintenance'
     const [roles, setRoles] = useState([]);
+    const [maintenanceUser, setMaintenanceUser] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
 
     // Role Form State
     const [roleName, setRoleName] = useState('');
@@ -274,6 +277,47 @@ const AdminView = () => {
         }
     };
 
+    const handleDeleteByRange = async () => {
+        if (!maintenanceUser || !startDate || !endDate) {
+            alert("Por favor selecciona un usuario y el rango de fechas.");
+            return;
+        }
+
+        const email = profiles[maintenanceUser]?.email || maintenanceUser;
+        if (!window.confirm(`⚠️ ADVERTENCIA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR las órdenes de ${email} entre el ${startDate} y el ${endDate}?\n\nEsta acción afectará a Internaciones y Pedidos Médicos.`)) return;
+
+        setLoading(true);
+        try {
+            let deletedCount = 0;
+            const collections = [
+                { name: 'ordenes_internacion', dateField: 'fechaCirugia' },
+                { name: 'pedidos_medicos', dateField: 'fechaDocumento' }
+            ];
+
+            for (const col of collections) {
+                const q = query(collection(db, col.name), where("userId", "==", maintenanceUser));
+                const snap = await getDocs(q);
+
+                const toDelete = snap.docs.filter(d => {
+                    const data = d.data();
+                    const date = data[col.dateField];
+                    return date && date >= startDate && date <= endDate;
+                });
+
+                const deletePromises = toDelete.map(d => deleteDoc(d.ref));
+                await Promise.all(deletePromises);
+                deletedCount += toDelete.length;
+            }
+
+            alert(`Se han eliminado ${deletedCount} registros.`);
+            fetchData();
+        } catch (error) {
+            alert("Error al eliminar registros: " + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const filteredDoctors = allDoctors.filter(d => {
         const search = searchTerm.toLowerCase();
         const email = d.profile?.email?.toLowerCase() || '';
@@ -308,6 +352,14 @@ const AdminView = () => {
                 >
                     Gestión de Roles
                 </button>
+                {isSuperAdmin && (
+                    <button
+                        onClick={() => setActiveTab('maintenance')}
+                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    >
+                        Mantenimiento
+                    </button>
+                )}
             </div>
 
             {activeTab === 'users' ? (
@@ -480,7 +532,7 @@ const AdminView = () => {
                         )}
                     </div>
                 </div>
-            ) : (
+            ) : activeTab === 'roles' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Create Role Form */}
                     <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
@@ -551,8 +603,8 @@ const AdminView = () => {
                                             <label
                                                 key={permKey}
                                                 className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all text-xs ${permValue
-                                                        ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                                    ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
                                                     }`}
                                                 onClick={() => handleToggleRolePermission(role.id, permKey, permValue)}
                                             >
@@ -578,6 +630,75 @@ const AdminView = () => {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
+                    <div className="flex items-center gap-3 mb-8">
+                        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl">
+                            <Trash2 size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-bold dark:text-white">Borrado por Rango de Fecha</h3>
+                            <p className="text-xs text-slate-400 font-medium">Elimina órdenes según la fecha de cirugía/realización</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6 max-w-md">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-400 mb-2">Usuario / Doctor</label>
+                            <select
+                                value={maintenanceUser}
+                                onChange={(e) => setMaintenanceUser(e.target.value)}
+                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-xl text-slate-900 dark:text-white outline-none"
+                            >
+                                <option value="">Seleccionar cuenta...</option>
+                                {allDoctors.map(doctor => (
+                                    <option key={doctor.uid} value={doctor.uid}>
+                                        {doctor.profile?.displayName || doctor.profile?.email || doctor.uid}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-400 mb-2">Desde (Cirugía)</label>
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-xl text-slate-900 dark:text-white outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-400 mb-2">Hasta (Cirugía)</label>
+                                <input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-xl text-slate-900 dark:text-white outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleDeleteByRange}
+                            disabled={loading || !maintenanceUser || !startDate || !endDate}
+                            className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${loading || !maintenanceUser || !startDate || !endDate
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                : 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-100'
+                                }`}
+                        >
+                            <Trash2 size={20} />
+                            Eliminar Registros en Rango
+                        </button>
+
+                        <div className="p-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-xl">
+                            <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                                <strong>Nota:</strong> Esta herramienta filtra por la fecha de realización de la cirugía (Internación) o la fecha del documento (Pedidos Médicos). No afecta a los registros de Caja Diaria.
+                            </p>
                         </div>
                     </div>
                 </div>

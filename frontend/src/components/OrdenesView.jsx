@@ -924,7 +924,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                     today.setHours(0, 0, 0, 0);
 
                     const checkUrgency = (orden) => {
-                        if (orden.autorizada || orden.enviada) return false;
+                        if (orden.autorizada) return false;
                         const surgeryDateStr = orden.fechaCirugia || orden.fechaDocumento;
                         if (!surgeryDateStr) return false;
 
