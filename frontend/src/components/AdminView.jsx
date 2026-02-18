@@ -664,7 +664,7 @@ const AdminView = () => {
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-bold text-slate-400 mb-2">Desde (Cirugía)</label>
+                                <label className="block text-sm font-bold text-slate-400 mb-2">Desde (Cirugía / Pedido)</label>
                                 <input
                                     type="date"
                                     value={startDate}
@@ -673,7 +673,7 @@ const AdminView = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-bold text-slate-400 mb-2">Hasta (Cirugía)</label>
+                                <label className="block text-sm font-bold text-slate-400 mb-2">Hasta (Cirugía / Pedido)</label>
                                 <input
                                     type="date"
                                     value={endDate}
