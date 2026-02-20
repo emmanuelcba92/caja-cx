@@ -16,34 +16,61 @@ const fmt = (val, currency = 'ARS') => {
 const EMPTY_ENTRY = () => ({
     id: Date.now() + Math.random(),
     paciente: '',
+    dni: '', // Nuevo campo
     obraSocial: '',
-    // Total cobrado
-    total: 0,
-    moneda: 'ARS', // 'ARS' | 'USD'
-    // Profesionales (siempre 2 por defecto, opcionalmente 3)
-    prof_1: '', liq_prof_1: 0, pct_prof_1: 50,
-    prof_2: '', liq_prof_2: 0, pct_prof_2: 50,
+
+    // Pagos duales
+    total_ars: 0,
+    total_usd: 0,
+
+    // Profesionales
+    prof_1: '', liq_prof_1_ars: 0, liq_prof_1_usd: 0, pct_prof_1: 50,
+    prof_2: '', liq_prof_2_ars: 0, liq_prof_2_usd: 0, pct_prof_2: 50,
     showProf3: false,
-    prof_3: '', liq_prof_3: 0, pct_prof_3: 0,
+    prof_3: '', liq_prof_3_ars: 0, liq_prof_3_usd: 0, pct_prof_3: 0,
+
     // Anestesista
-    anestesista: '', liq_anestesista: 0,
-    // COAT (calculado automático)
-    coat: 0,
-    // Comentario
+    anestesista: '', liq_anestesista_ars: 0, liq_anestesista_usd: 0,
+
+    // COAT Resultante
+    coat_ars: 0,
+    coat_usd: 0,
+
     comentario: '',
-    // UI
     collapsed: false,
 });
 
-// ─── Auto-calc: dado el entry actualizado, recalcula liq y coat ─────────────
-const recalc = (entry) => {
-    const total = entry.total || 0;
-    const liq1 = total * ((entry.pct_prof_1 || 0) / 100);
-    const liq2 = total * ((entry.pct_prof_2 || 0) / 100);
-    const liq3 = entry.showProf3 ? total * ((entry.pct_prof_3 || 0) / 100) : 0;
-    const anest = entry.liq_anestesista || 0; // anestesista: monto fijo, no porcentaje
-    const coat = Math.max(0, total - liq1 - liq2 - liq3 - anest);
-    return { ...entry, liq_prof_1: liq1, liq_prof_2: liq2, liq_prof_3: liq3, coat };
+// ─── Auto-calc ──────────────────────────────────────────────────────────────
+const recalc = (updated) => {
+    const e = { ...updated };
+
+    // Calcula honorarios porcentuales sobre AMBAS monedas
+    // Prof 1
+    e.liq_prof_1_ars = e.total_ars * ((e.pct_prof_1 || 0) / 100);
+    e.liq_prof_1_usd = e.total_usd * ((e.pct_prof_1 || 0) / 100);
+
+    // Prof 2
+    e.liq_prof_2_ars = e.total_ars * ((e.pct_prof_2 || 0) / 100);
+    e.liq_prof_2_usd = e.total_usd * ((e.pct_prof_2 || 0) / 100);
+
+    // Prof 3
+    if (e.showProf3) {
+        e.liq_prof_3_ars = e.total_ars * ((e.pct_prof_3 || 0) / 100);
+        e.liq_prof_3_usd = e.total_usd * ((e.pct_prof_3 || 0) / 100);
+    } else {
+        e.liq_prof_3_ars = 0;
+        e.liq_prof_3_usd = 0;
+    }
+
+    // El anestesista suele ser un monto fijo, pero si es mixto, 
+    // asumimos que el usuario ingresa manualmente el monto en cada moneda si quiere.
+    // Si no, lo dejamos como input manual en el UI (no calculado por porcentaje).
+
+    // COAT Final
+    e.coat_ars = Math.max(0, e.total_ars - e.liq_prof_1_ars - e.liq_prof_2_ars - e.liq_prof_3_ars - (e.liq_anestesista_ars || 0));
+    e.coat_usd = Math.max(0, e.total_usd - e.liq_prof_1_usd - e.liq_prof_2_usd - e.liq_prof_3_usd - (e.liq_anestesista_usd || 0));
+
+    return e;
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -148,7 +175,11 @@ const CajaForm = () => {
             if (e.id !== id) return e;
             const updated = { ...e, ...patch };
             // Si cambió algo que afecte el cálculo, recalcular
-            const calcKeys = ['total', 'pct_prof_1', 'pct_prof_2', 'pct_prof_3', 'showProf3', 'liq_anestesista'];
+            const calcKeys = [
+                'total_ars', 'total_usd',
+                'pct_prof_1', 'pct_prof_2', 'pct_prof_3', 'showProf3',
+                'liq_anestesista_ars', 'liq_anestesista_usd'
+            ];
             if (calcKeys.some(k => k in patch)) return recalc(updated);
             return updated;
         }));
@@ -163,31 +194,56 @@ const CajaForm = () => {
 
     const handleGuardarOperacion = async () => {
         const entry = entries[0];
-        // Validation
-        if (!entry.paciente) return alert('Ingresá al menos el nombre del paciente.');
+        if (!entry.paciente || (!entry.total_ars && !entry.total_usd)) {
+            alert('Completá al menos el nombre del paciente y un monto.');
+            return;
+        }
 
         const ownerToUse = catalogOwnerUid || viewingUid;
+
+        // Mapeamos a la estructura plana que usa Firestore
         const docData = {
-            ...entry,
-            // Mapping fields
-            pesos: entry.moneda === 'ARS' ? entry.total : 0,
-            dolares: entry.moneda === 'USD' ? entry.total : 0,
-            coat_pesos: entry.moneda === 'ARS' ? entry.coat : 0,
-            coat_dolares: entry.moneda === 'USD' ? entry.coat : 0,
-            liq_prof_1_currency: entry.moneda, liq_prof_2_currency: entry.moneda, liq_prof_3_currency: entry.moneda,
-            liq_anestesista_currency: entry.moneda,
+            // Datos básicos
+            paciente: entry.paciente,
+            dni: entry.dni || '',
+            obraSocial: entry.obraSocial,
+            comentario: entry.comentario,
+
+            // Montos Totales
+            pesos: entry.total_ars || 0,
+            dolares: entry.total_usd || 0,
+            total: (entry.total_ars || 0) + (entry.total_usd || 0), // Referencial, suma simple
+            moneda: (entry.total_usd > 0 && entry.total_ars === 0) ? 'USD' : 'ARS', // Legacy main currency
+
+            // Montos COAT
+            coat_pesos: entry.coat_ars || 0,
+            coat_dolares: entry.coat_usd || 0,
+            coat: (entry.coat_ars || 0) + (entry.coat_usd || 0), // Legacy
+
+            // Profesionales (Guardamos el detalle completo si es posible, o simplificamos para legacy)
+            // Legacy espera liq_prof_N y currency
+            // Guardamos campos nuevos planos para soportar dualidad en el futuro
+            liq_prof_1_ars: entry.liq_prof_1_ars, liq_prof_1_usd: entry.liq_prof_1_usd,
+            liq_prof_2_ars: entry.liq_prof_2_ars, liq_prof_2_usd: entry.liq_prof_2_usd,
+            liq_prof_3_ars: entry.liq_prof_3_ars, liq_prof_3_usd: entry.liq_prof_3_usd,
+            liq_anestesista_ars: entry.liq_anestesista_ars, liq_anestesista_usd: entry.liq_anestesista_usd,
+
+            // Métadatos Professional (Nombres y Pct)
+            prof_1: entry.prof_1, pct_prof_1: entry.pct_prof_1,
+            prof_2: entry.prof_2, pct_prof_2: entry.pct_prof_2,
+            prof_3: entry.prof_3, pct_prof_3: entry.pct_prof_3,
+            showProf3: entry.showProf3,
+            anestesista: entry.anestesista,
+
+            // Meta sistema
             fecha: globalDate,
             userId: ownerToUse,
             createdBy: currentUser?.email || 'unknown',
             createdAt: new Date().toISOString(),
         };
 
-        // Remove ID so Firestore generates one, or keep entry.id if we want random? 
-        // Better let Firestore generate a clean ID
-        const { id, collapsed, ...finalData } = docData;
-
         try {
-            await addDoc(collection(db, 'caja'), finalData);
+            await addDoc(collection(db, 'caja'), docData);
             setEntries([EMPTY_ENTRY()]); // Reset form
             fetchHistory(); // Update list
             alert('Operación guardada exitosamente.');
@@ -332,22 +388,23 @@ const CajaForm = () => {
     const anestesistas = profesionales.filter(p => p.categoria === 'Anestesista');
 
     // ── Grand totals (From History) ────────────────────────────────────────
+    // ── Grand totals (From History) ────────────────────────────────────────
     const totals = historyEntries.reduce((acc, raw) => {
-        // Normalize for legacy compatibility
-        const e = (raw.total !== undefined) ? raw : {
-            ...raw,
-            moneda: (raw.dolares || 0) > 0 ? 'USD' : 'ARS',
-            total: (raw.dolares || 0) > 0 ? raw.dolares : raw.pesos,
-            coat: (raw.dolares || 0) > 0 ? raw.coat_dolares : raw.coat_pesos,
-        };
+        // Normalize for calculation
+        // Newer entries have coat_pesos/dolares directly or total_ars/usd
+        // Older entries have 'pesos' or 'dolares' and 'coat_pesos'/'coat_dolares'
 
-        const isUSD = e.moneda === 'USD';
-        acc.totalARS += isUSD ? 0 : (e.total || 0);
-        acc.totalUSD += isUSD ? (e.total || 0) : 0;
-        acc.coatARS += isUSD ? 0 : (e.coat || 0);
-        acc.coatUSD += isUSD ? (e.coat || 0) : 0;
+        const ars = (raw.coat_pesos || 0) + (raw.coat_ars || 0); // Handle both new/old naming if varies
+        const usd = (raw.coat_dolares || 0) + (raw.coat_usd || 0);
+
+        // Fallback for very old single currency legacy if needed (though map usually handles display)
+        // Checks specific legacy fields if coat_pesos/dolares are missing but coat exist?
+        // Usually safe to rely on coat_pesos/coat_dolares which are standard in DB now.
+
+        acc.coatARS += ars;
+        acc.coatUSD += usd;
         return acc;
-    }, { totalARS: 0, totalUSD: 0, coatARS: 0, coatUSD: 0 });
+    }, { coatARS: 0, coatUSD: 0 });
 
     // ─── Render ────────────────────────────────────────────────────────────
     return (
@@ -360,14 +417,16 @@ const CajaForm = () => {
                     <p className="text-sm text-slate-500">Ingresá los movimientos del día</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {/* Totales rápidos */}
-                    {(totals.totalARS > 0 || totals.totalUSD > 0) && (
-                        <div className="hidden md:flex items-center gap-4 text-xs font-bold text-slate-500">
-                            {totals.totalARS > 0 && <span className="text-slate-700">Total: <span className="text-blue-700">{fmt(totals.totalARS)}</span></span>}
-                            {totals.totalUSD > 0 && <span className="text-slate-700">Total: <span className="text-emerald-700">{fmt(totals.totalUSD, 'USD')}</span></span>}
-                            {totals.coatARS > 0 && <span className="text-slate-700">COAT: <span className="text-orange-600">{fmt(totals.coatARS)}</span></span>}
+                    <div className="flex flex-col items-end gap-1">
+                        <div className="flex gap-2">
+                            <div className="bg-orange-50 border border-orange-100 rounded-lg px-2 py-1 text-xs font-bold text-orange-700">
+                                {fmt(totals.coatARS)}
+                            </div>
+                            <div className="bg-orange-50 border border-orange-100 rounded-lg px-2 py-1 text-xs font-bold text-orange-700">
+                                {fmt(totals.coatUSD, 'USD')}
+                            </div>
                         </div>
-                    )}
+                    </div>
                     <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
                         <Calendar size={16} className="text-slate-400" />
                         <input
@@ -678,284 +737,283 @@ const CajaForm = () => {
 
 // ─── PatientCard ─────────────────────────────────────────────────────────────
 
-const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate, onRemove, onComment, hideCollapse = false }) => {
-    const collapsed = entry.collapsed;
+// ─── PatientCard (Nueva Estructura) ──────────────────────────────────────────
 
-    const monedaSymbol = entry.moneda === 'USD' ? 'USD' : '$';
+const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate, onRemove, onComment, hideCollapse = false }) => {
 
     return (
-        <div className={`bg-white rounded-2xl border shadow-sm transition-all ${entry.coat > 0 ? 'border-slate-200' : 'border-slate-200'}`}>
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-8">
 
-            {/* ─ Card Header ─ */}
-            <div
-                className={`flex items-center gap-3 px-5 py-4 cursor-pointer select-none ${hideCollapse ? 'cursor-default' : ''}`}
-                onClick={() => !hideCollapse && onUpdate({ collapsed: !collapsed })}
-            >
-                {/* Número */}
-                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center">
-                    {idx + 1}
-                </span>
-
-                {/* Nombre (editable inline para no colapsar) */}
-                <input
-                    className="flex-1 font-semibold text-slate-800 bg-transparent border-none outline-none placeholder-slate-300 text-sm"
-                    placeholder="Nombre del paciente..."
-                    value={entry.paciente}
-                    onClick={e => e.stopPropagation()}
-                    onChange={e => onUpdate({ paciente: e.target.value })}
-                    readOnly={isReadOnly}
-                />
-
-                {/* Total badge */}
-                {entry.total > 0 && (
-                    <span className="hidden md:block text-xs font-bold text-slate-400">
-                        Total: <span className="text-blue-700">{fmt(entry.total, entry.moneda)}</span>
-                        {entry.coat > 0 && <> · COAT: <span className="text-orange-600">{fmt(entry.coat, entry.moneda)}</span></>}
-                    </span>
-                )}
-
-                {/* Comentario badge */}
-                {!isReadOnly && (
-                    <button
-                        onClick={e => { e.stopPropagation(); onComment(); }}
-                        className={`p-1.5 rounded-lg transition-all ${entry.comentario ? 'bg-amber-100 text-amber-600' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'}`}
-                        title="Comentario"
-                    >
-                        <MessageSquare size={15} />
-                    </button>
-                )}
-
-                {/* Delete - Only show if not hiding collapse (main form uses clear instead or just no delete) */}
-                {!isReadOnly && !hideCollapse && (
-                    <button
-                        onClick={e => { e.stopPropagation(); onRemove(); }}
-                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                        title="Eliminar"
-                    >
-                        <Trash2 size={15} />
-                    </button>
-                )}
-
-                {/* Chevron */}
-                {!hideCollapse && (
-                    <span className="text-slate-300 ml-1">
-                        {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-                    </span>
-                )}
+            {/* 1. Datos del Paciente */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Paciente</label>
+                    <input
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
+                        placeholder="Nombre Completo..."
+                        value={entry.paciente}
+                        onChange={e => onUpdate({ paciente: e.target.value })}
+                        readOnly={isReadOnly}
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">DNI</label>
+                    <input
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
+                        placeholder="Documento..."
+                        value={entry.dni}
+                        onChange={e => onUpdate({ dni: e.target.value })}
+                        readOnly={isReadOnly}
+                    />
+                </div>
+                <div className="flex gap-2">
+                    <div className="space-y-1.5 flex-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Obra Social</label>
+                        <input
+                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
+                            placeholder="Prepaga / OS..."
+                            value={entry.obraSocial}
+                            onChange={e => onUpdate({ obraSocial: e.target.value })}
+                            readOnly={isReadOnly}
+                        />
+                    </div>
+                    {!isReadOnly && !hideCollapse && (
+                        <button onClick={onRemove} className="mt-7 p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-100 transition-all">
+                            <Trash2 size={20} />
+                        </button>
+                    )}
+                    {!isReadOnly && (
+                        <button onClick={onComment} className={`mt-7 p-3 rounded-xl border transition-all ${entry.comentario ? 'bg-amber-50 text-amber-600 border-amber-200' : 'text-slate-300 hover:text-blue-500 hover:bg-blue-50 border-transparent'}`}>
+                            <MessageSquare size={20} />
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* ─ Card Body ─ */}
-            {(!collapsed || hideCollapse) && (
-                <div className="px-5 pb-5 space-y-5 border-t border-slate-100">
+            <div className="flex flex-col lg:flex-row gap-8">
 
-                    {/* Fila 1: Obra Social + Total + Moneda */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-                        {/* Obra Social */}
-                        <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                <Building2 size={12} /> Obra Social
-                            </label>
-                            <input
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:bg-white outline-none transition-all"
-                                placeholder="Ej: Swiss Medical"
-                                value={entry.obraSocial}
-                                onChange={e => onUpdate({ obraSocial: e.target.value })}
-                                readOnly={isReadOnly}
+                {/* 2. Pago del Paciente (Left Column) */}
+                <div className="w-full lg:w-64 space-y-6 flex-shrink-0">
+                    <div className="bg-emerald-50/50 rounded-2xl p-4 border border-emerald-100/50 space-y-4">
+                        <label className="text-[10px] font-bold text-emerald-600/70 uppercase tracking-widest flex items-center gap-2">
+                            Pago del Paciente
+                        </label>
+
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-emerald-600">$</span>
+                            <MoneyInput
+                                className="w-full bg-white border-2 border-emerald-100 rounded-xl pl-8 pr-4 py-3 text-lg font-bold text-slate-700 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50 transition-all"
+                                value={entry.total_ars}
+                                onChange={val => onUpdate({ total_ars: val })}
+                                placeholder="0,00"
                             />
                         </div>
 
-                        {/* Total Abonado */}
-                        <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                <DollarSign size={12} /> Total Abonado
-                            </label>
-                            <div className="flex gap-2">
-                                <MoneyInput
-                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 font-semibold focus:border-blue-400 focus:bg-white outline-none transition-all text-right"
-                                    value={entry.total}
-                                    onChange={val => onUpdate({ total: val })}
-                                    placeholder="0,00"
-                                />
-                                {/* Moneda toggle */}
-                                <button
-                                    onClick={() => onUpdate({ moneda: entry.moneda === 'ARS' ? 'USD' : 'ARS' })}
-                                    className={`px-3 rounded-xl font-bold text-xs border transition-all ${entry.moneda === 'USD' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-600'}`}
-                                    title="Cambiar moneda"
-                                >
-                                    {entry.moneda === 'USD' ? 'USD' : '$'}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* COAT (read-only, calculado) */}
-                        <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-orange-400 uppercase tracking-wider">Monto COAT</label>
-                            <div className="w-full bg-orange-50 border border-orange-100 rounded-xl px-3 py-2.5 text-sm font-bold text-orange-700 text-right">
-                                {fmt(entry.coat, entry.moneda)}
-                            </div>
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-600">USD</span>
+                            <MoneyInput
+                                className="w-full bg-white border-2 border-emerald-100 rounded-xl pl-12 pr-4 py-3 text-lg font-bold text-slate-700 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50 transition-all"
+                                value={entry.total_usd}
+                                onChange={val => onUpdate({ total_usd: val })}
+                                placeholder="0,00"
+                            />
                         </div>
                     </div>
 
-                    {/* Separador */}
-                    <div className="border-t border-slate-100" />
-
-                    {/* Profesionales */}
-                    <div className="space-y-3">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <User size={12} /> Distribución por Profesionales
-                        </p>
-
-                        {/* Prof 1 */}
-                        <ProfRow
-                            color="blue"
-                            label="Prof. 1"
-                            profValue={entry.prof_1}
-                            pctValue={entry.pct_prof_1}
-                            liqValue={entry.liq_prof_1}
-                            moneda={entry.moneda}
-                            surgeons={surgeons}
-                            isReadOnly={isReadOnly}
-                            onProfChange={v => onUpdate({ prof_1: v })}
-                            onPctChange={v => onUpdate({ pct_prof_1: v })}
-                            onLiqChange={v => onUpdate({ liq_prof_1: v })}
-                        />
-
-                        {/* Prof 2 */}
-                        <ProfRow
-                            color="indigo"
-                            label="Prof. 2"
-                            profValue={entry.prof_2}
-                            pctValue={entry.pct_prof_2}
-                            liqValue={entry.liq_prof_2}
-                            moneda={entry.moneda}
-                            surgeons={surgeons}
-                            isReadOnly={isReadOnly}
-                            onProfChange={v => onUpdate({ prof_2: v })}
-                            onPctChange={v => onUpdate({ pct_prof_2: v })}
-                            onLiqChange={v => onUpdate({ liq_prof_2: v })}
-                        />
-
-                        {/* Prof 3 (opcional) */}
-                        {entry.showProf3 ? (
-                            <div className="relative">
-                                <ProfRow
-                                    color="teal"
-                                    label="Prof. 3"
-                                    profValue={entry.prof_3}
-                                    pctValue={entry.pct_prof_3}
-                                    liqValue={entry.liq_prof_3}
-                                    moneda={entry.moneda}
-                                    surgeons={surgeons}
-                                    isReadOnly={isReadOnly}
-                                    onProfChange={v => onUpdate({ prof_3: v })}
-                                    onPctChange={v => onUpdate({ pct_prof_3: v })}
-                                    onLiqChange={v => onUpdate({ liq_prof_3: v })}
-                                />
-                                {!isReadOnly && (
-                                    <button
-                                        onClick={() => onUpdate({ showProf3: false, prof_3: '', pct_prof_3: 0, liq_prof_3: 0 })}
-                                        className="absolute -top-1 -right-1 text-slate-400 hover:text-red-500 bg-white rounded-full border border-slate-200 p-0.5 transition-colors"
-                                    >
-                                        <X size={12} />
-                                    </button>
-                                )}
+                    {/* 5. COAT (Left Column Bottom) */}
+                    <div className="bg-orange-50/50 rounded-2xl p-4 border border-orange-100/50 space-y-3">
+                        <label className="text-[10px] font-bold text-orange-600/70 uppercase tracking-widest">
+                            Administración COAT
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white border border-orange-100 rounded-xl px-3 py-2">
+                                <span className="block text-[10px] font-bold text-orange-300">PESOS</span>
+                                <span className="block text-base font-bold text-orange-600">{fmt(entry.coat_ars)}</span>
                             </div>
-                        ) : (
-                            !isReadOnly && (
+                            <div className="bg-white border border-orange-100 rounded-xl px-3 py-2">
+                                <span className="block text-[10px] font-bold text-orange-300">DOLARES</span>
+                                <span className="block text-base font-bold text-orange-600">{fmt(entry.coat_usd, 'USD')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Profesionales & Anestesia (Right Column) */}
+                <div className="flex-1 space-y-6">
+
+                    {/* Honorarios Médicos */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                Honorarios Médicos
+                                <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px]">{entry.showProf3 ? '3 PROFS' : '2 PROFS'}</span>
+                            </label>
+
+                            {!entry.showProf3 && !isReadOnly && (
                                 <button
                                     onClick={() => onUpdate({ showProf3: true })}
-                                    className="w-full flex items-center justify-center gap-2 py-2 text-teal-600 hover:bg-teal-50 rounded-xl border border-dashed border-teal-200 transition-all text-sm font-medium"
+                                    className="text-[10px] font-bold bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
                                 >
-                                    <Plus size={14} /> Agregar Prof. 3
+                                    <Plus size={10} /> Añadir Prof. 3
                                 </button>
-                            )
-                        )}
+                            )}
+                        </div>
+
+                        <div className="space-y-3">
+                            <ProfRow
+                                label="Médico 1"
+                                color="blue"
+                                surgeons={surgeons}
+                                prof={entry.prof_1} pct={entry.pct_prof_1}
+                                liqArs={entry.liq_prof_1_ars} liqUsd={entry.liq_prof_1_usd}
+                                onChangeProf={v => onUpdate({ prof_1: v })}
+                                onChangePct={v => onUpdate({ pct_prof_1: v })}
+                                isReadOnly={isReadOnly}
+                            />
+                            <ProfRow
+                                label="Médico 2"
+                                color="indigo"
+                                surgeons={surgeons}
+                                prof={entry.prof_2} pct={entry.pct_prof_2}
+                                liqArs={entry.liq_prof_2_ars} liqUsd={entry.liq_prof_2_usd}
+                                onChangeProf={v => onUpdate({ prof_2: v })}
+                                onChangePct={v => onUpdate({ pct_prof_2: v })}
+                                isReadOnly={isReadOnly}
+                            />
+                            {entry.showProf3 && (
+                                <div className="relative">
+                                    <ProfRow
+                                        label="Médico 3"
+                                        color="violet"
+                                        surgeons={surgeons}
+                                        prof={entry.prof_3} pct={entry.pct_prof_3}
+                                        liqArs={entry.liq_prof_3_ars} liqUsd={entry.liq_prof_3_usd}
+                                        onChangeProf={v => onUpdate({ prof_3: v })}
+                                        onChangePct={v => onUpdate({ pct_prof_3: v })}
+                                        isReadOnly={isReadOnly}
+                                    />
+                                    <button
+                                        onClick={() => onUpdate({ showProf3: false, prof_3: '', pct_prof_3: 0, liq_prof_3_ars: 0, liq_prof_3_usd: 0 })}
+                                        className="absolute -right-2 top-1/2 -translate-y-1/2 bg-white text-slate-300 hover:text-red-500 shadow-sm p-1 rounded-full border border-slate-100"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    {/* Separador */}
-                    <div className="border-t border-slate-100" />
-
-                    {/* Anestesista */}
-                    <div className="space-y-2">
-                        <p className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">Anestesista</p>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
+                    {/* Anestesia */}
+                    <div className="bg-fuchsia-50/50 rounded-2xl p-5 border border-fuchsia-100/50 space-y-4">
+                        <label className="text-[10px] font-bold text-fuchsia-600/70 uppercase tracking-widest flex items-center gap-2">
+                            <Circle size={8} className="fill-fuchsia-400 text-fuchsia-400" /> Anestesia
+                        </label>
+                        <div className="flex flex-col md:flex-row gap-4">
+                            <div className="flex-1 space-y-1">
+                                <span className="text-[10px] font-bold text-slate-400 pl-1 uppercase">Profesional</span>
                                 <select
-                                    className="w-full bg-purple-50 border border-purple-100 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:border-purple-400 outline-none transition-all"
+                                    className="w-full bg-white border border-fuchsia-100 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-fuchsia-400 transition-all"
                                     value={entry.anestesista}
                                     onChange={e => onUpdate({ anestesista: e.target.value })}
                                     disabled={isReadOnly}
                                 >
-                                    <option value="">Sin anestesista</option>
+                                    <option value="">- No requiere -</option>
                                     {anestesistas.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
                                 </select>
                             </div>
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-purple-400">{monedaSymbol}</span>
-                                <MoneyInput
-                                    className="w-full bg-purple-50 border border-purple-100 rounded-xl pl-8 pr-3 py-2.5 text-sm text-purple-800 font-semibold focus:border-purple-400 outline-none transition-all text-right"
-                                    value={entry.liq_anestesista}
-                                    onChange={val => onUpdate({ liq_anestesista: val })}
-                                    placeholder="0,00"
-                                />
+                            <div className="flex-1 space-y-1">
+                                <span className="text-[10px] font-bold text-slate-400 pl-1 uppercase">Monto Honorario</span>
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold bg-fuchsia-500 text-white px-1.5 py-0.5 rounded">ARS</span>
+                                        <MoneyInput
+                                            className="w-full bg-white border border-fuchsia-100 rounded-xl pl-12 pr-3 py-2 text-sm font-bold text-fuchsia-700 outline-none focus:border-fuchsia-400 transition-all text-right"
+                                            value={entry.liq_anestesista_ars}
+                                            onChange={val => onUpdate({ liq_anestesista_ars: val })}
+                                            placeholder="0,00"
+                                        />
+                                    </div>
+                                    <div className="relative flex-1">
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold bg-fuchsia-500 text-white px-1.5 py-0.5 rounded">USD</span>
+                                        <MoneyInput
+                                            className="w-full bg-white border border-fuchsia-100 rounded-xl pl-12 pr-3 py-2 text-sm font-bold text-fuchsia-700 outline-none focus:border-fuchsia-400 transition-all text-right"
+                                            value={entry.liq_anestesista_usd}
+                                            onChange={val => onUpdate({ liq_anestesista_usd: val })}
+                                            placeholder="0,00"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                 </div>
-            )}
+            </div>
+
         </div>
     );
 };
 
 // ─── ProfRow ──────────────────────────────────────────────────────────────────
+const ProfRow = ({ label, color, surgeons, prof, pct, liqArs, liqUsd, onChangeProf, onChangePct, isReadOnly }) => {
 
-const colorMap = {
-    blue: { bg: 'bg-blue-50', border: 'border-blue-100', focus: 'focus:border-blue-400', text: 'text-blue-800', label: 'text-blue-500' },
-    indigo: { bg: 'bg-indigo-50', border: 'border-indigo-100', focus: 'focus:border-indigo-400', text: 'text-indigo-800', label: 'text-indigo-500' },
-    teal: { bg: 'bg-teal-50', border: 'border-teal-100', focus: 'focus:border-teal-400', text: 'text-teal-800', label: 'text-teal-500' },
-};
-
-const ProfRow = ({ color, label, profValue, pctValue, liqValue, moneda, surgeons, isReadOnly, onProfChange, onPctChange, onLiqChange }) => {
-    const c = colorMap[color] || colorMap.blue;
-    const monedaSymbol = moneda === 'USD' ? 'USD' : '$';
+    // Color variants
+    const colors = {
+        blue: 'focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-50/50',
+        indigo: 'focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50/50',
+        violet: 'focus-within:border-violet-300 focus-within:ring-4 focus-within:ring-violet-50/50',
+    };
+    const activeColor = colors[color] || colors.blue;
 
     return (
-        <div className={`grid grid-cols-[1fr_auto_1fr] gap-3 items-center p-3 ${c.bg} rounded-xl border ${c.border}`}>
-            {/* Selector profesional */}
-            <select
-                className={`bg-white border ${c.border} rounded-lg px-2 py-2 text-sm text-slate-700 ${c.focus} outline-none transition-all`}
-                value={profValue}
-                onChange={e => onProfChange(e.target.value)}
-                disabled={isReadOnly}
-            >
-                <option value="">Seleccionar profesional</option>
-                {surgeons.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-            </select>
+        <div className={`bg-slate-50/50 border border-slate-100 rounded-2xl p-2 flex flex-col sm:flex-row items-center gap-2 transition-all ${activeColor}`}>
 
-            {/* Porcentaje */}
-            <div className={`flex items-center gap-1 bg-white border ${c.border} rounded-lg px-2 py-2`}>
-                <Percent size={12} className={c.label} />
-                <input
-                    type="number"
-                    min="0" max="100"
-                    className={`w-12 text-sm font-bold ${c.text} bg-transparent outline-none text-center`}
-                    value={pctValue}
-                    onChange={e => onPctChange(parseFloat(e.target.value) || 0)}
-                    readOnly={isReadOnly}
-                />
+            {/* Label & Select */}
+            <div className="flex-1 w-full min-w-[180px]">
+                <div className="relative">
+                    <span className="absolute left-3 top-[-6px] bg-white px-1 text-[9px] font-bold text-slate-400 uppercase tracking-widest z-10">{label}</span>
+                    <select
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-transparent transition-all pt-3"
+                        value={prof}
+                        onChange={e => onChangeProf(e.target.value)}
+                        disabled={isReadOnly}
+                    >
+                        <option value="">Seleccionar...</option>
+                        {surgeons.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                    </select>
+                </div>
             </div>
 
-            {/* Monto liquidar */}
-            <div className="relative">
-                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${c.label}`}>{monedaSymbol}</span>
-                <MoneyInput
-                    className={`w-full bg-white border ${c.border} rounded-lg pl-8 pr-3 py-2 text-sm font-bold ${c.text} ${c.focus} outline-none transition-all text-right`}
-                    value={liqValue}
-                    onChange={onLiqChange}
-                    placeholder="0,00"
-                />
+            {/* Pct */}
+            <div className="w-20">
+                <div className="relative">
+                    <span className="absolute left-1/2 -translate-x-1/2 top-[-6px] bg-white px-1 text-[9px] font-bold text-slate-400 uppercase z-10">%</span>
+                    <input
+                        type="number"
+                        className="w-full bg-white border border-slate-200 rounded-xl py-2.5 text-center font-bold text-slate-700 outline-none"
+                        value={pct}
+                        onChange={e => onChangePct(parseFloat(e.target.value) || 0)}
+                        readOnly={isReadOnly}
+                    />
+                </div>
             </div>
+
+            {/* Liquidations (Read Only) */}
+            <div className="flex-1 flex gap-2 w-full">
+                <div className="relative flex-1">
+                    <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">ARS</span>
+                    <div className="w-full bg-slate-100 border border-transparent rounded-xl pl-10 pr-2 py-2.5 text-sm font-bold text-slate-600 text-right">
+                        {new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(liqArs || 0)}
+                    </div>
+                </div>
+                <div className="relative flex-1">
+                    <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">USD</span>
+                    <div className="w-full bg-slate-100 border border-transparent rounded-xl pl-10 pr-2 py-2.5 text-sm font-bold text-slate-600 text-right">
+                        {new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(liqUsd || 0)}
+                    </div>
+                </div>
+            </div>
+
         </div>
     );
 };
