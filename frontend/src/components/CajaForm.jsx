@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, Plus, Trash2, MessageSquare, Calendar, X, Bell, CheckCircle2, Circle, ChevronDown, ChevronUp, User, DollarSign, Percent, Building2, Lock, Edit2 } from 'lucide-react';
+import { Save, Plus, Trash2, MessageSquare, Calendar, X, Bell, CheckCircle2, Circle, LayoutDashboard, ChevronDown, ChevronUp, User, DollarSign, Percent, Building2, Lock, Edit2 } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
