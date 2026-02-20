@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle, Clock, Home, StickyNote, LayoutGrid, List } from 'lucide-react';
+import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -78,8 +78,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         diagnostico: '',
         habitacion: '',
         fechaDocumento: new Date().toISOString().split('T')[0],
-        status: 'pendiente',
-        // Additional fields for Pedidos Medicos
+        suspendida: false, // New field for "not performed" status
         practicas: ['', '', '', '', ''], // Array of strings (practice names)
     };
 
@@ -498,6 +497,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 practicas, // Only for Pedidos
                 codigosCirugia: emptyForm.codigosCirugia, // Reset surgery codes
                 diagnostico: orden.diagnostico || '',
+                suspendida: orden.suspendida || false,
                 fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
             });
         } else {
@@ -528,6 +528,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 descripcionMaterial: orden.descripcionMaterial || '',
                 diagnostico: orden.diagnostico || '',
                 observaciones: orden.observaciones || '',
+                suspendida: orden.suspendida || false,
                 fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
             });
         }
@@ -977,6 +978,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 <option value="">Todos los estados</option>
                                 <option value="pendientes">Pendientes</option>
                                 <option value="enviadas">Enviadas</option>
+                                <option value="suspendidas">Suspendidas</option>
                             </select>
                             {/* Search by Patient */}
                             <div className="relative">
@@ -1010,7 +1012,11 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         const matchProfesional = !filterProfesional || orden.profesional === filterProfesional;
                         const matchObraSocial = !filterObraSocial || orden.obraSocial === filterObraSocial;
                         const matchDate = !filterDate || orden.fechaCirugia === filterDate;
-                        const matchStatus = !filterStatus || (filterStatus === 'enviadas' ? orden.enviada : !orden.enviada);
+                        const matchStatus = !filterStatus || (
+                            filterStatus === 'enviadas' ? (orden.enviada && !orden.suspendida) :
+                                filterStatus === 'suspendidas' ? orden.suspendida :
+                                    (!orden.enviada && !orden.suspendida)
+                        );
                         const matchPaciente = !searchPaciente || orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase());
 
                         // Period Match Logic
@@ -1018,9 +1024,9 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         let matchPeriodo = true;
                         if (targetDateStr && filterPeriodo !== 'todas') {
                             if (filterPeriodo === 'proximas') {
-                                matchPeriodo = targetDateStr >= todayStr;
+                                matchPeriodo = targetDateStr >= todayStr && !orden.suspendida;
                             } else if (filterPeriodo === 'realizadas') {
-                                matchPeriodo = targetDateStr < todayStr;
+                                matchPeriodo = targetDateStr < todayStr && !orden.suspendida;
                             }
                         }
 
@@ -1073,8 +1079,9 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     return (
                                         <div
                                             key={orden.id}
-                                            className={`p-4 flex items-center justify-between transition-colors ${orden.enviada ? 'bg-slate-50 opacity-75 grayscale-[0.5]' :
-                                                isUrgent ? 'bg-red-50 hover:bg-red-100 border-l-4 border-red-500' : 'hover:bg-slate-50'
+                                            className={`p-4 flex items-center justify-between transition-colors ${orden.suspendida ? 'bg-slate-100 opacity-60 grayscale-[0.8]' :
+                                                orden.enviada ? 'bg-slate-50 opacity-75 grayscale-[0.5]' :
+                                                    isUrgent ? 'bg-red-50 hover:bg-red-100 border-l-4 border-red-500' : 'hover:bg-slate-50'
                                                 }`}
                                         >
                                             <div className="flex items-center gap-4">
@@ -1154,6 +1161,16 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
                                                     </button>
                                                     <button
+                                                        onClick={() => handleToggleField(orden, 'suspendida')}
+                                                        className={`p-2 rounded-lg transition-colors ${orden.suspendida
+                                                            ? 'text-slate-600 bg-slate-200'
+                                                            : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                                                            }`}
+                                                        title={orden.suspendida ? "Re-activar cirugía" : "Suspender cirugía"}
+                                                    >
+                                                        <Ban size={18} />
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleEdit(orden)}
                                                         className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                                                         title="Editar"
@@ -1211,8 +1228,9 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 return (
                                     <div
                                         key={orden.id}
-                                        className={`bg-white rounded-2xl border p-5 flex flex-col justify-between transition-all hover:shadow-md ${orden.enviada ? 'opacity-75 grayscale-[0.3] border-slate-200' :
-                                            isUrgent ? 'border-red-200 shadow-sm shadow-red-50 ring-1 ring-red-100' : 'border-slate-100'
+                                        className={`bg-white rounded-2xl border p-5 flex flex-col justify-between transition-all hover:shadow-md ${orden.suspendida ? 'opacity-60 grayscale-[0.6] bg-slate-50 border-slate-200 shadow-inner' :
+                                            orden.enviada ? 'opacity-75 grayscale-[0.3] border-slate-200' :
+                                                isUrgent ? 'border-red-200 shadow-sm shadow-red-50 ring-1 ring-red-100' : 'border-slate-100'
                                             }`}
                                     >
                                         <div>
@@ -1230,6 +1248,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                     ) : orden.enviada ? (
                                                         <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[10px] font-bold uppercase rounded-lg">
                                                             Enviada
+                                                        </span>
+                                                    ) : orden.suspendida ? (
+                                                        <span className="px-2 py-1 bg-slate-600 text-white text-[10px] font-bold uppercase rounded-lg">
+                                                            Suspendida
                                                         </span>
                                                     ) : (
                                                         <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase rounded-lg">
@@ -1312,6 +1334,16 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                     title="Estado"
                                                 >
                                                     {orden.enviada ? <ArchiveRestore size={20} /> : <CheckCircle2 size={20} />}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleToggleField(orden, 'suspendida')}
+                                                    className={`p-2.5 rounded-xl transition-colors ${orden.suspendida
+                                                        ? 'text-slate-600 bg-slate-200'
+                                                        : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                                                        }`}
+                                                    title={orden.suspendida ? "Re-activar" : "Suspender"}
+                                                >
+                                                    <Ban size={20} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleEdit(orden)}
