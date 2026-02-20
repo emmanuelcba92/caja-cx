@@ -328,34 +328,34 @@ const AdminView = () => {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             {/* Header */}
-            <div className="flex items-center gap-4 bg-slate-900 text-white p-8 rounded-3xl shadow-2xl overflow-hidden relative">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                <div className="w-16 h-16 bg-teal-600 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/20">
+            <div className="flex items-center gap-4 bg-gradient-to-r from-teal-700 to-teal-600 text-white p-8 rounded-3xl shadow-2xl shadow-teal-100 overflow-hidden relative">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shrink-0 shadow-lg border border-white/30">
                     <Shield size={32} />
                 </div>
                 <div>
                     <h2 className="text-3xl font-black tracking-tight">Panel de Control</h2>
-                    <p className="text-teal-200 font-medium">Gestión global de accesos y usuarios</p>
+                    <p className="text-teal-100 font-medium">Gestión global de accesos y usuarios</p>
                 </div>
             </div>
 
             <div className="flex gap-4 mb-8">
                 <button
                     onClick={() => setActiveTab('users')}
-                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-teal-600 text-white shadow-lg shadow-teal-100' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}
                 >
                     Usuarios y Permisos
                 </button>
                 <button
                     onClick={() => setActiveTab('roles')}
-                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'roles' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'roles' ? 'bg-teal-600 text-white shadow-lg shadow-teal-100' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}
                 >
                     Gestión de Roles
                 </button>
                 {isSuperAdmin && (
                     <button
                         onClick={() => setActiveTab('maintenance')}
-                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-teal-600 text-white shadow-lg shadow-teal-100' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}
                     >
                         Mantenimiento
                     </button>
@@ -365,12 +365,12 @@ const AdminView = () => {
             {activeTab === 'users' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Section: Authorized Emails */}
-                    <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
+                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
-                            <div className="p-3 bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 rounded-xl">
+                            <div className="p-3 bg-teal-50 text-teal-600 rounded-xl">
                                 <Mail size={24} />
                             </div>
-                            <h3 className="text-xl font-bold dark:text-white">Usuarios Autorizados</h3>
+                            <h3 className="text-xl font-bold text-slate-900">Usuarios Autorizados</h3>
                         </div>
 
                         <form onSubmit={handleAddAuthorized} className="flex gap-3 mb-8">
@@ -379,14 +379,14 @@ const AdminView = () => {
                                 <input
                                     type="email"
                                     placeholder="nuevo@usuario.com"
-                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all dark:text-white"
+                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all text-slate-900"
                                     value={newEmail}
                                     onChange={(e) => setNewEmail(e.target.value)}
                                     required
                                 />
                             </div>
                             <select
-                                className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all dark:text-white text-sm font-bold"
+                                className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all text-slate-900 text-sm font-bold"
                                 value={newRole}
                                 onChange={(e) => setNewRole(e.target.value)}
                             >
@@ -394,7 +394,7 @@ const AdminView = () => {
                                     <option key={r.id} value={r.id}>{r.name}</option>
                                 ))}
                             </select>
-                            <button type="submit" className="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 dark:shadow-none transition-all">
+                            <button type="submit" className="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-teal-100 transition-all">
                                 <UserPlus size={20} />
                                 <span className="hidden sm:inline">Autorizar</span>
                             </button>
@@ -402,13 +402,13 @@ const AdminView = () => {
 
                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                             {authorizedEmails.map(auth => (
-                                <div key={auth.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700 rounded-2xl group hover:border-teal-200 dark:hover:border-teal-900 transition-all">
+                                <div key={auth.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl group hover:border-teal-200 transition-all">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200 dark:border-slate-700 group-hover:text-teal-500 transition-colors">
+                                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200 group-hover:text-teal-500 transition-colors">
                                             {auth.email[0].toUpperCase()}
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="font-semibold text-slate-700 dark:text-slate-300">{auth.email}</span>
+                                            <span className="font-semibold text-slate-700">{auth.email}</span>
                                             <select
                                                 value={auth.role || 'user'}
                                                 onChange={(e) => handleUpdateRole(auth.id, e.target.value)}
@@ -421,7 +421,6 @@ const AdminView = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        {/* VIEW BUTTON FOR AUTHORIZED USERS */}
                                         {profiles[auth.id || ''] || (auth.email && Object.values(profiles).find(p => p.email === auth.email)) ? (
                                             <button
                                                 onClick={() => {
@@ -429,7 +428,7 @@ const AdminView = () => {
                                                     if (targetUid) switchContext(targetUid);
                                                 }}
                                                 disabled={viewingUid === (auth.id || Object.keys(profiles).find(uid => profiles[uid].email === auth.email))}
-                                                className="p-2 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded-lg transition-all"
+                                                className="p-2 text-teal-500 hover:bg-teal-50 rounded-lg transition-all"
                                                 title="Entrar a esta caja"
                                             >
                                                 <ArrowRight size={18} />
@@ -438,7 +437,7 @@ const AdminView = () => {
 
                                         <button
                                             onClick={() => handleRemoveAuthorized(auth.id)}
-                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                                             title="Eliminar autorización"
                                         >
                                             <Trash2 size={18} />
@@ -450,13 +449,13 @@ const AdminView = () => {
                     </div>
 
                     {/* Section: All User Data (Doctors) */}
-                    <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
+                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
-                            <div className="p-3 bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 rounded-xl">
+                            <div className="p-3 bg-teal-50 text-teal-600 rounded-xl">
                                 <Users size={24} />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold dark:text-white">Cuentas Activas</h3>
+                                <h3 className="text-xl font-bold text-slate-900">Cuentas Activas</h3>
                                 <p className="text-xs text-slate-400 font-medium">Bases de datos con registros</p>
                             </div>
                         </div>
@@ -466,7 +465,7 @@ const AdminView = () => {
                             <input
                                 type="text"
                                 placeholder="Buscar por Nombre, Email o UID..."
-                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all dark:text-white"
+                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all text-slate-900"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
@@ -477,16 +476,16 @@ const AdminView = () => {
                                 <div
                                     key={doctor.uid}
                                     className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${viewingUid === doctor.uid
-                                        ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800'
-                                        : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-slate-300'
+                                        ? 'bg-teal-50 border-teal-200'
+                                        : 'bg-white border-slate-100 hover:border-slate-300'
                                         }`}
                                 >
                                     <div className="flex items-center gap-3 overflow-hidden">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${viewingUid === doctor.uid ? 'bg-teal-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${viewingUid === doctor.uid ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                                             <Activity size={18} />
                                         </div>
                                         <div className="overflow-hidden">
-                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300 truncate">
+                                            <p className="text-sm font-bold text-slate-700 truncate">
                                                 {doctor.profile?.displayName || doctor.profile?.email || 'Usuario Sin Identificar'}
                                             </p>
                                             {doctor.profile?.email && (
@@ -501,7 +500,7 @@ const AdminView = () => {
                                             <button
                                                 onClick={() => handleWipeData(doctor.uid)}
                                                 title="Borrar toda la información"
-                                                className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+                                                className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                                             >
                                                 <Trash2 size={20} />
                                             </button>
@@ -511,7 +510,7 @@ const AdminView = () => {
                                             disabled={viewingUid === doctor.uid}
                                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-tight transition-all ${viewingUid === doctor.uid
                                                 ? 'bg-teal-500 text-white cursor-default'
-                                                : 'bg-slate-900 text-white hover:bg-teal-600 shadow-md transform hover:scale-105'
+                                                : 'bg-teal-600 text-white hover:bg-teal-700 shadow-md transform hover:scale-105'
                                                 }`}
                                         >
                                             {viewingUid === doctor.uid ? 'Viendo' : (
@@ -525,7 +524,7 @@ const AdminView = () => {
                         {viewingUid !== currentUser.uid && (
                             <button
                                 onClick={() => switchContext(currentUser.uid)}
-                                className="w-full mt-6 py-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl text-slate-400 hover:text-teal-500 hover:border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/10 transition-all font-bold text-sm"
+                                className="w-full mt-6 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-teal-500 hover:border-teal-500 hover:bg-teal-50 transition-all font-bold text-sm"
                             >
                                 Volver a mi cuenta personal
                             </button>
@@ -535,8 +534,8 @@ const AdminView = () => {
             ) : activeTab === 'roles' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Create Role Form */}
-                    <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
-                        <h3 className="text-xl font-bold dark:text-white mb-6">Crear Nuevo Rol</h3>
+                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+                        <h3 className="text-xl font-bold text-slate-900 mb-6">Crear Nuevo Rol</h3>
                         <form onSubmit={handleCreateRole} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-bold text-slate-400 mb-2">Nombre del Rol</label>
@@ -544,7 +543,7 @@ const AdminView = () => {
                                     type="text"
                                     value={roleName}
                                     onChange={(e) => setRoleName(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-xl text-slate-900 dark:text-white"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
                                     placeholder="Ej: Secretaria"
                                     required
                                 />
@@ -558,7 +557,7 @@ const AdminView = () => {
                                             type="checkbox"
                                             checked={rolePermissions[perm]}
                                             onChange={(e) => setRolePermissions(prev => ({ ...prev, [perm]: e.target.checked }))}
-                                            className="w-5 h-5 accent-blue-600"
+                                            className="w-5 h-5 accent-teal-600"
                                         />
                                         <span className="text-sm font-medium text-slate-600">
                                             {{
@@ -575,24 +574,24 @@ const AdminView = () => {
                                 ))}
                             </div>
 
-                            <button type="submit" className="w-full py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700">
+                            <button type="submit" className="w-full py-4 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 shadow-lg shadow-teal-100 transition-all">
                                 Guardar Rol
                             </button>
                         </form>
                     </div>
 
                     {/* Roles List */}
-                    <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
-                        <h3 className="text-xl font-bold dark:text-white mb-6">Roles Existentes</h3>
+                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+                        <h3 className="text-xl font-bold text-slate-900 mb-6">Roles Existentes</h3>
                         <div className="space-y-4">
                             {roles.map(role => (
-                                <div key={role.id} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                                <div key={role.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50">
                                     <div className="flex items-center justify-between mb-3">
-                                        <h4 className="font-bold text-slate-800 dark:text-white">{role.name}</h4>
+                                        <h4 className="font-bold text-slate-800">{role.name}</h4>
                                         {!role.isSystem && (
                                             <button
                                                 onClick={() => handleDeleteRole(role.id)}
-                                                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                             >
                                                 <Trash2 size={18} />
                                             </button>
@@ -603,8 +602,8 @@ const AdminView = () => {
                                             <label
                                                 key={permKey}
                                                 className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all text-xs ${permValue
-                                                    ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                                    ? 'bg-teal-50 text-teal-700'
+                                                    : 'bg-white border border-slate-100 text-slate-400'
                                                     }`}
                                                 onClick={() => handleToggleRolePermission(role.id, permKey, permValue)}
                                             >
@@ -612,7 +611,7 @@ const AdminView = () => {
                                                     type="checkbox"
                                                     checked={permValue}
                                                     onChange={() => { }}
-                                                    className="w-4 h-4 accent-green-600 pointer-events-none"
+                                                    className="w-4 h-4 accent-teal-600 pointer-events-none"
                                                 />
                                                 <span className="font-medium">
                                                     {{
@@ -634,13 +633,13 @@ const AdminView = () => {
                     </div>
                 </div>
             ) : (
-                <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
+                <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
                     <div className="flex items-center gap-3 mb-8">
-                        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl">
+                        <div className="p-3 bg-red-50 text-red-600 rounded-xl">
                             <Trash2 size={24} />
                         </div>
                         <div>
-                            <h3 className="text-xl font-bold dark:text-white">Borrado por Rango de Fecha</h3>
+                            <h3 className="text-xl font-bold text-slate-900">Borrado por Rango de Fecha</h3>
                             <p className="text-xs text-slate-400 font-medium">Elimina órdenes según la fecha de cirugía/realización</p>
                         </div>
                     </div>
@@ -651,7 +650,7 @@ const AdminView = () => {
                             <select
                                 value={maintenanceUser}
                                 onChange={(e) => setMaintenanceUser(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-xl text-slate-900 dark:text-white outline-none"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-teal-500"
                             >
                                 <option value="">Seleccionar cuenta...</option>
                                 {allDoctors.map(doctor => (
@@ -669,7 +668,7 @@ const AdminView = () => {
                                     type="date"
                                     value={startDate}
                                     onChange={(e) => setStartDate(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-xl text-slate-900 dark:text-white outline-none"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-teal-500"
                                 />
                             </div>
                             <div>
@@ -678,7 +677,7 @@ const AdminView = () => {
                                     type="date"
                                     value={endDate}
                                     onChange={(e) => setEndDate(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-xl text-slate-900 dark:text-white outline-none"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-teal-500"
                                 />
                             </div>
                         </div>

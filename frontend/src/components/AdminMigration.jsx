@@ -171,16 +171,16 @@ const AdminMigration = () => {
                 )}
             </div>
 
-            <div className="p-6 bg-slate-900 rounded-2xl shadow-xl text-white">
+            <div className="p-6 bg-slate-50 rounded-2xl shadow-xl border border-slate-200">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold flex items-center gap-2">
-                        <Repeat className="text-teal-400" size={20} />
+                    <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                        <Repeat className="text-teal-600" size={20} />
                         Diagnóstico Global de Datos
                     </h3>
                     <button
                         onClick={runDiagnostic}
                         disabled={loading}
-                        className="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-xs font-bold transition-colors"
+                        className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-colors shadow-lg shadow-teal-50"
                     >
                         Escanear Firestore
                     </button>
@@ -189,13 +189,13 @@ const AdminMigration = () => {
                 {diagnostic && (
                     <div className="space-y-4">
                         {Object.entries(diagnostic).map(([email, colls]) => (
-                            <div key={email} className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                                <div className="font-bold text-teal-300 mb-2 truncate">{email}</div>
+                            <div key={email} className="bg-white p-4 rounded-xl border border-slate-100">
+                                <div className="font-bold text-teal-700 mb-2 truncate">{email}</div>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                     {Object.entries(colls).map(([name, count]) => (
-                                        <div key={name} className="bg-slate-900 p-2 rounded border border-slate-700">
-                                            <div className="text-[10px] text-slate-500 uppercase">{name}</div>
-                                            <div className="text-lg font-bold text-white">{count}</div>
+                                        <div key={name} className="bg-slate-50 p-2 rounded border border-slate-100/50">
+                                            <div className="text-[10px] text-slate-400 uppercase">{name}</div>
+                                            <div className="text-lg font-bold text-slate-700">{count}</div>
                                         </div>
                                     ))}
                                 </div>

@@ -221,7 +221,7 @@ const LiquidacionView = () => {
                     if (amt !== 0) hasLiquidation = true;
                 }
 
-                // 2. Check Secondary
+                // 2. Check Secondary (including Anesthesiologist)
                 if (item.prof_1 === selectedProf) {
                     const amt = parseFloat(item.liq_prof_1_secondary) || 0;
                     if (item.liq_prof_1_currency_secondary === 'USD') liqDolaresForEntry += amt;
@@ -237,7 +237,29 @@ const LiquidacionView = () => {
                     if (item.liq_prof_3_currency_secondary === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
                     if (amt !== 0) hasLiquidation = true;
+                } else if (item.anestesista === selectedProf) {
+                    const amt = parseFloat(item.liq_anestesista_secondary) || 0;
+                    if (item.liq_anestesista_currency_secondary === 'USD') liqDolaresForEntry += amt;
+                    else liqPesosForEntry += amt;
+                    if (amt !== 0) hasLiquidation = true;
                 }
+
+                // 3. Fallback to explicit _ars / _usd fields if available (from new CajaForm)
+                if (item.prof_1 === selectedProf) {
+                    if (item.liq_prof_1_ars > 0 && liqPesosForEntry === 0) liqPesosForEntry = item.liq_prof_1_ars;
+                    if (item.liq_prof_1_usd > 0 && liqDolaresForEntry === 0) liqDolaresForEntry = item.liq_prof_1_usd;
+                } else if (item.prof_2 === selectedProf) {
+                    if (item.liq_prof_2_ars > 0 && liqPesosForEntry === 0) liqPesosForEntry = item.liq_prof_2_ars;
+                    if (item.liq_prof_2_usd > 0 && liqDolaresForEntry === 0) liqDolaresForEntry = item.liq_prof_2_usd;
+                } else if (item.prof_3 === selectedProf) {
+                    if (item.liq_prof_3_ars > 0 && liqPesosForEntry === 0) liqPesosForEntry = item.liq_prof_3_ars;
+                    if (item.liq_prof_3_usd > 0 && liqDolaresForEntry === 0) liqDolaresForEntry = item.liq_prof_3_usd;
+                } else if (item.anestesista === selectedProf) {
+                    if (item.liq_anestesista_ars > 0 && liqPesosForEntry === 0) liqPesosForEntry = item.liq_anestesista_ars;
+                    if (item.liq_anestesista_usd > 0 && liqDolaresForEntry === 0) liqDolaresForEntry = item.liq_anestesista_usd;
+                }
+
+                if (liqPesosForEntry !== 0 || liqDolaresForEntry !== 0) hasLiquidation = true;
 
                 // 3. Add to list if relevant
                 // We show the row if there is ANY liquidation amount

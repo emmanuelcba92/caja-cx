@@ -691,17 +691,37 @@ const CajaForm = () => {
                                             <td className="px-4 py-3">
                                                 <div className="space-y-1">
                                                     {[
-                                                        { name: item.prof_1, ars: item.liq_prof_1_ars, usd: item.liq_prof_1_usd },
-                                                        { name: item.prof_2, ars: item.liq_prof_2_ars, usd: item.liq_prof_2_usd },
-                                                        { name: item.prof_3, ars: item.liq_prof_3_ars, usd: item.liq_prof_3_usd },
-                                                        { name: item.anestesista, ars: item.liq_anestesista_ars, usd: item.liq_anestesista_usd, label: 'Anest.' }
+                                                        {
+                                                            name: item.prof_1,
+                                                            ars: item.liq_prof_1_ars ?? (item.liq_prof_1_currency === 'ARS' ? item.liq_prof_1 : 0),
+                                                            usd: item.liq_prof_1_usd ?? (item.liq_prof_1_currency === 'USD' ? item.liq_prof_1 : item.liq_prof_1_secondary),
+                                                            label: 'Prof. 1'
+                                                        },
+                                                        {
+                                                            name: item.prof_2,
+                                                            ars: item.liq_prof_2_ars ?? (item.liq_prof_2_currency === 'ARS' ? item.liq_prof_2 : 0),
+                                                            usd: item.liq_prof_2_usd ?? (item.liq_prof_2_currency === 'USD' ? item.liq_prof_2 : item.liq_prof_2_secondary),
+                                                            label: 'Prof. 2'
+                                                        },
+                                                        {
+                                                            name: item.prof_3,
+                                                            ars: item.liq_prof_3_ars ?? (item.liq_prof_3_currency === 'ARS' ? item.liq_prof_3 : 0),
+                                                            usd: item.liq_prof_3_usd ?? (item.liq_prof_3_currency === 'USD' ? item.liq_prof_3 : item.liq_prof_3_secondary),
+                                                            label: 'Prof. 3'
+                                                        },
+                                                        {
+                                                            name: item.anestesista,
+                                                            ars: item.liq_anestesista_ars ?? (item.liq_anestesista_currency === 'ARS' ? item.liq_anestesista : 0),
+                                                            usd: item.liq_anestesista_usd ?? (item.liq_anestesista_currency === 'USD' ? item.liq_anestesista : item.liq_anestesista_secondary),
+                                                            label: 'Anest.'
+                                                        }
                                                     ].filter(p => p.name).map((p, i) => (
                                                         <div key={i} className="flex flex-col border-l-2 border-teal-100 pl-2">
                                                             <div className="text-[10px] font-bold text-teal-800 uppercase tracking-tighter">
-                                                                {p.label || 'Prof.'}: {p.name}
+                                                                {p.label}: {p.name}
                                                             </div>
                                                             <div className="text-[9px] text-slate-500 font-medium flex gap-2">
-                                                                {p.ars > 0 && <span>ARS {fmt(p.ars).replace('$ ', '')}</span>}
+                                                                {(p.ars > 0 || (!p.ars && !p.usd)) && <span>ARS {fmt(p.ars || 0).replace('$ ', '')}</span>}
                                                                 {p.usd > 0 && <span>USD {fmt(p.usd, 'USD').replace('USD ', '')}</span>}
                                                             </div>
                                                         </div>

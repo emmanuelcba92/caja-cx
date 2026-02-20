@@ -8,7 +8,7 @@ import { updatePassword, updateEmail, reauthenticateWithCredential, EmailAuthPro
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
-const UserMenu = ({ darkMode, setDarkMode }) => {
+const UserMenu = () => {
     const { currentUser, logout, viewingUid, sharedAccounts, switchContext, linkEmailPassword, hasPasswordProvider } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
 
@@ -162,15 +162,15 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
             {/* Trigger Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all group"
+                className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-100 transition-all group"
             >
                 <div className="text-right hidden sm:block">
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{currentUser?.email}</p>
+                    <p className="text-xs font-bold text-slate-700">{currentUser?.email}</p>
                     <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium group-hover:text-teal-500 transition-colors">
                         {viewingUid === currentUser.uid ? 'Mi Caja' : 'Caja Compartida'}
                     </p>
                 </div>
-                <div className="w-10 h-10 bg-slate-200 dark:bg-slate-600 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-300 group-hover:bg-teal-100 group-hover:text-teal-600 transition-colors">
+                <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 group-hover:bg-teal-100 group-hover:text-teal-600 transition-colors">
                     <User size={20} />
                 </div>
                 <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
@@ -183,11 +183,11 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
 
                     {/* Header */}
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700">
-                        <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{currentUser?.email}</p>
+                    <div className="p-4 bg-slate-50 border-b border-slate-100">
+                        <p className="text-sm font-bold text-slate-900 truncate">{currentUser?.email}</p>
                         <p className="text-xs text-slate-400">Cuenta de Usuario</p>
                     </div>
 
@@ -199,7 +199,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
 
                             <button
                                 onClick={() => { switchContext(currentUser.uid); setIsOpen(false); }}
-                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === currentUser.uid ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === currentUser.uid ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'}`}
                             >
                                 <span className="flex items-center gap-2">
                                     <Shield size={16} /> Mi Caja
@@ -211,7 +211,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <button
                                     key={acc.id}
                                     onClick={() => { switchContext(acc.ownerUid); setIsOpen(false); }}
-                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === acc.ownerUid ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === acc.ownerUid ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'}`}
                                 >
                                     <span className="flex items-center gap-2">
                                         <Users size={16} /> {acc.ownerEmail.split('@')[0]}
@@ -221,36 +221,29 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                             ))}
                         </div>
 
-                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+                        <div className="h-px bg-slate-100 my-1" />
 
                         {/* Settings Section */}
                         <div className="px-2 py-1.5">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Configuración</p>
-                            <button
-                                onClick={() => setDarkMode(!darkMode)}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                            >
-                                {darkMode ? <Sun size={16} className="text-yellow-500" /> : <Moon size={16} className="text-slate-500" />}
-                                {darkMode ? 'Modo Claro' : 'Modo Oscuro'}
-                            </button>
 
                             <button
                                 onClick={() => { setShowPasswordModal(true); setIsOpen(false); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
                             >
                                 <Key size={16} /> Cambiar Contraseña
                             </button>
 
                             <button
                                 onClick={() => { setShowEmailModal(true); setIsOpen(false); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
                             >
                                 <Mail size={16} /> Cambiar Email
                             </button>
 
                             <button
                                 onClick={() => { setShowPinModal(true); setIsOpen(false); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
                             >
                                 <Shield size={16} /> Configurar PIN de Seguridad
                             </button>
@@ -259,7 +252,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                             {!hasPasswordProvider() && (
                                 <button
                                     onClick={() => { setShowLinkPasswordModal(true); setIsOpen(false); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors"
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-teal-600 hover:bg-teal-50 transition-colors"
                                 >
                                     <Key size={16} /> Vincular Contraseña
                                 </button>
@@ -274,18 +267,18 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                         setShowEmailModal(true);
                                         setIsOpen(false);
                                     }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors border border-amber-100 dark:border-amber-900/50 mt-1"
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-amber-600 hover:bg-amber-50 transition-colors border border-amber-100 mt-1"
                                 >
                                     <Shield size={16} /> Migrar a @coat.com.ar
                                 </button>
                             )}
                         </div>
 
-                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+                        <div className="h-px bg-slate-100 my-1" />
 
                         <button
                             onClick={logout}
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
                         >
                             <LogOut size={16} /> Cerrar Sesión
                         </button>
@@ -296,14 +289,14 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
             {/* Change Password Modal */}
             {showPasswordModal && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Cambiar Contraseña</h3>
+                    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold text-slate-900 mb-4">Cambiar Contraseña</h3>
                         <form onSubmit={handlePasswordChange} className="space-y-4">
                             <div>
                                 <input
                                     type="password"
                                     placeholder="Contraseña Actual"
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 dark:text-white"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
                                     value={currentPassword}
                                     onChange={(e) => setCurrentPassword(e.target.value)}
                                     required
@@ -313,7 +306,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <input
                                     type="password"
                                     placeholder="Nueva conraseña (min 6 caracteres)"
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 dark:text-white"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
                                     value={newPassword}
                                     onChange={(e) => setNewPassword(e.target.value)}
                                     minLength={6}
@@ -324,7 +317,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <input
                                     type="password"
                                     placeholder="Confirmar Nueva Contraseña"
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 dark:text-white"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     minLength={6}
@@ -335,7 +328,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <button
                                     type="button"
                                     onClick={() => setShowPasswordModal(false)}
-                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl"
+                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-xl"
                                 >
                                     Cancelar
                                 </button>
@@ -355,13 +348,13 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
             {/* Change Email Modal */}
             {showEmailModal && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Cambiar Email</h3>
+                    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold text-slate-900 mb-4">Cambiar Email</h3>
                         <form onSubmit={handleEmailChange}>
                             <input
                                 type="email"
                                 placeholder="Nuevo correo electrónico"
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-teal-500 dark:text-white"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-teal-500"
                                 value={newEmail}
                                 onChange={(e) => setNewEmail(e.target.value)}
                                 required
@@ -370,7 +363,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <button
                                     type="button"
                                     onClick={() => setShowEmailModal(false)}
-                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl"
+                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-xl"
                                 >
                                     Cancelar
                                 </button>
@@ -390,8 +383,8 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
             {/* Change PIN Modal */}
             {showPinModal && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Configurar PIN de Admin</h3>
+                    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold text-slate-900 mb-4">Configurar PIN de Admin</h3>
                         <p className="text-xs text-slate-500 mb-4">Protege acciones sensibles (borrar, editar en modo seguro).</p>
                         <form onSubmit={handlePinChange} className="space-y-4">
                             <div>
@@ -399,7 +392,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <input
                                     type="text"
                                     placeholder="PIN Actual (ej: 1234)"
-                                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 dark:text-white text-center tracking-widest"
+                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-center tracking-widest"
                                     value={currentPin}
                                     onChange={(e) => setCurrentPin(e.target.value)}
                                     required
@@ -411,7 +404,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <input
                                     type="text"
                                     placeholder="Nuevo PIN"
-                                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 dark:text-white text-center font-bold tracking-widest text-xl"
+                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold tracking-widest text-xl"
                                     value={newPin}
                                     onChange={(e) => setNewPin(e.target.value)}
                                     maxLength={8}
@@ -424,7 +417,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <input
                                     type="text"
                                     placeholder="Repetir Nuevo PIN"
-                                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 dark:text-white text-center font-bold tracking-widest text-xl"
+                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold tracking-widest text-xl"
                                     value={confirmPin}
                                     onChange={(e) => setConfirmPin(e.target.value)}
                                     maxLength={8}
@@ -436,7 +429,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <button
                                     type="button"
                                     onClick={() => setShowPinModal(false)}
-                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl"
+                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-xl"
                                 >
                                     Cancelar
                                 </button>
@@ -456,15 +449,15 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
             {/* Link Password Modal */}
             {showLinkPasswordModal && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Vincular Contraseña</h3>
+                    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">Vincular Contraseña</h3>
                         <p className="text-xs text-slate-500 mb-4">Crea una contraseña para acceder con email y contraseña además de Google.</p>
                         <form onSubmit={handleLinkPassword} className="space-y-4">
                             <div>
                                 <input
                                     type="password"
                                     placeholder="Nueva Contraseña (min 6 caracteres)"
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                     value={linkPassword}
                                     onChange={(e) => setLinkPassword(e.target.value)}
                                     minLength={6}
@@ -475,7 +468,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <input
                                     type="password"
                                     placeholder="Confirmar Contraseña"
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                     value={linkConfirmPassword}
                                     onChange={(e) => setLinkConfirmPassword(e.target.value)}
                                     minLength={6}
@@ -486,7 +479,7 @@ const UserMenu = ({ darkMode, setDarkMode }) => {
                                 <button
                                     type="button"
                                     onClick={() => setShowLinkPasswordModal(false)}
-                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl"
+                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-xl"
                                 >
                                     Cancelar
                                 </button>

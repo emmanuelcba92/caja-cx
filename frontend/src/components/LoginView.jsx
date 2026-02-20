@@ -124,7 +124,7 @@ const LoginView = () => {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-slate-900 text-white py-2 rounded-lg font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-50 disabled:opacity-50"
                     >
                         {loading ? 'Procesando...' : (isRegistering ? <><UserPlus size={18} /> Crear Cuenta</> : <><LogIn size={18} /> Ingresar</>)}
                     </button>

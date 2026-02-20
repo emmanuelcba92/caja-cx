@@ -410,21 +410,24 @@ const ProfesionalesView = () => {
     return (
         <div className="space-y-6">
             {/* Reports Section */}
-            <div className="bg-slate-800 text-white p-6 rounded-2xl shadow-lg border border-slate-700">
-                <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 overflow-hidden relative">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-teal-50 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+                <div className="flex flex-wrap items-center justify-between gap-4 relative z-10">
                     <div>
-                        <h2 className="text-xl font-bold flex items-center gap-2">
-                            <FileText size={24} className="text-teal-400" />
+                        <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                            <div className="p-2 bg-teal-50 rounded-lg text-teal-600">
+                                <FileText size={24} />
+                            </div>
                             Reporte Mensual de Honorarios
                         </h2>
                         <p className="text-slate-400 text-sm mt-1">Genera la planilla general de liquidaciones por mes.</p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-4 bg-slate-700/50 p-2 rounded-xl border border-slate-600">
+                    <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-2 rounded-2xl border border-slate-100">
                         <select
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                            className="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 outline-none focus:border-teal-500"
+                            className="bg-white border border-slate-200 text-slate-700 rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-teal-500 font-bold text-sm"
                         >
                             {[...Array(12)].map((_, i) => (
                                 <option key={i} value={i + 1}>{new Date(0, i).toLocaleString('es-AR', { month: 'long' }).toUpperCase()}</option>
@@ -433,17 +436,17 @@ const ProfesionalesView = () => {
                         <select
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                            className="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 outline-none focus:border-teal-500"
+                            className="bg-white border border-slate-200 text-slate-700 rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-teal-500 font-bold text-sm"
                         >
                             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
 
-                        <div className="w-px h-8 bg-slate-600 mx-2"></div>
+                        <div className="w-px h-8 bg-slate-200 mx-2"></div>
 
-                        <button onClick={handleGeneralExcel} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20">
+                        <button onClick={handleGeneralExcel} className="flex items-center gap-2 px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-teal-50">
                             <Download size={18} /> Excel
                         </button>
-                        <button onClick={handlePrintMatrix} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-indigo-900/20">
+                        <button onClick={handlePrintMatrix} className="flex items-center gap-2 px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-teal-50">
                             <Printer size={18} /> Imprimir
                         </button>
                     </div>
