@@ -220,6 +220,17 @@ const CajaForm = () => {
                 const share2 = pct2 / 100;
                 const share3 = pct3 / 100;
 
+                // Auto-currency detection: If user enters only USD, switch prof currencies to USD automatically
+                if (field === 'dolares' && value > 0 && updated.pesos === 0) {
+                    if (updated.prof_1) updated.liq_prof_1_currency = 'USD';
+                    if (updated.prof_2) updated.liq_prof_2_currency = 'USD';
+                    if (updated.prof_3) updated.liq_prof_3_currency = 'USD';
+                } else if (field === 'pesos' && value > 0 && updated.dolares === 0) {
+                    if (updated.prof_1) updated.liq_prof_1_currency = 'ARS';
+                    if (updated.prof_2) updated.liq_prof_2_currency = 'ARS';
+                    if (updated.prof_3) updated.liq_prof_3_currency = 'ARS';
+                }
+
                 // Only update amounts if they are currently linked to percentages
                 // (In this system they always are, but we trigger the update here)
                 if (updated.liq_prof_1_currency === 'ARS') updated.liq_prof_1 = payPesos * share1;
@@ -400,7 +411,7 @@ const CajaForm = () => {
 
     const handleVerifyPin = async () => {
         try {
-            const settingsSnap = await getDoc(doc(db, "user_settings", currentUser.uid));
+            const settingsSnap = await getDoc(doc(db, "user_settings", viewingUid));
             let validPins = ['0511', 'admin', '1234'];
             if (settingsSnap.exists() && settingsSnap.data().adminPin) {
                 validPins.push(settingsSnap.data().adminPin);
