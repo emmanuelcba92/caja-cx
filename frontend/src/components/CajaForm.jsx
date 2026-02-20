@@ -228,10 +228,12 @@ const CajaForm = () => {
                     if (updated.prof_1 && updated.liq_prof_1_currency === 'ARS') updated.liq_prof_1_currency = 'USD';
                     if (updated.prof_2 && updated.liq_prof_2_currency === 'ARS') updated.liq_prof_2_currency = 'USD';
                     if (updated.prof_3 && updated.liq_prof_3_currency === 'ARS') updated.liq_prof_3_currency = 'USD';
+                    if (updated.anestesista && updated.liq_anestesista_currency === 'ARS') updated.liq_anestesista_currency = 'USD';
                 } else if (pPesos > 0 && pDolares === 0) {
                     if (updated.prof_1 && updated.liq_prof_1_currency === 'USD') updated.liq_prof_1_currency = 'ARS';
                     if (updated.prof_2 && updated.liq_prof_2_currency === 'USD') updated.liq_prof_2_currency = 'ARS';
                     if (updated.prof_3 && updated.liq_prof_3_currency === 'USD') updated.liq_prof_3_currency = 'ARS';
+                    if (updated.anestesista && updated.liq_anestesista_currency === 'USD') updated.liq_anestesista_currency = 'ARS';
                 }
 
                 // Final Pay amounts to use in calculation (taking into account auto-switches above)
@@ -412,14 +414,21 @@ const CajaForm = () => {
 
     const handleVerifyPin = async () => {
         try {
-            console.log("Verificando PIN para viewingUid:", viewingUid);
-            const settingsSnap = await getDoc(doc(db, "user_settings", viewingUid || currentUser.uid));
+            const uidToUse = viewingUid || currentUser?.uid;
+            console.log("Verificando PIN para:", uidToUse);
+            if (!uidToUse) {
+                alert("Error de sesión: No se identificó el usuario.");
+                return;
+            }
+            const settingsSnap = await getDoc(doc(db, "user_settings", uidToUse));
             let validPins = ['0511', 'admin', '1234'];
             if (settingsSnap.exists() && settingsSnap.data().adminPin) {
-                validPins.push(settingsSnap.data().adminPin);
+                validPins.push(settingsSnap.data().adminPin.toString());
             }
 
-            if (validPins.includes(historyPinInput)) {
+            console.log("PIN ingresado:", historyPinInput, "PINs válidos (incluye DB):", validPins.length > 3);
+
+            if (validPins.includes(historyPinInput.trim())) {
                 setIsPinVerified(true);
                 setShowHistoryPinModal(false);
                 setHistoryPinInput('');
@@ -984,6 +993,11 @@ const CajaForm = () => {
                                                     <span className="text-[10px] font-bold text-slate-500">{item.prof_1}:</span>
                                                     <span className="text-[11px] font-black text-blue-600">
                                                         {item.liq_prof_1_currency === 'USD' ? 'U$D' : '$'} {item.liq_prof_1?.toLocaleString('es-AR')}
+                                                        {item.liq_prof_1_secondary > 0 && (
+                                                            <span className="ml-1 text-[10px] text-blue-400">
+                                                                + {item.liq_prof_1_currency_secondary === 'USD' ? 'U$D' : '$'} {item.liq_prof_1_secondary?.toLocaleString('es-AR')}
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 </div>
                                             )}
@@ -993,6 +1007,11 @@ const CajaForm = () => {
                                                     <span className="text-[10px] font-bold text-slate-500">{item.prof_2}:</span>
                                                     <span className="text-[11px] font-black text-indigo-600">
                                                         {item.liq_prof_2_currency === 'USD' ? 'U$D' : '$'} {item.liq_prof_2?.toLocaleString('es-AR')}
+                                                        {item.liq_prof_2_secondary > 0 && (
+                                                            <span className="ml-1 text-[10px] text-indigo-400">
+                                                                + {item.liq_prof_2_currency_secondary === 'USD' ? 'U$D' : '$'} {item.liq_prof_2_secondary?.toLocaleString('es-AR')}
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 </div>
                                             )}
@@ -1002,6 +1021,11 @@ const CajaForm = () => {
                                                     <span className="text-[10px] font-bold text-slate-500">{item.prof_3}:</span>
                                                     <span className="text-[11px] font-black text-teal-600">
                                                         {item.liq_prof_3_currency === 'USD' ? 'U$D' : '$'} {item.liq_prof_3?.toLocaleString('es-AR')}
+                                                        {item.liq_prof_3_secondary > 0 && (
+                                                            <span className="ml-1 text-[10px] text-teal-400">
+                                                                + {item.liq_prof_3_currency_secondary === 'USD' ? 'U$D' : '$'} {item.liq_prof_3_secondary?.toLocaleString('es-AR')}
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 </div>
                                             )}
@@ -1011,6 +1035,11 @@ const CajaForm = () => {
                                                     <span className="text-[10px] font-bold text-purple-500">Anest: {item.anestesista}</span>
                                                     <span className="text-[11px] font-black text-purple-600">
                                                         {item.liq_anestesista_currency === 'USD' ? 'U$D' : '$'} {item.liq_anestesista?.toLocaleString('es-AR')}
+                                                        {item.liq_anestesista_secondary > 0 && (
+                                                            <span className="ml-1 text-[10px] text-purple-400">
+                                                                + {item.liq_anestesista_currency_secondary === 'USD' ? 'U$D' : '$'} {item.liq_anestesista_secondary?.toLocaleString('es-AR')}
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 </div>
                                             )}
