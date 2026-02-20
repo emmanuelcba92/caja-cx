@@ -1003,7 +1003,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                                     {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
                                                 </p>
                                                 {orden.observaciones && (
-                                                    <div className="mt-1 p-2 bg-blue-50 border-l-2 border-blue-400 text-xs text-blue-700 italic rounded">
+                                                    <div className="mt-1 p-2 bg-teal-50 border-l-2 border-teal-400 text-xs text-teal-700 italic rounded">
                                                         <strong>Nota:</strong> {orden.observaciones}
                                                     </div>
                                                 )}
@@ -1013,7 +1013,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                                     <button
                                                         onClick={() => handleToggleField(orden, 'autorizada')}
                                                         className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
-                                                            ? 'bg-blue-600 text-white border-blue-700 shadow-sm hover:bg-blue-700'
+                                                            ? 'bg-teal-600 text-white border-teal-700 shadow-sm hover:bg-teal-700'
                                                             : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
                                                             }`}
                                                     >
@@ -1048,7 +1048,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                                 </button>
                                                 <button
                                                     onClick={() => handleEdit(orden)}
-                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                                                     title="Editar"
                                                 >
                                                     <Edit3 size={18} />
@@ -1110,7 +1110,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
                             <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                                {editingId ? <Edit3 size={24} className="text-blue-600" /> : <Plus size={24} className="text-teal-600" />}
+                                {editingId ? <Edit3 size={24} className="text-teal-600" /> : <Plus size={24} className="text-teal-600" />}
                                 {editingId ? 'Editar Documento' : (activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden')}
                             </h3>
                             <button onClick={resetForm} className="p-2 hover:bg-slate-100 rounded-full">
@@ -1378,17 +1378,17 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                                             key={i}
                                                             onClick={() => selectSuggestion(s, index)}
                                                             onMouseEnter={() => setHighlightedIndex(i)}
-                                                            className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${s.isModule ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-teal-50 bg-white'} ${highlightedIndex === i ? (s.isModule ? 'bg-indigo-100' : 'bg-teal-50') : ''}`}
+                                                            className={`px-4 py-3 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${s.isModule ? 'bg-teal-50 hover:bg-teal-100' : 'hover:bg-teal-50 bg-white'} ${highlightedIndex === i ? (s.isModule ? 'bg-teal-100' : 'bg-teal-50') : ''}`}
                                                         >
                                                             <div className="flex flex-col gap-0.5">
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${s.isModule ? 'text-indigo-600 bg-indigo-100 border-indigo-200' : 'text-teal-600 bg-teal-50 border-teal-100'}`}>
+                                                                    <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${s.isModule ? 'text-teal-600 bg-teal-100 border-teal-200' : 'text-teal-600 bg-teal-50 border-teal-100'}`}>
                                                                         {s.codigo}
                                                                     </span>
-                                                                    <span className={`text-sm font-medium ${s.isModule ? 'text-indigo-900' : 'text-slate-700'}`}>
+                                                                    <span className={`text-sm font-medium ${s.isModule ? 'text-teal-900' : 'text-slate-700'}`}>
                                                                         {s.nombre}
                                                                     </span>
-                                                                    {s.isModule && <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1 rounded-sm uppercase font-bold">Módulo</span>}
+                                                                    {s.isModule && <span className="text-[10px] bg-teal-200 text-teal-800 px-1 rounded-sm uppercase font-bold">Módulo</span>}
                                                                     {s.isIOSFA && <span className="text-[10px] bg-sky-200 text-sky-800 px-1 rounded-sm uppercase font-bold">IOSFA</span>}
                                                                 </div>
                                                                 {s.parentModule && (
@@ -1502,7 +1502,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                 <textarea
                                     value={formData.observaciones}
                                     onChange={(e) => handleInputChange('observaciones', e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] text-slate-700"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 min-h-[80px] text-slate-700"
                                     placeholder="Notas internas, indicaciones del profesional, etc."
                                 />
                             </div>
@@ -1532,7 +1532,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className={`flex-1 py-3 text-white font-bold rounded-xl transition-colors shadow-lg disabled:opacity-50 ${formData.incluyeMaterial ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}
+                                    className={`flex-1 py-3 text-white font-bold rounded-xl transition-colors shadow-lg disabled:opacity-50 ${formData.incluyeMaterial ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : editingId ? 'bg-teal-600 hover:bg-teal-700 shadow-blue-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}
                                 >
                                     {loading ? 'Guardando...' : formData.incluyeMaterial ? 'Crear 2 Órdenes' : editingId ? 'Guardar Cambios' : 'Crear Orden'}
                                 </button>
@@ -1592,7 +1592,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                                     {consent.adulto && (
                                                         <button
                                                             onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.adulto)}`, '_blank')}
-                                                            className="px-2 py-1 rounded-md font-bold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all"
+                                                            className="px-2 py-1 rounded-md font-bold text-xs bg-teal-100 text-teal-700 hover:bg-teal-200 transition-all"
                                                         >
                                                             Adulto
                                                         </button>

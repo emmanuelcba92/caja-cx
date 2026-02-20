@@ -739,7 +739,7 @@ const HistorialCaja = () => {
                         <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">Ingrese PIN de Admin</h3>
                         <input
                             type="password"
-                            className="w-full text-center text-2xl tracking-widest font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-blue-500 focus:outline-none"
+                            className="w-full text-center text-2xl tracking-widest font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-teal-500 focus:outline-none"
                             placeholder="****"
                             maxLength={8}
                             value={pinInput}
@@ -749,7 +749,7 @@ const HistorialCaja = () => {
                         />
                         <div className="flex gap-3">
                             <button onClick={() => setShowPinModal(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
-                            <button onClick={handleUnlock} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200">Desbloquear</button>
+                            <button onClick={handleUnlock} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-blue-200">Desbloquear</button>
                         </div>
                     </div>
                 </div>
@@ -852,19 +852,19 @@ const HistorialCaja = () => {
                         <div>
                             <h1 className="text-xl font-bold text-slate-900">Registro de Cajas</h1>
                             <div className="flex items-center gap-2 text-sm text-slate-500 font-medium mt-1">
-                                <button onClick={navigateHome} className="hover:text-blue-600 flex items-center gap-1">
+                                <button onClick={navigateHome} className="hover:text-teal-600 flex items-center gap-1">
                                     <Home size={14} /> Inicio
                                 </button>
                                 {selectedYear && (
                                     <>
                                         <ChevronRight size={14} />
-                                        <span onClick={() => { setView('months'); setSelectedDate(null); }} className="hover:text-blue-600 cursor-pointer">{selectedYear}</span>
+                                        <span onClick={() => { setView('months'); setSelectedDate(null); }} className="hover:text-teal-600 cursor-pointer">{selectedYear}</span>
                                     </>
                                 )}
                                 {selectedMonth !== null && (
                                     <>
                                         <ChevronRight size={14} />
-                                        <span onClick={() => { setView('days'); setSelectedDate(null); }} className="hover:text-blue-600 cursor-pointer">{MONTH_NAMES[selectedMonth]}</span>
+                                        <span onClick={() => { setView('days'); setSelectedDate(null); }} className="hover:text-teal-600 cursor-pointer">{MONTH_NAMES[selectedMonth]}</span>
                                     </>
                                 )}
                                 {selectedDate && (
@@ -890,10 +890,10 @@ const HistorialCaja = () => {
 
                             {isAdmin ? (
                                 <div className="flex items-center gap-3">
-                                    <button onClick={handleBackup} className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all font-bold shadow-lg shadow-indigo-200 text-sm">
+                                    <button onClick={handleBackup} className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-indigo-200 text-sm">
                                         <Database size={16} /> Backup
                                     </button>
-                                    <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all font-bold shadow-lg shadow-emerald-200">
+                                    <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-emerald-200">
                                         <User size={16} /> Agregar Paciente
                                     </button>
                                     <button onClick={handleDeleteDay} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-bold shadow-lg shadow-red-200">
@@ -999,8 +999,8 @@ const HistorialCaja = () => {
                                                 <input type="number" className="w-full p-1 border rounded" value={newEntry.dolares || ''} onChange={(e) => setNewEntry({ ...newEntry, dolares: e.target.value })} />
                                             </div>
                                         </div>
-                                        <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-2">
-                                            <p className="font-bold text-blue-800">Liq. Prof 1</p>
+                                        <div className="p-3 bg-teal-50/50 rounded-lg border border-teal-100 space-y-2">
+                                            <p className="font-bold text-teal-800">Liq. Prof 1</p>
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex gap-1">
                                                     <input type="number" className="w-full p-1 border rounded" value={newEntry.liq_prof_1 || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_1: e.target.value })} />
@@ -1018,8 +1018,8 @@ const HistorialCaja = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="p-3 bg-indigo-50/50 rounded-lg border border-indigo-100 space-y-2">
-                                            <p className="font-bold text-indigo-800">Liq. Prof 2</p>
+                                        <div className="p-3 bg-teal-50/50 rounded-lg border border-teal-100 space-y-2">
+                                            <p className="font-bold text-teal-800">Liq. Prof 2</p>
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex gap-1">
                                                     <input type="number" className="w-full p-1 border rounded" value={newEntry.liq_prof_2 || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_2: e.target.value })} />
@@ -1084,7 +1084,7 @@ const HistorialCaja = () => {
 
                                 <div className="flex gap-3">
                                     <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
-                                    <button onClick={handleCreateEntry} className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200">Guardar Paciente</button>
+                                    <button onClick={handleCreateEntry} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-emerald-200">Guardar Paciente</button>
                                 </div>
                             </div>
                         </div>
@@ -1096,14 +1096,14 @@ const HistorialCaja = () => {
                     selectedDate && (
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 no-print animate-in fade-in slide-in-from-bottom-2">
                             <h3 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
-                                <FileText size={18} className="text-blue-500" /> Comentario del Día
+                                <FileText size={18} className="text-teal-500" /> Comentario del Día
                             </h3>
                             {isEditingComment ? (
                                 <div className="flex gap-2 items-start">
                                     <textarea
                                         value={dailyComment}
                                         onChange={(e) => setDailyComment(e.target.value)}
-                                        className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none min-h-[80px]"
+                                        className="w-full p-3 border border-slate-300 rounded-lg focus:border-teal-500 focus:ring-2 focus:ring-teal-100 focus:outline-none min-h-[80px]"
                                         placeholder="Escribe un comentario global para este día..."
                                         autoFocus
                                     />
@@ -1120,7 +1120,7 @@ const HistorialCaja = () => {
                                 <div className="flex justify-between items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
                                     <p className="text-slate-600 italic whitespace-pre-wrap break-words break-all overflow-hidden w-full">{dailyComment || 'Sin comentario asignado.'}</p>
                                     {isAdmin && (
-                                        <button onClick={() => setIsEditingComment(true)} className="text-blue-600 hover:text-blue-800 font-bold text-sm flex items-center gap-1 px-3 py-1 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors ml-4 shrink-0">
+                                        <button onClick={() => setIsEditingComment(true)} className="text-teal-600 hover:text-teal-800 font-bold text-sm flex items-center gap-1 px-3 py-1 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors ml-4 shrink-0">
                                             <Edit size={16} /> Editar
                                         </button>
                                     )}
@@ -1135,11 +1135,11 @@ const HistorialCaja = () => {
                     {view === 'years' && (
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             {getYears().map(year => (
-                                <button key={year} onClick={() => handleYearClick(year)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-blue-200 hover:bg-blue-50/30 transition-all group flex flex-col items-center gap-3">
+                                <button key={year} onClick={() => handleYearClick(year)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-teal-200 hover:bg-teal-50/30 transition-all group flex flex-col items-center gap-3">
                                     <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <Folder size={32} fill="currentColor" className="opacity-80" />
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 group-hover:text-blue-700">{year}</span>
+                                    <span className="font-bold text-lg text-slate-700 group-hover:text-teal-700">{year}</span>
                                 </button>
                             ))}
                             {getYears().length === 0 && <div className="col-span-full text-center py-20 text-slate-400">No hay registros</div>}
@@ -1149,11 +1149,11 @@ const HistorialCaja = () => {
                     {view === 'months' && (
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             {getMonths(selectedYear).map(monthIndex => (
-                                <button key={monthIndex} onClick={() => handleMonthClick(monthIndex)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-blue-200 hover:bg-blue-50/30 transition-all group flex flex-col items-center gap-3">
-                                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <button key={monthIndex} onClick={() => handleMonthClick(monthIndex)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-teal-200 hover:bg-teal-50/30 transition-all group flex flex-col items-center gap-3">
+                                    <div className="w-16 h-16 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <Folder size={32} fill="currentColor" className="opacity-80" />
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 group-hover:text-blue-700">{MONTH_NAMES[monthIndex]}</span>
+                                    <span className="font-bold text-lg text-slate-700 group-hover:text-teal-700">{MONTH_NAMES[monthIndex]}</span>
                                 </button>
                             ))}
                             <button onClick={navigateUp} className="flex flex-col items-center justify-center p-6 text-slate-400 hover:text-slate-600 transition-colors"><ArrowLeft size={24} /> Volver</button>
@@ -1163,11 +1163,11 @@ const HistorialCaja = () => {
                     {view === 'days' && (
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             {getDays(selectedYear, selectedMonth).map(date => (
-                                <button key={date} onClick={() => handleDayClick(date)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-emerald-200 hover:bg-emerald-50/30 transition-all group flex flex-col items-center gap-3">
-                                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <button key={date} onClick={() => handleDayClick(date)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-teal-200 hover:bg-teal-50/30 transition-all group flex flex-col items-center gap-3">
+                                    <div className="w-16 h-16 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <FileText size={32} />
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 group-hover:text-emerald-700">{date.split('-')[2]}</span>
+                                    <span className="font-bold text-lg text-slate-700 group-hover:text-teal-700">{date.split('-')[2]}</span>
                                 </button>
                             ))}
                             <button onClick={navigateUp} className="flex flex-col items-center justify-center p-6 text-slate-400 hover:text-slate-600 transition-colors"><ArrowLeft size={24} /> Volver</button>
@@ -1185,13 +1185,13 @@ const HistorialCaja = () => {
                                             <th className="px-4 py-3 border-b">Paciente</th>
                                             <th className="px-4 py-3 border-b">DNI</th>
                                             <th className="px-4 py-3 border-b">Obra Social</th>
-                                            <th className="px-4 py-3 border-b text-blue-800 bg-blue-50/30">Prof. 1</th>
-                                            <th className="px-4 py-3 border-b text-indigo-800 bg-indigo-50/30">Prof. 2</th>
+                                            <th className="px-4 py-3 border-b text-teal-800 bg-teal-50/30">Prof. 1</th>
+                                            <th className="px-4 py-3 border-b text-teal-800 bg-teal-50/30">Prof. 2</th>
                                             <th className="px-4 py-3 border-b text-teal-800 bg-teal-50/30">Prof. 3</th>
                                             <th className="px-4 py-3 border-b text-slate-700">Pago $</th>
-                                            <th className="px-4 py-3 border-b text-emerald-700">Pago USD</th>
-                                            <th className="px-4 py-3 border-b bg-blue-50/50 text-blue-900">Liq. P1</th>
-                                            <th className="px-4 py-3 border-b bg-indigo-50/50 text-indigo-900">Liq. P2</th>
+                                            <th className="px-4 py-3 border-b text-teal-700">Pago USD</th>
+                                            <th className="px-4 py-3 border-b bg-teal-50/50 text-teal-900">Liq. P1</th>
+                                            <th className="px-4 py-3 border-b bg-teal-50/50 text-teal-900">Liq. P2</th>
                                             <th className="px-4 py-3 border-b bg-teal-50/50 text-teal-900">Liq. P3</th>
                                             <th className="px-4 py-3 border-b bg-purple-50/30 text-purple-900">Anest.</th>
                                             <th className="px-4 py-3 border-b bg-purple-50/50 text-purple-900">Liq. Anest.</th>
@@ -1203,7 +1203,7 @@ const HistorialCaja = () => {
                                         {tableData.map((item) => {
                                             const isEditing = editId === item.id;
                                             return (
-                                                <tr key={item.id} className={`hover:bg-slate-50/50 transition-colors ${isEditing ? 'bg-blue-50/20' : ''}`}>
+                                                <tr key={item.id} className={`hover:bg-slate-50/50 transition-colors ${isEditing ? 'bg-teal-50/20' : ''}`}>
                                                     <td className={`px-2 py-3 border-r sticky left-0 bg-white z-10 ${!isAdmin && 'opacity-30 pointer-events-none'}`}>
                                                         {isAdmin && (
                                                             isEditing ? (
@@ -1213,7 +1213,7 @@ const HistorialCaja = () => {
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex gap-1">
-                                                                    <button onClick={() => handleEditClick(item)} className="p-1.5 text-blue-400 hover:bg-blue-50 rounded-lg"><Edit2 size={16} /></button>
+                                                                    <button onClick={() => handleEditClick(item)} className="p-1.5 text-teal-400 hover:bg-teal-50 rounded-lg"><Edit2 size={16} /></button>
                                                                     <button onClick={() => handleDelete(item.id)} className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg"><Trash2 size={16} /></button>
                                                                 </div>
                                                             )
@@ -1224,7 +1224,7 @@ const HistorialCaja = () => {
 
                                                     {/* Generic Field Render for Brevity - Real implementation should map all editable fields similar to CajaForm */}
                                                     {['paciente', 'dni', 'obra_social'].map(f => (
-                                                        <td key={f} className="px-4 py-3">{isEditing ? <input value={editFormData[f]} onChange={(e) => handleChange(f, e.target.value)} className="w-full bg-white border border-blue-300 rounded px-1" /> : item[f]}</td>
+                                                        <td key={f} className="px-4 py-3">{isEditing ? <input value={editFormData[f]} onChange={(e) => handleChange(f, e.target.value)} className="w-full bg-white border border-teal-300 rounded px-1" /> : item[f]}</td>
                                                     ))}
 
                                                     <td className="px-4 py-3">{item.prof_1}</td>
@@ -1311,7 +1311,7 @@ const HistorialCaja = () => {
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        {isEditing ? <input value={editFormData.anestesista || ''} onChange={(e) => handleChange('anestesista', e.target.value)} className="w-full bg-white border border-blue-300 rounded px-1" /> : item.anestesista}
+                                                        {isEditing ? <input value={editFormData.anestesista || ''} onChange={(e) => handleChange('anestesista', e.target.value)} className="w-full bg-white border border-teal-300 rounded px-1" /> : item.anestesista}
                                                     </td>
                                                     <td className="px-4 py-3 text-right">
                                                         {isEditing ? (

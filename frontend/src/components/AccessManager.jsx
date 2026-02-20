@@ -59,7 +59,7 @@ const AccessManager = () => {
     return (
         <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 max-w-2xl mx-auto mt-8">
             <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                <Users className="text-blue-600" size={24} />
+                <Users className="text-teal-600" size={24} />
                 Compartir Mi Caja
             </h2>
 
@@ -74,7 +74,7 @@ const AccessManager = () => {
                     <input
                         type="email"
                         required
-                        className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                         placeholder="email@ejemplo.com"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
@@ -84,7 +84,7 @@ const AccessManager = () => {
                 <select
                     value={role}
                     onChange={e => setRole(e.target.value)}
-                    className="px-4 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700"
+                    className="px-4 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium text-slate-700"
                 >
                     <option value="editor">🖊️ Editor (Total)</option>
                     <option value="viewer">👀 Solo Ver</option>
@@ -93,7 +93,7 @@ const AccessManager = () => {
                 <button
                     disabled={loading}
                     type="submit"
-                    className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-all disabled:opacity-50"
+                    className="flex items-center gap-2 px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold transition-all disabled:opacity-50"
                 >
                     <UserPlus size={18} />
                     {loading ? 'Agregando...' : 'Autorizar'}
@@ -102,7 +102,7 @@ const AccessManager = () => {
 
             {/* List of Grants */}
             <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
-                <ShieldCheck size={18} className="text-emerald-500" />
+                <ShieldCheck size={18} className="text-teal-500" />
                 Personas autorizadas
             </h3>
 
@@ -115,7 +115,7 @@ const AccessManager = () => {
                     {myGrants.map(grant => (
                         <div key={grant.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md transition-all">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                                <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 font-bold">
                                     {grant.viewerEmail[0].toUpperCase()}
                                 </div>
                                 <div className="flex flex-col">

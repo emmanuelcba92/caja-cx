@@ -329,33 +329,33 @@ const AdminView = () => {
         <div className="space-y-8 animate-in fade-in duration-500">
             {/* Header */}
             <div className="flex items-center gap-4 bg-slate-900 text-white p-8 rounded-3xl shadow-2xl overflow-hidden relative">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/20">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                <div className="w-16 h-16 bg-teal-600 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/20">
                     <Shield size={32} />
                 </div>
                 <div>
                     <h2 className="text-3xl font-black tracking-tight">Panel de Control</h2>
-                    <p className="text-blue-200 font-medium">Gestión global de accesos y usuarios</p>
+                    <p className="text-teal-200 font-medium">Gestión global de accesos y usuarios</p>
                 </div>
             </div>
 
             <div className="flex gap-4 mb-8">
                 <button
                     onClick={() => setActiveTab('users')}
-                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 >
                     Usuarios y Permisos
                 </button>
                 <button
                     onClick={() => setActiveTab('roles')}
-                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'roles' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'roles' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 >
                     Gestión de Roles
                 </button>
                 {isSuperAdmin && (
                     <button
                         onClick={() => setActiveTab('maintenance')}
-                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                     >
                         Mantenimiento
                     </button>
@@ -367,7 +367,7 @@ const AdminView = () => {
                     {/* Section: Authorized Emails */}
                     <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
                         <div className="flex items-center gap-3 mb-8">
-                            <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                            <div className="p-3 bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 rounded-xl">
                                 <Mail size={24} />
                             </div>
                             <h3 className="text-xl font-bold dark:text-white">Usuarios Autorizados</h3>
@@ -379,14 +379,14 @@ const AdminView = () => {
                                 <input
                                     type="email"
                                     placeholder="nuevo@usuario.com"
-                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
+                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all dark:text-white"
                                     value={newEmail}
                                     onChange={(e) => setNewEmail(e.target.value)}
                                     required
                                 />
                             </div>
                             <select
-                                className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white text-sm font-bold"
+                                className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all dark:text-white text-sm font-bold"
                                 value={newRole}
                                 onChange={(e) => setNewRole(e.target.value)}
                             >
@@ -394,7 +394,7 @@ const AdminView = () => {
                                     <option key={r.id} value={r.id}>{r.name}</option>
                                 ))}
                             </select>
-                            <button type="submit" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 dark:shadow-none transition-all">
+                            <button type="submit" className="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 dark:shadow-none transition-all">
                                 <UserPlus size={20} />
                                 <span className="hidden sm:inline">Autorizar</span>
                             </button>
@@ -402,9 +402,9 @@ const AdminView = () => {
 
                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                             {authorizedEmails.map(auth => (
-                                <div key={auth.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700 rounded-2xl group hover:border-blue-200 dark:hover:border-blue-900 transition-all">
+                                <div key={auth.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700 rounded-2xl group hover:border-teal-200 dark:hover:border-teal-900 transition-all">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200 dark:border-slate-700 group-hover:text-blue-500 transition-colors">
+                                        <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200 dark:border-slate-700 group-hover:text-teal-500 transition-colors">
                                             {auth.email[0].toUpperCase()}
                                         </div>
                                         <div className="flex flex-col">
@@ -429,7 +429,7 @@ const AdminView = () => {
                                                     if (targetUid) switchContext(targetUid);
                                                 }}
                                                 disabled={viewingUid === (auth.id || Object.keys(profiles).find(uid => profiles[uid].email === auth.email))}
-                                                className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
+                                                className="p-2 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded-lg transition-all"
                                                 title="Entrar a esta caja"
                                             >
                                                 <ArrowRight size={18} />
@@ -452,7 +452,7 @@ const AdminView = () => {
                     {/* Section: All User Data (Doctors) */}
                     <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700">
                         <div className="flex items-center gap-3 mb-8">
-                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl">
+                            <div className="p-3 bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 rounded-xl">
                                 <Users size={24} />
                             </div>
                             <div>
@@ -466,7 +466,7 @@ const AdminView = () => {
                             <input
                                 type="text"
                                 placeholder="Buscar por Nombre, Email o UID..."
-                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
+                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none transition-all dark:text-white"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
@@ -477,12 +477,12 @@ const AdminView = () => {
                                 <div
                                     key={doctor.uid}
                                     className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${viewingUid === doctor.uid
-                                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                                        ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800'
                                         : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-slate-300'
                                         }`}
                                 >
                                     <div className="flex items-center gap-3 overflow-hidden">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${viewingUid === doctor.uid ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${viewingUid === doctor.uid ? 'bg-teal-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
                                             <Activity size={18} />
                                         </div>
                                         <div className="overflow-hidden">
@@ -493,7 +493,7 @@ const AdminView = () => {
                                                 <p className="text-[10px] text-slate-400 font-medium truncate">{doctor.profile.email}</p>
                                             )}
                                             <p className="text-[9px] font-mono text-slate-300 truncate">{doctor.uid}</p>
-                                            <p className="text-[10px] font-bold text-blue-500 mt-1">{doctor.count} Registros</p>
+                                            <p className="text-[10px] font-bold text-teal-500 mt-1">{doctor.count} Registros</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -510,8 +510,8 @@ const AdminView = () => {
                                             onClick={() => switchContext(doctor.uid)}
                                             disabled={viewingUid === doctor.uid}
                                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-tight transition-all ${viewingUid === doctor.uid
-                                                ? 'bg-emerald-500 text-white cursor-default'
-                                                : 'bg-slate-900 text-white hover:bg-blue-600 shadow-md transform hover:scale-105'
+                                                ? 'bg-teal-500 text-white cursor-default'
+                                                : 'bg-slate-900 text-white hover:bg-teal-600 shadow-md transform hover:scale-105'
                                                 }`}
                                         >
                                             {viewingUid === doctor.uid ? 'Viendo' : (
@@ -525,7 +525,7 @@ const AdminView = () => {
                         {viewingUid !== currentUser.uid && (
                             <button
                                 onClick={() => switchContext(currentUser.uid)}
-                                className="w-full mt-6 py-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all font-bold text-sm"
+                                className="w-full mt-6 py-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl text-slate-400 hover:text-teal-500 hover:border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/10 transition-all font-bold text-sm"
                             >
                                 Volver a mi cuenta personal
                             </button>
@@ -575,7 +575,7 @@ const AdminView = () => {
                                 ))}
                             </div>
 
-                            <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">
+                            <button type="submit" className="w-full py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700">
                                 Guardar Rol
                             </button>
                         </form>

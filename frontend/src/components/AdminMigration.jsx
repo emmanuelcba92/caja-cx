@@ -154,14 +154,14 @@ const AdminMigration = () => {
                 )}
 
                 {results && (
-                    <div className="mt-6 p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
-                        <h3 className="font-bold text-emerald-800 flex items-center gap-2 mb-3">
+                    <div className="mt-6 p-6 bg-teal-50 rounded-2xl border border-teal-100">
+                        <h3 className="font-bold text-teal-800 flex items-center gap-2 mb-3">
                             <CheckCircle2 size={20} />
                             Migración Exitosa
                         </h3>
-                        <ul className="space-y-1 text-xs text-emerald-700">
+                        <ul className="space-y-1 text-xs text-teal-700">
                             {Object.entries(results).map(([coll, count]) => (
-                                <li key={coll} className="flex justify-between border-b border-emerald-50 pb-1">
+                                <li key={coll} className="flex justify-between border-b border-teal-50 pb-1">
                                     <span className="capitalize">{coll.replace('_', ' ')}:</span>
                                     <span className="font-bold">{count} movidos</span>
                                 </li>
@@ -174,13 +174,13 @@ const AdminMigration = () => {
             <div className="p-6 bg-slate-900 rounded-2xl shadow-xl text-white">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-bold flex items-center gap-2">
-                        <Repeat className="text-blue-400" size={20} />
+                        <Repeat className="text-teal-400" size={20} />
                         Diagnóstico Global de Datos
                     </h3>
                     <button
                         onClick={runDiagnostic}
                         disabled={loading}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-bold transition-colors"
+                        className="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-xs font-bold transition-colors"
                     >
                         Escanear Firestore
                     </button>
@@ -190,7 +190,7 @@ const AdminMigration = () => {
                     <div className="space-y-4">
                         {Object.entries(diagnostic).map(([email, colls]) => (
                             <div key={email} className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                                <div className="font-bold text-blue-300 mb-2 truncate">{email}</div>
+                                <div className="font-bold text-teal-300 mb-2 truncate">{email}</div>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                     {Object.entries(colls).map(([name, count]) => (
                                         <div key={name} className="bg-slate-900 p-2 rounded border border-slate-700">

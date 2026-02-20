@@ -414,7 +414,7 @@ const ProfesionalesView = () => {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                         <h2 className="text-xl font-bold flex items-center gap-2">
-                            <FileText size={24} className="text-emerald-400" />
+                            <FileText size={24} className="text-teal-400" />
                             Reporte Mensual de Honorarios
                         </h2>
                         <p className="text-slate-400 text-sm mt-1">Genera la planilla general de liquidaciones por mes.</p>
@@ -424,7 +424,7 @@ const ProfesionalesView = () => {
                         <select
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                            className="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                            className="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 outline-none focus:border-teal-500"
                         >
                             {[...Array(12)].map((_, i) => (
                                 <option key={i} value={i + 1}>{new Date(0, i).toLocaleString('es-AR', { month: 'long' }).toUpperCase()}</option>
@@ -433,17 +433,17 @@ const ProfesionalesView = () => {
                         <select
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                            className="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                            className="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 outline-none focus:border-teal-500"
                         >
                             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
 
                         <div className="w-px h-8 bg-slate-600 mx-2"></div>
 
-                        <button onClick={handleGeneralExcel} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20">
+                        <button onClick={handleGeneralExcel} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20">
                             <Download size={18} /> Excel
                         </button>
-                        <button onClick={handlePrintMatrix} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-indigo-900/20">
+                        <button onClick={handlePrintMatrix} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-indigo-900/20">
                             <Printer size={18} /> Imprimir
                         </button>
                     </div>
@@ -453,8 +453,8 @@ const ProfesionalesView = () => {
                 <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
                     <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <div className="p-2 bg-blue-100 rounded-lg">
-                                <UserPlus className="text-blue-600" size={24} />
+                            <div className="p-2 bg-teal-100 rounded-lg">
+                                <UserPlus className="text-teal-600" size={24} />
                             </div>
                             Agregar Nuevo Profesional
                         </div>
@@ -474,7 +474,7 @@ const ProfesionalesView = () => {
                             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre Completo</label>
                             <input
                                 type="text"
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
                                 value={nombre}
                                 onChange={(e) => setNombre(e.target.value)}
                                 placeholder="Ej: Dra. García"
@@ -483,7 +483,7 @@ const ProfesionalesView = () => {
                         <div className="w-48">
                             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Categoría</label>
                             <select
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
                                 value={categoria}
                                 onChange={(e) => setCategoria(e.target.value)}
                             >
@@ -494,7 +494,7 @@ const ProfesionalesView = () => {
                                 <option value="Tutoras">Tutoras</option>
                             </select>
                         </div>
-                        <button type="submit" className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">
+                        <button type="submit" className="px-8 py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 transition-all shadow-lg shadow-blue-100">
                             Guardar
                         </button>
                     </form>
@@ -506,7 +506,7 @@ const ProfesionalesView = () => {
                     <div key={prof.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 group hover:shadow-md transition-all">
                         <div className="flex justify-between items-start">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-blue-600">
+                                <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-teal-600">
                                     <Tag size={20} />
                                 </div>
                                 <div>
@@ -518,7 +518,7 @@ const ProfesionalesView = () => {
                                 {isSuperAdmin && (
                                     <button
                                         onClick={() => handleEditClick(prof)}
-                                        className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                        className="p-2 text-teal-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                                         title="Editar"
                                     >
                                         <Edit3 size={16} />
@@ -558,7 +558,7 @@ const ProfesionalesView = () => {
                             <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">Ingrese PIN de Admin</h3>
                             <input
                                 type="password"
-                                className="w-full text-center text-2xl tracking-widest font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-blue-500 focus:outline-none"
+                                className="w-full text-center text-2xl tracking-widest font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-teal-500 focus:outline-none"
                                 placeholder="****"
                                 maxLength={10}
                                 value={pinInput}
@@ -568,7 +568,7 @@ const ProfesionalesView = () => {
                             />
                             <div className="flex gap-3">
                                 <button onClick={() => setShowPinModal(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
-                                <button onClick={handleUnlock} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200">Desbloquear</button>
+                                <button onClick={handleUnlock} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-blue-200">Desbloquear</button>
                             </div>
                         </div>
                     </div>
@@ -660,7 +660,7 @@ const ProfesionalesView = () => {
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md">
                         <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
-                            <Edit3 size={20} className="text-blue-600" />
+                            <Edit3 size={20} className="text-teal-600" />
                             Editar Profesional
                         </h3>
 
@@ -669,7 +669,7 @@ const ProfesionalesView = () => {
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre</label>
                                 <input
                                     type="text"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
                                     value={editForm.nombre}
                                     onChange={(e) => setEditForm(prev => ({ ...prev, nombre: e.target.value }))}
                                 />
@@ -678,7 +678,7 @@ const ProfesionalesView = () => {
                             <div>
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Categoría</label>
                                 <select
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
                                     value={editForm.categoria}
                                     onChange={(e) => setEditForm(prev => ({ ...prev, categoria: e.target.value }))}
                                 >
@@ -694,7 +694,7 @@ const ProfesionalesView = () => {
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Especialidad</label>
                                 <input
                                     type="text"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
                                     value={editForm.especialidad}
                                     onChange={(e) => setEditForm(prev => ({ ...prev, especialidad: e.target.value }))}
                                     placeholder="Otorrinolaringología"
@@ -706,7 +706,7 @@ const ProfesionalesView = () => {
                                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">MP (Matrícula Prov.)</label>
                                     <input
                                         type="text"
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono"
                                         value={editForm.mp}
                                         onChange={(e) => setEditForm(prev => ({ ...prev, mp: e.target.value }))}
                                         placeholder="39500"
@@ -716,7 +716,7 @@ const ProfesionalesView = () => {
                                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">ME (Mat. Esp.)</label>
                                     <input
                                         type="text"
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono"
                                         value={editForm.me}
                                         onChange={(e) => setEditForm(prev => ({ ...prev, me: e.target.value }))}
                                         placeholder="20651"
@@ -734,7 +734,7 @@ const ProfesionalesView = () => {
                             </button>
                             <button
                                 onClick={handleSaveEdit}
-                                className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-colors"
+                                className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-blue-200 transition-colors"
                             >
                                 Guardar
                             </button>

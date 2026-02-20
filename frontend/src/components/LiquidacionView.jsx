@@ -1447,19 +1447,19 @@ const LiquidacionView = () => {
                             </div>
                             <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
                                 <span className="text-xs font-bold text-slate-400 uppercase">Filtrar:</span>
-                                <input type="date" className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 focus:border-blue-500 outline-none" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                                <input type="date" className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 focus:border-teal-500 outline-none" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                                 <span className="text-slate-400">-</span>
-                                <input type="date" className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 focus:border-blue-500 outline-none" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                                <input type="date" className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 focus:border-teal-500 outline-none" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                             </div>
                         </div>
                         <div className="flex flex-col gap-4">
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                <input type="text" placeholder="Buscar profesional..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-blue-500 outline-none" value={profSearch} onChange={(e) => setProfSearch(e.target.value)} />
+                                <input type="text" placeholder="Buscar profesional..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-teal-500 outline-none" value={profSearch} onChange={(e) => setProfSearch(e.target.value)} />
                             </div>
                             <div className="flex flex-wrap gap-2 p-2 bg-slate-50/50 rounded-xl max-h-[200px] overflow-y-auto">
                                 {profesionales.filter(p => p.categoria !== 'Tutoras').filter(p => p.nombre.toLowerCase().includes(profSearch.toLowerCase())).map(prof => (
-                                    <button key={prof.id} onClick={() => setSelectedProf(prof.nombre)} className={`px-4 py-2 rounded-xl border transition-all font-medium text-sm ${selectedProf === prof.nombre ? 'bg-white border-blue-200 text-blue-600 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}>{prof.nombre}</button>
+                                    <button key={prof.id} onClick={() => setSelectedProf(prof.nombre)} className={`px-4 py-2 rounded-xl border transition-all font-medium text-sm ${selectedProf === prof.nombre ? 'bg-white border-teal-200 text-teal-600 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}>{prof.nombre}</button>
                                 ))}
                                 {profesionales.filter(p => p.categoria !== 'Tutoras').filter(p => p.nombre.toLowerCase().includes(profSearch.toLowerCase())).length === 0 && <div className="w-full py-4 text-center text-slate-400 text-sm italic">No se encontraron profesionales</div>}
                             </div>
@@ -1471,7 +1471,7 @@ const LiquidacionView = () => {
                             <div className="p-4 md:p-8 border-b border-slate-100 flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6 bg-gradient-to-r from-white to-slate-50/50">
                                 <div className="flex-1 w-full">
                                     <div className="flex items-center gap-3 mb-2">
-                                        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><User size={24} /></div>
+                                        <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center shrink-0"><User size={24} /></div>
                                         <div>
                                             <h2 className="text-xl md:text-2xl font-bold text-slate-900 leading-tight" title="v1.1.0">Liquidación: {data.profesional}</h2>
                                             <p className="text-slate-500 font-medium text-sm md:text-base">{data.categoria} | Modelo: {modelo === 1 ? 'Detallado' : 'Simplificado'}</p>
@@ -1479,7 +1479,7 @@ const LiquidacionView = () => {
                                     </div>
                                 </div>
                                 <div className="flex flex-wrap gap-3 w-full md:w-auto justify-start md:justify-end">
-                                    {!isReadOnly && <button onClick={() => setShowManualModal(true)} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold shadow-lg shadow-emerald-200 transition-all text-sm md:text-base"><Plus size={20} /> Agregar</button>}
+                                    {!isReadOnly && <button onClick={() => setShowManualModal(true)} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-semibold shadow-lg shadow-emerald-200 transition-all text-sm md:text-base"><Plus size={20} /> Agregar</button>}
                                     <button onClick={handleExportExcel} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-slate-100 text-slate-700 rounded-xl hover:bg-green-100 hover:text-green-800 font-semibold transition-all text-sm md:text-base"><Download size={20} /> Excel</button>
 
                                     {data.categoria !== 'Tutoras' && (
@@ -1562,7 +1562,7 @@ const LiquidacionView = () => {
                                                     <th className="px-8 py-4 text-right">Cobro USD</th>
                                                 </>
                                             )}
-                                            <th className={`px-8 py-4 text-right bg-blue-50/30`}>Su Liquidación</th>
+                                            <th className={`px-8 py-4 text-right bg-teal-50/30`}>Su Liquidación</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 font-medium text-slate-700 text-sm">
@@ -1572,7 +1572,7 @@ const LiquidacionView = () => {
                                                 <td className="px-8 py-4">
                                                     <div className="font-bold text-slate-900">
                                                         {cleanPatientName(entry.paciente)}
-                                                        {entry.isManualLiquidation && entry.isTransfer && <span className="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Manual</span>}
+                                                        {entry.isManualLiquidation && entry.isTransfer && <span className="ml-2 text-[10px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Manual</span>}
                                                     </div>
                                                     <div className="text-xs text-slate-400">{entry.dni}</div>
                                                 </td>
@@ -1581,7 +1581,7 @@ const LiquidacionView = () => {
                                                         <div className="flex justify-center">
                                                             <input
                                                                 type="checkbox"
-                                                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                                                className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                                                                 checked={entry.isTransfer || false}
                                                                 onChange={() => handleToggleTransfer(entry)}
                                                                 title="Marcar como Transferencia (No suma al total)"
@@ -1607,16 +1607,16 @@ const LiquidacionView = () => {
                                                         </td>
                                                     </>
                                                 )}
-                                                <td className={`px-8 py-4 text-right tabular-nums font-bold text-blue-600 bg-blue-50/5 relative group/cell`}>
+                                                <td className={`px-8 py-4 text-right tabular-nums font-bold text-teal-600 bg-teal-50/5 relative group/cell`}>
                                                     <div className="flex flex-col items-end gap-1">
                                                         {(entry.liq_pesos_total !== 0 || entry.liq_dolares_total === 0) && <span>${formatMoney(entry.liq_pesos_total)}</span>}
-                                                        {entry.liq_dolares_total !== 0 && <span className="text-emerald-600">U$D {formatMoney(entry.liq_dolares_total)}</span>}
+                                                        {entry.liq_dolares_total !== 0 && <span className="text-teal-600">U$D {formatMoney(entry.liq_dolares_total)}</span>}
                                                     </div>
                                                     {!isReadOnly && (
                                                         <div className="absolute top-1/2 -translate-y-1/2 right-2 flex gap-1 opacity-0 group-hover/cell:opacity-100 transition-all bg-white/80 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-slate-100 no-print">
                                                             <button
                                                                 onClick={() => handleEditClick(entry)}
-                                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                                className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all"
                                                                 title="Editar (Requiere PIN)"
                                                             >
                                                                 <Pencil size={14} />
@@ -1640,7 +1640,7 @@ const LiquidacionView = () => {
                                             <td className="px-8 py-5 text-right font-bold text-lg tabular-nums text-slate-500">
                                                 <div className="flex flex-col items-end gap-1">
                                                     {(data.totales.liq_pesos !== 0 || data.totales.liq_dolares === 0) && <span>${formatMoney(data.totales.liq_pesos)}</span>}
-                                                    {data.totales.liq_dolares !== 0 && <span className="text-emerald-600">U$D {formatMoney(data.totales.liq_dolares)}</span>}
+                                                    {data.totales.liq_dolares !== 0 && <span className="text-teal-600">U$D {formatMoney(data.totales.liq_dolares)}</span>}
                                                 </div>
                                             </td>
                                         </tr>
@@ -1657,7 +1657,7 @@ const LiquidacionView = () => {
                                             <td className="px-8 py-5 text-right font-black text-lg tabular-nums">
                                                 <div className="flex flex-col items-end gap-1">
                                                     {(finalTotalPesos !== 0 || finalTotalDolares === 0) && <span>${formatMoney(finalTotalPesos)}</span>}
-                                                    {finalTotalDolares !== 0 && <span className="text-emerald-400">U$D {formatMoney(finalTotalDolares)}</span>}
+                                                    {finalTotalDolares !== 0 && <span className="text-teal-400">U$D {formatMoney(finalTotalDolares)}</span>}
                                                 </div>
                                             </td>
                                         </tr>
@@ -1714,10 +1714,10 @@ const LiquidacionView = () => {
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 text-emerald-600">Total Abonado</label>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 text-teal-600">Total Abonado</label>
                                         <input
                                             type="number"
-                                            className="w-full p-2 border border-emerald-100 bg-emerald-50 rounded-lg font-bold text-emerald-900"
+                                            className="w-full p-2 border border-teal-100 bg-teal-50 rounded-lg font-bold text-teal-900"
                                             placeholder="Monto paciente"
                                             value={manualForm.totalPayment}
                                             onChange={(e) => setManualForm({ ...manualForm, totalPayment: e.target.value })}
@@ -1739,7 +1739,7 @@ const LiquidacionView = () => {
                                 <div className="space-y-3 pt-2">
                                     <div className="flex justify-between items-center">
                                         <label className="block text-xs font-bold text-slate-500 uppercase">Distribución por Profesionales</label>
-                                        <button onClick={addManualProfRow} className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-lg transition-colors">
+                                        <button onClick={addManualProfRow} className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-lg transition-colors">
                                             <Plus size={14} /> Añadir
                                         </button>
                                     </div>
@@ -1763,12 +1763,12 @@ const LiquidacionView = () => {
                                     ))}
                                 </div>
                                 <div className="flex items-center gap-2 py-2">
-                                    <input type="checkbox" id="includeReceipt" className="w-4 h-4 text-emerald-600 rounded" checked={manualForm.includeInReceipt} onChange={(e) => setManualForm({ ...manualForm, includeInReceipt: e.target.checked })} />
+                                    <input type="checkbox" id="includeReceipt" className="w-4 h-4 text-teal-600 rounded" checked={manualForm.includeInReceipt} onChange={(e) => setManualForm({ ...manualForm, includeInReceipt: e.target.checked })} />
                                     <label htmlFor="includeReceipt" className="text-sm font-medium text-slate-700 cursor-pointer">Mostrar referencia en recibo</label>
                                 </div>
                                 <div className="flex items-center gap-2 py-2">
-                                    <input type="checkbox" id="isTransfer" className="w-4 h-4 text-indigo-600 rounded" checked={manualForm.isTransfer || false} onChange={(e) => setManualForm({ ...manualForm, isTransfer: e.target.checked })} />
-                                    <label htmlFor="isTransfer" className="text-sm font-bold text-indigo-700 cursor-pointer">Es Transferencia (No suma a total)</label>
+                                    <input type="checkbox" id="isTransfer" className="w-4 h-4 text-teal-600 rounded" checked={manualForm.isTransfer || false} onChange={(e) => setManualForm({ ...manualForm, isTransfer: e.target.checked })} />
+                                    <label htmlFor="isTransfer" className="text-sm font-bold text-teal-700 cursor-pointer">Es Transferencia (No suma a total)</label>
                                     <div className="group relative">
                                         <CircleHelp size={14} className="text-slate-400 cursor-help" />
                                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
@@ -1776,7 +1776,7 @@ const LiquidacionView = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <button onClick={handleSaveManual} className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200 mt-4">Confirmar Liquidación</button>
+                                <button onClick={handleSaveManual} className="w-full py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-emerald-200 mt-4">Confirmar Liquidación</button>
                             </div>
                         </div>
                     </div>
@@ -1793,8 +1793,8 @@ const LiquidacionView = () => {
                                 <h3 className="text-lg font-bold">Seguridad</h3>
                                 <p className="text-xs text-slate-500">{pendingAction === 'delete' ? "Ingrese PIN para ELIMINAR" : "Ingrese PIN para editar"}</p>
                             </div>
-                            <input type="password" underline="none" className="w-full text-center text-2xl tracking-widest font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-blue-500 outline-none" maxLength={8} value={editPinInput} onChange={(e) => setEditPinInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleVerifyEditPin()} autoFocus />
-                            <div className="flex gap-3"><button onClick={() => setShowEditPinModal(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancelar</button><button onClick={handleVerifyEditPin} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200">Verificar</button></div>
+                            <input type="password" underline="none" className="w-full text-center text-2xl tracking-widest font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-teal-500 outline-none" maxLength={8} value={editPinInput} onChange={(e) => setEditPinInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleVerifyEditPin()} autoFocus />
+                            <div className="flex gap-3"><button onClick={() => setShowEditPinModal(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancelar</button><button onClick={handleVerifyEditPin} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200">Verificar</button></div>
                         </div>
                     </div>
                 )
@@ -1806,7 +1806,7 @@ const LiquidacionView = () => {
                     <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4 backdrop-blur-sm no-print">
                         <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
                             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                                <h3 className="text-xl font-bold flex items-center gap-2"><Pencil size={20} className="text-blue-500" /> Editar Liquidación</h3>
+                                <h3 className="text-xl font-bold flex items-center gap-2"><Pencil size={20} className="text-teal-500" /> Editar Liquidación</h3>
                                 <button onClick={() => setShowEditFormModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={20} /></button>
                             </div>
                             <div className="space-y-4">
@@ -1815,7 +1815,7 @@ const LiquidacionView = () => {
                                     <div><label className="block text-[10px] font-bold text-slate-500 mb-1">Pesos</label><input type="number" className="w-full p-2 border rounded-lg bg-white" value={editFormData.monto_pesos || 0} onChange={(e) => setEditFormData({ ...editFormData, monto_pesos: parseFloat(e.target.value) })} /></div>
                                     <div><label className="block text-[10px] font-bold text-slate-500 mb-1">Dólares</label><input type="number" className="w-full p-2 border rounded-lg bg-white" value={editFormData.monto_dolares || 0} onChange={(e) => setEditFormData({ ...editFormData, monto_dolares: parseFloat(e.target.value) })} /></div>
                                 </div>
-                                <button onClick={handleUpdateEntry} className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl flex justify-center items-center gap-2 shadow-lg shadow-blue-200"><Save size={20} /> Guardar</button>
+                                <button onClick={handleUpdateEntry} className="w-full py-4 bg-teal-600 text-white font-bold rounded-xl flex justify-center items-center gap-2 shadow-lg shadow-blue-200"><Save size={20} /> Guardar</button>
                             </div>
                         </div>
                     </div>

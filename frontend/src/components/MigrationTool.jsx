@@ -131,8 +131,8 @@ const MigrationTool = () => {
     };
 
     return (
-        <div className="p-8 max-w-2xl mx-auto bg-white shadow-lg rounded-xl my-10 border border-blue-200">
-            <h2 className="text-2xl font-bold mb-4 text-blue-800">Herramienta de Migración a Firebase</h2>
+        <div className="p-8 max-w-2xl mx-auto bg-white shadow-lg rounded-xl my-10 border border-teal-200">
+            <h2 className="text-2xl font-bold mb-4 text-teal-800">Herramienta de Migración a Firebase</h2>
             <p className="mb-4 text-slate-600">
                 Esta herramienta leerá los datos de tu servidor local (Python) y los subirá a la nube (Firestore).
                 Asegúrate de que el servidor local esté corriendo.
@@ -141,14 +141,14 @@ const MigrationTool = () => {
             {status === 'idle' && (
                 <button
                     onClick={migrate}
-                    className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 w-full"
+                    className="bg-teal-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-teal-700 w-full"
                 >
                     Iniciar Migración
                 </button>
             )}
 
             {status === 'working' && (
-                <div className="text-center text-blue-600 font-bold animate-pulse">
+                <div className="text-center text-teal-600 font-bold animate-pulse">
                     Migrando datos... por favor espera...
                 </div>
             )}

@@ -140,7 +140,7 @@ const NotesView = () => {
                     </div>
                     <button
                         onClick={handleSave}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 transition-all"
+                        className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 transition-all"
                     >
                         <Save size={18} /> Guardar
                     </button>
@@ -179,7 +179,7 @@ const NotesView = () => {
                 </div>
                 <button
                     onClick={startNewNote}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 transition-all"
+                    className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 transition-all"
                 >
                     <Plus size={20} /> Nueva Nota
                 </button>
@@ -193,7 +193,7 @@ const NotesView = () => {
                     placeholder="Buscar en mis notas..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
             </div>
 

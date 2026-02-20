@@ -103,7 +103,7 @@ function AuthenticatedApp() {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl max-w-md w-full text-center space-y-6 border border-slate-200 animate-in zoom-in-95 duration-300">
-          <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+          <div className="w-20 h-20 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <ShieldAlert size={40} />
           </div>
           <div className="space-y-2">
@@ -114,7 +114,7 @@ function AuthenticatedApp() {
           </div>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-600 space-y-2">
             <div className="flex items-center gap-2 justify-center">
-              <CheckCircle2 size={16} className="text-emerald-500" />
+              <CheckCircle2 size={16} className="text-teal-500" />
               <span>Solicita acceso al administrador</span>
             </div>
           </div>
@@ -144,7 +144,7 @@ function AuthenticatedApp() {
       <aside className={`${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-0 md:translate-x-0 md:w-20'} fixed md:relative min-h-screen bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shadow-xl md:shadow-none transition-all duration-300 z-30`}>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className={`absolute -right-3 top-8 bg-blue-600 text-white p-1 rounded-full shadow-md z-30 hover:bg-blue-700 transition-colors hidden md:flex`}
+          className={`absolute -right-3 top-8 bg-teal-600 text-white p-1 rounded-full shadow-md z-30 hover:bg-teal-700 transition-colors hidden md:flex`}
         >
           {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
@@ -167,8 +167,8 @@ function AuthenticatedApp() {
                   if (window.innerWidth < 768) setSidebarOpen(false); // Close on mobile select
                 }}
                 className={`w-full flex items-center px-4 py-3 rounded-xl transition-all font-medium whitespace-nowrap overflow-hidden ${activeTab === item.id
-                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200'
+                  ? 'bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400 font-bold'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-teal-700 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200'
                   } ${!sidebarOpen ? 'justify-center px-0' : 'gap-3'}`}
                 title={!sidebarOpen ? item.label : ''}
               >
@@ -183,7 +183,7 @@ function AuthenticatedApp() {
         <div className={`mt-auto p-6 transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>
           <div
             onClick={() => setShowNextFeatures(true)}
-            className="text-[10px] text-slate-400 font-mono cursor-pointer hover:text-blue-500 transition-colors flex flex-col gap-0.5"
+            className="text-[10px] text-slate-400 font-mono cursor-pointer hover:text-teal-500 transition-colors flex flex-col gap-0.5"
           >
             <span>v1.3.0</span>
             <span>Actualizado: 26/01/2026 - 19:53</span>
@@ -238,24 +238,24 @@ function AuthenticatedApp() {
 
               <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
                 <div className="space-y-3">
-                  <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">19 de Enero, 2026</h4>
+                  <h4 className="text-xs font-black text-teal-500 uppercase tracking-widest border-l-2 border-teal-500 pl-3">19 de Enero, 2026</h4>
                   <ul className="space-y-3">
                     <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-300">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                       <div>
                         <strong>Compatibilidad W7:</strong>
                         <p className="text-xs opacity-70">Añadidos fallbacks de colores y estilos para soportar Chrome 109 y navegadores antiguos.</p>
                       </div>
                     </li>
                     <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-300">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                       <div>
                         <strong>Diseño Responsivo:</strong>
                         <p className="text-xs opacity-70">Menú de botones adaptativo en Liquidaciones y mejoras de visualización en móviles.</p>
                       </div>
                     </li>
                     <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-300">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                       <div>
                         <strong>URL Corta:</strong>
                         <p className="text-xs opacity-70">Migración al nuevo dominio corto: cajacx.web.app.</p>
@@ -268,28 +268,28 @@ function AuthenticatedApp() {
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-l-2 border-slate-300 pl-3">18 de Enero, 2026</h4>
                   <ul className="space-y-3">
                     <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-300">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                       <div>
                         <strong>Sistema de Fechas Seguro:</strong>
                         <p className="text-xs opacity-70">Implementación de escudos contra errores de renderizado por fechas inválidas.</p>
                       </div>
                     </li>
                     <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-300">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                       <div>
                         <strong>Deducciones Detalladas:</strong>
                         <p className="text-xs opacity-70">Añadida fecha individual a cada ítem de "Agregar Detalle".</p>
                       </div>
                     </li>
                     <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-300">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                       <div>
                         <strong>Liquidación Multi-profesional:</strong>
                         <p className="text-xs opacity-70">Nueva funcionalidad para dividir honorarios manuales entre múltiples médicos.</p>
                       </div>
                     </li>
                     <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-300">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                       <div>
                         <strong>Recibos Dinámicos:</strong>
                         <p className="text-xs opacity-70">La fecha del recibo ahora coincide con el periodo de liquidación seleccionado.</p>

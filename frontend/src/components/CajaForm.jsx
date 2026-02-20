@@ -237,8 +237,28 @@ const CajaForm = () => {
             coat: (entry.coat_ars || 0) + (entry.coat_usd || 0), // Legacy
 
             // Profesionales (Guardamos el detalle completo si es posible, o simplificamos para legacy)
-            // Legacy espera liq_prof_N y currency
-            // Guardamos campos nuevos planos para soportar dualidad en el futuro
+            // Legacy espera liq_prof_N y currency. Mapeamos ARS a primary y USD a secondary.
+            liq_prof_1: entry.liq_prof_1_ars || 0,
+            liq_prof_1_currency: 'ARS',
+            liq_prof_1_secondary: entry.liq_prof_1_usd || 0,
+            liq_prof_1_currency_secondary: 'USD',
+
+            liq_prof_2: entry.liq_prof_2_ars || 0,
+            liq_prof_2_currency: 'ARS',
+            liq_prof_2_secondary: entry.liq_prof_2_usd || 0,
+            liq_prof_2_currency_secondary: 'USD',
+
+            liq_prof_3: entry.liq_prof_3_ars || 0,
+            liq_prof_3_currency: 'ARS',
+            liq_prof_3_secondary: entry.liq_prof_3_usd || 0,
+            liq_prof_3_currency_secondary: 'USD',
+
+            liq_anestesista: entry.liq_anestesista_ars || 0,
+            liq_anestesista_currency: 'ARS',
+            liq_anestesista_secondary: entry.liq_anestesista_usd || 0,
+            liq_anestesista_currency_secondary: 'USD',
+
+            // Campos planos adicionales por las dudas
             liq_prof_1_ars: entry.liq_prof_1_ars, liq_prof_1_usd: entry.liq_prof_1_usd,
             liq_prof_2_ars: entry.liq_prof_2_ars, liq_prof_2_usd: entry.liq_prof_2_usd,
             liq_prof_3_ars: entry.liq_prof_3_ars, liq_prof_3_usd: entry.liq_prof_3_usd,
@@ -338,32 +358,39 @@ const CajaForm = () => {
 
     const handleUpdateItem = async (updatedData) => {
         try {
-            // Recalculate derived fields
-            let processed = { ...updatedData };
-            const total = processed.total || 0;
-            const liq1 = total * ((processed.pct_prof_1 || 0) / 100);
-            const liq2 = total * ((processed.pct_prof_2 || 0) / 100);
-            const liq3 = processed.showProf3 ? total * ((processed.pct_prof_3 || 0) / 100) : 0;
-            const anest = processed.liq_anestesista || 0;
-            const coat = Math.max(0, total - liq1 - liq2 - liq3 - anest);
+            // Updated mapping logic (Same as handleGuardarOperacion)
+            const processed = {
+                ...updatedData,
+                // Legacy Map: ARS -> primary, USD -> secondary
+                liq_prof_1: updatedData.liq_prof_1_ars || 0,
+                liq_prof_1_currency: 'ARS',
+                liq_prof_1_secondary: updatedData.liq_prof_1_usd || 0,
+                liq_prof_1_currency_secondary: 'USD',
 
-            processed = {
-                ...processed,
-                liq_prof_1: liq1,
-                liq_prof_2: liq2,
-                liq_prof_3: liq3,
-                coat
+                liq_prof_2: updatedData.liq_prof_2_ars || 0,
+                liq_prof_2_currency: 'ARS',
+                liq_prof_2_secondary: updatedData.liq_prof_2_usd || 0,
+                liq_prof_2_currency_secondary: 'USD',
+
+                liq_prof_3: updatedData.liq_prof_3_ars || 0,
+                liq_prof_3_currency: 'ARS',
+                liq_prof_3_secondary: updatedData.liq_prof_3_usd || 0,
+                liq_prof_3_currency_secondary: 'USD',
+
+                liq_anestesista: updatedData.liq_anestesista_ars || 0,
+                liq_anestesista_currency: 'ARS',
+                liq_anestesista_secondary: updatedData.liq_anestesista_usd || 0,
+                liq_anestesista_currency_secondary: 'USD',
+
+                // Legacy totals for display in HistorialCaja
+                pesos: updatedData.total_ars || 0,
+                dolares: updatedData.total_usd || 0,
+                total: (updatedData.total_ars || 0) + (updatedData.total_usd || 0),
+                coat_pesos: updatedData.coat_ars || 0,
+                coat_dolares: updatedData.coat_usd || 0,
+                coat: (updatedData.coat_ars || 0) + (updatedData.coat_usd || 0),
+                moneda: (updatedData.total_usd > 0 && updatedData.total_ars === 0) ? 'USD' : 'ARS'
             };
-
-            // Map to legacy fields for HistorialCaja compatibility
-            processed.pesos = processed.moneda === 'ARS' ? processed.total : 0;
-            processed.dolares = processed.moneda === 'USD' ? processed.total : 0;
-            processed.coat_pesos = processed.moneda === 'ARS' ? processed.coat : 0;
-            processed.coat_dolares = processed.moneda === 'USD' ? processed.coat : 0;
-            processed.liq_prof_1_currency = processed.moneda;
-            processed.liq_prof_2_currency = processed.moneda;
-            processed.liq_prof_3_currency = processed.moneda;
-            processed.liq_anestesista_currency = processed.moneda;
 
             await updateDoc(doc(db, 'caja', editingItem.id), processed);
             setEditModalOpen(false);
@@ -427,30 +454,39 @@ const CajaForm = () => {
         <div className="space-y-6">
 
             {/* ── Header ─────────────────────────────────────────────────── */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-xl font-bold text-slate-800">Caja Diaria</h2>
-                    <p className="text-sm text-slate-500">Ingresá los movimientos del día</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <div className="flex flex-col items-end gap-1">
-                        <div className="flex gap-2">
-                            <div className="bg-orange-50 border border-orange-100 rounded-lg px-2 py-1 text-xs font-bold text-orange-700">
-                                {fmt(totals.coatARS)}
-                            </div>
-                            <div className="bg-orange-50 border border-orange-100 rounded-lg px-2 py-1 text-xs font-bold text-orange-700">
-                                {fmt(totals.coatUSD, 'USD')}
-                            </div>
-                        </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-[#0097A7] text-white rounded-2xl shadow-lg shadow-teal-100 hidden sm:block">
+                        <LayoutDashboard size={28} />
                     </div>
-                    <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
-                        <Calendar size={16} className="text-slate-400" />
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none mb-1">Caja Diaria</h2>
+                        <p className="text-sm text-slate-500 font-medium tracking-tight">Control de gestión de ingresos y honorarios</p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 bg-white p-2 rounded-3xl border border-slate-100 shadow-sm">
+                    {/* Date Picker */}
+                    <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-2xl border border-slate-100 hover:border-teal-200 transition-all group">
+                        <Calendar size={18} className="text-teal-600 group-hover:scale-110 transition-transform" />
                         <input
                             type="date"
-                            className="bg-transparent border-none text-sm font-bold text-slate-800 focus:outline-none"
+                            className="bg-transparent border-none text-sm font-bold text-teal-900 focus:outline-none cursor-pointer"
                             value={globalDate}
                             onChange={e => setGlobalDate(e.target.value)}
                         />
+                    </div>
+
+                    {/* Totals Summary */}
+                    <div className="flex gap-2">
+                        <div className="bg-teal-50 border border-teal-100 px-4 py-2 rounded-2xl text-center min-w-[100px]">
+                            <span className="block text-[8px] font-black text-teal-600 uppercase tracking-widest mb-0.5">Total Pesos</span>
+                            <span className="text-sm font-black text-teal-800">$ {new Intl.NumberFormat('es-AR').format(totals.coatARS)}</span>
+                        </div>
+                        <div className="bg-teal-50 border border-teal-100 px-4 py-2 rounded-2xl text-center min-w-[100px]">
+                            <span className="block text-[8px] font-black text-teal-600 uppercase tracking-widest mb-0.5">Total USD</span>
+                            <span className="text-sm font-black text-teal-800">USD {new Intl.NumberFormat('es-AR').format(totals.coatUSD)}</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -461,13 +497,13 @@ const CajaForm = () => {
                     <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-lg">
                         <h3 className="font-bold text-lg mb-4">Comentario General del Día</h3>
                         <textarea
-                            className="w-full h-32 border border-slate-300 rounded-xl p-3 focus:border-blue-500 outline-none resize-none"
+                            className="w-full h-32 border border-slate-300 rounded-xl p-3 focus:border-teal-500 outline-none resize-none"
                             placeholder="Observaciones generales del día..."
                             value={dailyComment}
                             onChange={e => setDailyComment(e.target.value)}
                         />
                         <div className="flex justify-end gap-2 mt-4">
-                            <button onClick={() => setShowDailyCommentModal(false)} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">Cerrar</button>
+                            <button onClick={() => setShowDailyCommentModal(false)} className="px-4 py-2 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-700">Cerrar</button>
                         </div>
                     </div>
                 </div>
@@ -478,12 +514,12 @@ const CajaForm = () => {
                     <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-lg">
                         <h3 className="font-bold text-lg mb-4">Comentario del Paciente</h3>
                         <textarea
-                            className="w-full h-32 border border-slate-300 rounded-xl p-3 focus:border-blue-500 outline-none resize-none"
+                            className="w-full h-32 border border-slate-300 rounded-xl p-3 focus:border-teal-500 outline-none resize-none"
                             value={entries.find(e => e.id === commentModalId)?.comentario || ''}
                             onChange={e => updateEntry(commentModalId, { comentario: e.target.value })}
                         />
                         <div className="flex justify-end gap-2 mt-4">
-                            <button onClick={() => setCommentModalId(null)} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">Guardar</button>
+                            <button onClick={() => setCommentModalId(null)} className="px-4 py-2 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-700">Guardar</button>
                         </div>
                     </div>
                 </div>
@@ -494,8 +530,8 @@ const CajaForm = () => {
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in zoom-in-95">
                         <div className="flex justify-center mb-4">
-                            <div className="p-3 bg-blue-50 rounded-full">
-                                <Lock size={24} className="text-blue-600" />
+                            <div className="p-3 bg-teal-50 rounded-full">
+                                <Lock size={24} className="text-teal-600" />
                             </div>
                         </div>
                         <h3 className="text-lg font-bold text-slate-900 mb-2 text-center">Acceso Restringido</h3>
@@ -503,7 +539,7 @@ const CajaForm = () => {
 
                         <input
                             type="password"
-                            className="w-full text-center text-3xl tracking-[0.5em] font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-blue-500 focus:outline-none transition-all placeholder:tracking-normal"
+                            className="w-full text-center text-3xl tracking-[0.5em] font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-teal-500 focus:outline-none transition-all placeholder:tracking-normal"
                             placeholder="PIN"
                             value={pinInput}
                             onChange={(e) => setPinInput(e.target.value)}
@@ -512,7 +548,7 @@ const CajaForm = () => {
                         />
                         <div className="flex gap-3">
                             <button onClick={() => { setShowPinModal(false); setPinInput(''); setPinAction(null); }} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-all">Cancelar</button>
-                            <button onClick={verifyPin} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">Confirmar</button>
+                            <button onClick={verifyPin} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-teal-200 transition-all">Confirmar</button>
                         </div>
                     </div>
                 </div>
@@ -538,14 +574,20 @@ const CajaForm = () => {
                             onUpdate={(patch) => {
                                 // Real-time local update in the modal state
                                 const updated = { ...editingItem, ...patch };
-                                // Auto-recalc logic inline here to keep UI consistent
-                                const total = updated.total || 0;
-                                const liq1 = total * ((updated.pct_prof_1 || 0) / 100);
-                                const liq2 = total * ((updated.pct_prof_2 || 0) / 100);
-                                const liq3 = updated.showProf3 ? total * ((updated.pct_prof_3 || 0) / 100) : 0;
-                                const anest = updated.liq_anestesista || 0;
-                                const coat = Math.max(0, total - liq1 - liq2 - liq3 - anest);
-                                setEditingItem({ ...updated, liq_prof_1: liq1, liq_prof_2: liq2, liq_prof_3: liq3, coat });
+
+                                // Recalculate logic
+                                const calcKeys = [
+                                    'total_ars', 'total_usd',
+                                    'pct_prof_1', 'pct_prof_2', 'pct_prof_3',
+                                    'liq_anestesista_ars', 'liq_anestesista_usd'
+                                ];
+                                const needsRecalc = Object.keys(patch).some(key => calcKeys.includes(key));
+
+                                if (needsRecalc && !('coat_ars' in patch || 'coat_usd' in patch)) {
+                                    setEditingItem(recalc(updated));
+                                } else {
+                                    setEditingItem(updated);
+                                }
                             }}
                             onRemove={() => { }}
                             onComment={() => { }} // Could implement comment modal inside edit if needed
@@ -554,7 +596,7 @@ const CajaForm = () => {
 
                         <div className="flex justify-end gap-3 mt-6">
                             <button onClick={() => setEditModalOpen(false)} className="px-6 py-2.5 text-slate-500 font-bold hover:bg-white rounded-xl transition-all">Cancelar</button>
-                            <button onClick={() => handleUpdateItem(editingItem)} className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">Guardar Cambios</button>
+                            <button onClick={() => handleUpdateItem(editingItem)} className="px-6 py-2.5 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-teal-100 transition-all">Guardar Cambios</button>
                         </div>
                     </div>
                 </div>
@@ -578,26 +620,26 @@ const CajaForm = () => {
 
             {/* ── Acciones ───────────────────────────────────────────────── */}
             {!isReadOnly && (
-                <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 mt-2">
                     <button
                         onClick={() => setShowDailyCommentModal(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 rounded-xl hover:bg-amber-100 transition-all font-medium border border-amber-200 text-sm"
+                        className={`flex items-center gap-2 px-6 py-4 rounded-2xl transition-all font-bold text-sm border-2 ${dailyComment ? 'bg-orange-50 text-orange-700 border-orange-100' : 'bg-white text-slate-400 border-slate-100 hover:border-teal-200 hover:text-teal-600 shadow-sm'}`}
                     >
-                        <MessageSquare size={16} />
-                        {dailyComment ? 'Editar Comentario del Día ✦' : 'Agregar Comentario del Día'}
+                        <MessageSquare size={20} />
+                        {dailyComment ? 'Editar Observación General' : 'Añadir Observación General'}
                     </button>
-                    <div className="flex gap-3">
+                    <div className="flex gap-4 w-full md:w-auto">
                         <button
                             onClick={handleGuardarOperacion}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-all font-semibold shadow-lg shadow-emerald-100 text-sm"
+                            className="flex-1 md:flex-none flex items-center justify-center gap-3 px-8 py-4 bg-[#00897B] text-white rounded-2xl hover:bg-[#00796B] transition-all font-black uppercase tracking-widest shadow-xl shadow-teal-100 text-sm"
                         >
-                            <Save size={18} /> Guardar Operación
+                            <CheckCircle2 size={20} /> Guardar Operación
                         </button>
                         <button
                             onClick={handleGuardarJornada}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-semibold shadow-lg shadow-blue-200 text-sm"
+                            className="flex-1 md:flex-none flex items-center justify-center gap-3 px-8 py-4 bg-[#006064] text-white rounded-2xl hover:bg-[#004d40] transition-all font-black uppercase tracking-widest shadow-xl shadow-teal-200 text-sm"
                         >
-                            <Save size={18} /> Guardar Jornada
+                            <Save size={20} /> Guardar Jornada
                         </button>
                     </div>
                 </div>
@@ -614,16 +656,17 @@ const CajaForm = () => {
                     <div className="text-center py-8 text-slate-400">Cargando historial...</div>
                 ) : historyEntries.length === 0 ? (
                     <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                        <p className="text-slate-400 text-sm">Aún no hay operaciones guardadas para hoy.</p>
+                        <p className="text-sm text-slate-400">Aún no hay operaciones guardadas para hoy.</p>
                     </div>
                 ) : (
                     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-500 font-bold text-xs uppercase tracking-wider border-b border-slate-200">
                                 <tr>
-                                    <th className="px-4 py-3">Paciente</th>
+                                    <th className="px-4 py-3">Paciente / DNI</th>
                                     <th className="px-4 py-3">Obra Social</th>
-                                    <th className="px-4 py-3 text-right">Total</th>
+                                    <th className="px-4 py-3">Profesionales</th>
+                                    <th className="px-4 py-3 text-right">Pagó</th>
                                     <th className="px-4 py-3 text-right">COAT</th>
                                     <th className="px-4 py-3 text-center">Acciones</th>
                                 </tr>
@@ -640,20 +683,49 @@ const CajaForm = () => {
 
                                     return (
                                         <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                                            <td className="px-4 py-3 font-medium text-slate-700">{item.paciente}</td>
-                                            <td className="px-4 py-3 text-slate-500">{item.obraSocial || '-'}</td>
-                                            <td className="px-4 py-3 text-right font-bold text-blue-700">
-                                                {item.moneda === 'USD' ? 'USD ' : '$ '}
-                                                {new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(item.total || 0)}
+                                            <td className="px-4 py-3">
+                                                <div className="font-bold text-slate-700">{item.paciente}</div>
+                                                <div className="text-[10px] text-slate-400 font-medium">{item.dni || '-'}</div>
                                             </td>
-                                            <td className="px-4 py-3 text-right font-bold text-orange-600">
-                                                {item.moneda === 'USD' ? 'USD ' : '$ '}
-                                                {new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(item.coat || 0)}
+                                            <td className="px-4 py-3 text-slate-500 text-xs font-medium">{item.obraSocial || '-'}</td>
+                                            <td className="px-4 py-3">
+                                                <div className="space-y-1">
+                                                    {[
+                                                        { name: item.prof_1, ars: item.liq_prof_1_ars, usd: item.liq_prof_1_usd },
+                                                        { name: item.prof_2, ars: item.liq_prof_2_ars, usd: item.liq_prof_2_usd },
+                                                        { name: item.prof_3, ars: item.liq_prof_3_ars, usd: item.liq_prof_3_usd },
+                                                        { name: item.anestesista, ars: item.liq_anestesista_ars, usd: item.liq_anestesista_usd, label: 'Anest.' }
+                                                    ].filter(p => p.name).map((p, i) => (
+                                                        <div key={i} className="flex flex-col border-l-2 border-teal-100 pl-2">
+                                                            <div className="text-[10px] font-bold text-teal-800 uppercase tracking-tighter">
+                                                                {p.label || 'Prof.'}: {p.name}
+                                                            </div>
+                                                            <div className="text-[9px] text-slate-500 font-medium flex gap-2">
+                                                                {p.ars > 0 && <span>ARS {fmt(p.ars).replace('$ ', '')}</span>}
+                                                                {p.usd > 0 && <span>USD {fmt(p.usd, 'USD').replace('USD ', '')}</span>}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="text-teal-700 font-bold text-sm">
+                                                    {(item.total_ars || 0) > 0 && <div>{fmt(item.total_ars)}</div>}
+                                                    {(item.total_usd || 0) > 0 && <div>{fmt(item.total_usd, 'USD')}</div>}
+                                                    {(!item.total_ars && !item.total_usd) && <span className="text-slate-300">0,00</span>}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="text-orange-600 font-bold text-sm">
+                                                    {(item.coat_ars || 0) > 0 && <div>{fmt(item.coat_ars)}</div>}
+                                                    {(item.coat_usd || 0) > 0 && <div>{fmt(item.coat_usd, 'USD')}</div>}
+                                                    {(!item.coat_ars && !item.coat_usd) && <span className="text-slate-300">0,00</span>}
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3 flex justify-center gap-2">
                                                 <button
                                                     onClick={() => requestEdit(item)}
-                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                    className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all"
                                                     title="Editar (Requiere PIN)"
                                                 >
                                                     <Edit2 size={16} />
@@ -695,7 +767,7 @@ const CajaForm = () => {
                     {!isReadOnly && (
                         <button
                             onClick={() => setIsAddingReminder(true)}
-                            className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-all"
+                            className="text-sm font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-all"
                         >
                             <Plus size={16} /> Agregar
                         </button>
@@ -706,25 +778,25 @@ const CajaForm = () => {
                     <div className="mb-4 flex gap-2">
                         <input
                             type="text"
-                            className="flex-1 bg-white border border-blue-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                            className="flex-1 bg-white border border-teal-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-teal-100 outline-none"
                             placeholder="Escribí un recordatorio..."
                             value={newReminder}
                             onKeyDown={e => e.key === 'Enter' && handleAddReminder()}
                             onChange={e => setNewReminder(e.target.value)}
                             autoFocus
                         />
-                        <button onClick={handleAddReminder} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-all">Guardar</button>
+                        <button onClick={handleAddReminder} className="bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-teal-700 transition-all">Guardar</button>
                         <button onClick={() => { setIsAddingReminder(false); setNewReminder(''); }} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-xl text-sm">Cancelar</button>
                     </div>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {reminders.map(rem => (
-                        <div key={rem.id} className={`group border rounded-2xl p-4 transition-all relative overflow-hidden ${rem.completed ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 hover:border-amber-200 hover:shadow-sm'}`}>
-                            <div className={`absolute top-0 left-0 w-1 h-full ${rem.completed ? 'bg-emerald-400' : 'bg-amber-300 opacity-0 group-hover:opacity-100'} transition-opacity`} />
+                        <div key={rem.id} className={`group border rounded-2xl p-4 transition-all relative overflow-hidden ${rem.completed ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 hover:border-orange-200 hover:shadow-sm'}`}>
+                            <div className={`absolute top-0 left-0 w-1 h-full ${rem.completed ? 'bg-teal-400' : 'bg-orange-300 opacity-0 group-hover:opacity-100'} transition-opacity`} />
                             <div className="flex justify-between items-start gap-3">
                                 <div className="flex gap-3 items-start flex-1">
-                                    <button onClick={() => toggleReminderStatus(rem.id, rem.completed)} className={`mt-0.5 transition-colors ${rem.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-blue-500'}`}>
+                                    <button onClick={() => toggleReminderStatus(rem.id, rem.completed)} className={`mt-0.5 transition-colors ${rem.completed ? 'text-teal-500' : 'text-slate-300 hover:text-teal-500'}`}>
                                         {rem.completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                                     </button>
                                     <p className={`text-sm leading-relaxed ${rem.completed ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>{rem.text}</p>
@@ -765,7 +837,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Paciente</label>
                     <input
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
                         placeholder="Nombre Completo..."
                         value={entry.paciente}
                         onChange={e => onUpdate({ paciente: e.target.value })}
@@ -775,7 +847,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">DNI</label>
                     <input
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
                         placeholder="Documento..."
                         value={entry.dni}
                         onChange={e => onUpdate({ dni: e.target.value })}
@@ -786,7 +858,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                     <div className="space-y-1.5 flex-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Obra Social</label>
                         <input
-                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-50/50 transition-all placeholder:font-normal placeholder:text-slate-300"
                             placeholder="Prepaga / OS..."
                             value={entry.obraSocial}
                             onChange={e => onUpdate({ obraSocial: e.target.value })}
@@ -799,7 +871,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                         </button>
                     )}
                     {!isReadOnly && (
-                        <button onClick={onComment} className={`mt-7 p-3 rounded-xl border transition-all ${entry.comentario ? 'bg-amber-50 text-amber-600 border-amber-200' : 'text-slate-300 hover:text-blue-500 hover:bg-blue-50 border-transparent'}`}>
+                        <button onClick={onComment} className={`mt-7 p-3 rounded-xl border transition-all ${entry.comentario ? 'bg-orange-50 text-orange-600 border-orange-200' : 'text-slate-300 hover:text-teal-500 hover:bg-teal-50 border-transparent'}`}>
                             <MessageSquare size={20} />
                         </button>
                     )}
@@ -810,15 +882,15 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
 
                 {/* 2. Pago del Paciente (Left Column) */}
                 <div className="w-full lg:w-64 space-y-6 flex-shrink-0">
-                    <div className="bg-emerald-50/50 rounded-2xl p-4 border border-emerald-100/50 space-y-4">
-                        <label className="text-[10px] font-bold text-emerald-600/70 uppercase tracking-widest flex items-center gap-2">
+                    <div className="bg-teal-50/50 rounded-2xl p-4 border border-teal-100/50 space-y-4">
+                        <label className="text-[10px] font-bold text-teal-600/70 uppercase tracking-widest flex items-center gap-2">
                             Pago del Paciente
                         </label>
 
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-emerald-600">$</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-teal-600">$</span>
                             <MoneyInput
-                                className="w-full bg-white border-2 border-emerald-100 rounded-xl pl-8 pr-4 py-3 text-lg font-bold text-slate-700 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50 transition-all"
+                                className="w-full bg-white border-2 border-teal-100 rounded-xl pl-8 pr-4 py-3 text-lg font-bold text-slate-700 outline-none focus:border-teal-400 focus:ring-4 focus:ring-teal-50 transition-all"
                                 value={entry.total_ars}
                                 onChange={val => onUpdate({ total_ars: val })}
                                 placeholder="0,00"
@@ -826,9 +898,9 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                         </div>
 
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-600">USD</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-teal-600">USD</span>
                             <MoneyInput
-                                className="w-full bg-white border-2 border-emerald-100 rounded-xl pl-12 pr-4 py-3 text-lg font-bold text-slate-700 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50 transition-all"
+                                className="w-full bg-white border-2 border-teal-100 rounded-xl pl-12 pr-4 py-3 text-lg font-bold text-slate-700 outline-none focus:border-teal-400 focus:ring-4 focus:ring-teal-50 transition-all"
                                 value={entry.total_usd}
                                 onChange={val => onUpdate({ total_usd: val })}
                                 placeholder="0,00"
@@ -880,7 +952,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                             {!entry.showProf3 && !isReadOnly && (
                                 <button
                                     onClick={() => onUpdate({ showProf3: true })}
-                                    className="text-[10px] font-bold bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
+                                    className="text-[10px] font-bold bg-teal-50 hover:bg-teal-100 text-teal-600 hover:text-teal-700 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
                                 >
                                     <Plus size={10} /> Añadir Prof. 3
                                 </button>
@@ -890,7 +962,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                         <div className="space-y-3">
                             <ProfRow
                                 label="Médico 1"
-                                color="blue"
+                                color="teal"
                                 surgeons={surgeons}
                                 prof={entry.prof_1} pct={entry.pct_prof_1}
                                 liqArs={entry.liq_prof_1_ars} liqUsd={entry.liq_prof_1_usd}
@@ -901,7 +973,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                             />
                             <ProfRow
                                 label="Médico 2"
-                                color="indigo"
+                                color="purple"
                                 surgeons={surgeons}
                                 prof={entry.prof_2} pct={entry.pct_prof_2}
                                 liqArs={entry.liq_prof_2_ars} liqUsd={entry.liq_prof_2_usd}
@@ -914,7 +986,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                                 <div className="relative">
                                     <ProfRow
                                         label="Médico 3"
-                                        color="violet"
+                                        color="orange"
                                         surgeons={surgeons}
                                         prof={entry.prof_3} pct={entry.pct_prof_3}
                                         liqArs={entry.liq_prof_3_ars} liqUsd={entry.liq_prof_3_usd}
@@ -935,15 +1007,15 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                     </div>
 
                     {/* Anestesia */}
-                    <div className="bg-fuchsia-50/50 rounded-2xl p-5 border border-fuchsia-100/50 space-y-4">
-                        <label className="text-[10px] font-bold text-fuchsia-600/70 uppercase tracking-widest flex items-center gap-2">
-                            <Circle size={8} className="fill-fuchsia-400 text-fuchsia-400" /> Anestesia
+                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 space-y-4">
+                        <label className="text-[10px] font-bold text-purple-600 uppercase tracking-widest flex items-center gap-2">
+                            <Circle size={8} className="fill-purple-500 text-purple-500" /> Anestesia
                         </label>
                         <div className="flex flex-col md:flex-row gap-4">
                             <div className="flex-1 space-y-1">
                                 <span className="text-[10px] font-bold text-slate-400 pl-1 uppercase">Profesional</span>
                                 <select
-                                    className="w-full bg-white border border-fuchsia-100 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-fuchsia-400 transition-all"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-purple-400 transition-all"
                                     value={entry.anestesista}
                                     onChange={e => onUpdate({ anestesista: e.target.value })}
                                     disabled={isReadOnly}
@@ -956,18 +1028,18 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                                 <span className="text-[10px] font-bold text-slate-400 pl-1 uppercase">Monto Honorario</span>
                                 <div className="flex gap-2">
                                     <div className="relative flex-1">
-                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold bg-fuchsia-500 text-white px-1.5 py-0.5 rounded">ARS</span>
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold bg-purple-500 text-white px-1.5 py-0.5 rounded">ARS</span>
                                         <MoneyInput
-                                            className="w-full bg-white border border-fuchsia-100 rounded-xl pl-12 pr-3 py-2 text-sm font-bold text-fuchsia-700 outline-none focus:border-fuchsia-400 transition-all text-right"
+                                            className="w-full bg-white border border-slate-200 rounded-xl pl-12 pr-3 py-2 text-sm font-bold text-purple-700 outline-none focus:border-purple-400 transition-all text-right"
                                             value={entry.liq_anestesista_ars}
                                             onChange={val => onUpdate({ liq_anestesista_ars: val })}
                                             placeholder="0,00"
                                         />
                                     </div>
                                     <div className="relative flex-1">
-                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold bg-fuchsia-500 text-white px-1.5 py-0.5 rounded">USD</span>
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold bg-teal-500 text-white px-1.5 py-0.5 rounded">USD</span>
                                         <MoneyInput
-                                            className="w-full bg-white border border-fuchsia-100 rounded-xl pl-12 pr-3 py-2 text-sm font-bold text-fuchsia-700 outline-none focus:border-fuchsia-400 transition-all text-right"
+                                            className="w-full bg-white border border-slate-200 rounded-xl pl-12 pr-3 py-2 text-sm font-bold text-teal-700 outline-none focus:border-teal-400 transition-all text-right"
                                             value={entry.liq_anestesista_usd}
                                             onChange={val => onUpdate({ liq_anestesista_usd: val })}
                                             placeholder="0,00"
@@ -990,14 +1062,27 @@ const ProfRow = ({ label, color, surgeons, prof, pct, liqArs, liqUsd, onChangePr
 
     // Color variants
     const colors = {
-        blue: 'focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-50/50',
-        indigo: 'focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50/50',
-        violet: 'focus-within:border-violet-300 focus-within:ring-4 focus-within:ring-violet-50/50',
+        teal: {
+            focus: 'focus-within:border-teal-300 focus-within:ring-4 focus-within:ring-teal-50/50',
+            tag: 'bg-teal-500 text-white'
+        },
+        orange: {
+            focus: 'focus-within:border-orange-300 focus-within:ring-4 focus-within:ring-orange-50/50',
+            tag: 'bg-orange-500 text-white'
+        },
+        purple: {
+            focus: 'focus-within:border-purple-300 focus-within:ring-4 focus-within:ring-purple-50/50',
+            tag: 'bg-purple-600 text-white'
+        },
+        slate: {
+            focus: 'focus-within:border-slate-300 focus-within:ring-4 focus-within:ring-slate-50/50',
+            tag: 'bg-slate-200 text-slate-600'
+        },
     };
-    const activeColor = colors[color] || colors.blue;
+    const theme = colors[color] || colors.teal;
 
     return (
-        <div className={`bg-slate-50/50 border border-slate-100 rounded-2xl p-2 flex flex-col sm:flex-row items-center gap-2 transition-all ${activeColor}`}>
+        <div className={`bg-slate-50/50 border border-slate-100 rounded-2xl p-2 flex flex-col sm:flex-row items-center gap-2 transition-all ${theme.focus}`}>
 
             {/* Label & Select */}
             <div className="flex-1 w-full min-w-[180px]">
@@ -1032,9 +1117,9 @@ const ProfRow = ({ label, color, surgeons, prof, pct, liqArs, liqUsd, onChangePr
             {/* Liquidations (Manual) */}
             <div className="flex-1 flex gap-2 w-full">
                 <div className="relative flex-1">
-                    <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">ARS</span>
+                    <span className={`absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded ${theme.tag}`}>ARS</span>
                     <MoneyInput
-                        className="w-full bg-slate-50 border border-transparent rounded-xl pl-10 pr-2 py-2 text-sm font-bold text-slate-600 text-right focus:bg-white focus:border-blue-300 outline-none transition-all"
+                        className="w-full bg-slate-50 border border-transparent rounded-xl pl-10 pr-2 py-2 text-sm font-bold text-slate-600 text-right focus:bg-white focus:border-teal-300 outline-none transition-all"
                         value={liqArs}
                         onChange={val => onLiqChange && onLiqChange(val, 'ars')}
                         placeholder="0,00"
@@ -1042,9 +1127,9 @@ const ProfRow = ({ label, color, surgeons, prof, pct, liqArs, liqUsd, onChangePr
                     />
                 </div>
                 <div className="relative flex-1">
-                    <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">USD</span>
+                    <span className={`absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded ${theme.tag}`}>USD</span>
                     <MoneyInput
-                        className="w-full bg-slate-50 border border-transparent rounded-xl pl-10 pr-2 py-2 text-sm font-bold text-slate-600 text-right focus:bg-white focus:border-blue-300 outline-none transition-all"
+                        className="w-full bg-slate-50 border border-transparent rounded-xl pl-10 pr-2 py-2 text-sm font-bold text-slate-600 text-right focus:bg-white focus:border-teal-300 outline-none transition-all"
                         value={liqUsd}
                         onChange={val => onLiqChange && onLiqChange(val, 'usd')}
                         placeholder="0,00"

@@ -81,7 +81,7 @@ const LoginView = () => {
                             <input
                                 type="text"
                                 required
-                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                                 placeholder="ej: coat_admin o tu@email.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
@@ -96,7 +96,7 @@ const LoginView = () => {
                             <input
                                 type="password"
                                 required
-                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                                 placeholder="••••••••"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
@@ -112,7 +112,7 @@ const LoginView = () => {
                                 <input
                                     type="password"
                                     required
-                                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                                     placeholder="••••••••"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -133,7 +133,7 @@ const LoginView = () => {
                 <div className="mt-4 text-center">
                     <button
                         onClick={() => setIsRegistering(!isRegistering)}
-                        className="text-sm text-blue-600 font-medium hover:underline"
+                        className="text-sm text-teal-600 font-medium hover:underline"
                     >
                         {isRegistering ? "¿Ya tienes cuenta? Inicia sesión" : "¿No tienes cuenta? Regístrate"}
                     </button>
@@ -153,7 +153,7 @@ const LoginView = () => {
                         <button
                             onClick={handleGoogleLogin}
                             disabled={loading}
-                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 disabled:opacity-50"
                         >
                             Acceder con Google
                         </button>
