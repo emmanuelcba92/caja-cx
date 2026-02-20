@@ -45,7 +45,7 @@ const CajaForm = () => {
             liq_prof_1: 0, liq_prof_1_currency: 'ARS', liq_prof_1_secondary: 0, liq_prof_1_currency_secondary: 'USD', showSecondary_1: false,
             liq_prof_2: 0, liq_prof_2_currency: 'ARS', liq_prof_2_secondary: 0, liq_prof_2_currency_secondary: 'USD', showSecondary_2: false,
             liq_prof_3: 0, liq_prof_3_currency: 'ARS', liq_prof_3_secondary: 0, liq_prof_3_currency_secondary: 'USD', showSecondary_3: false,
-            anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS',
+            anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS', liq_anestesista_secondary: 0, liq_anestesista_currency_secondary: 'USD', showSecondaryAnes: false,
             coat_pesos: 0, coat_dolares: 0,
             comentario: ''
         }];
@@ -194,7 +194,7 @@ const CajaForm = () => {
             liq_prof_1: 0, liq_prof_1_currency: 'ARS', liq_prof_1_secondary: 0, liq_prof_1_currency_secondary: 'USD', showSecondary_1: false,
             liq_prof_2: 0, liq_prof_2_currency: 'ARS', liq_prof_2_secondary: 0, liq_prof_2_currency_secondary: 'USD', showSecondary_2: false,
             liq_prof_3: 0, liq_prof_3_currency: 'ARS', liq_prof_3_secondary: 0, liq_prof_3_currency_secondary: 'USD', showSecondary_3: false,
-            anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS',
+            anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS', liq_anestesista_secondary: 0, liq_anestesista_currency_secondary: 'USD', showSecondaryAnes: false,
             coat_pesos: 0, coat_dolares: 0,
             comentario: ''
         }]);
@@ -266,6 +266,12 @@ const CajaForm = () => {
                 checkSub(updated.liq_prof_3, updated.liq_prof_3_currency);
                 checkSub(updated.liq_anestesista, updated.liq_anestesista_currency);
 
+                // Check Secondaries
+                if (updated.showSecondary_1) checkSub(updated.liq_prof_1_secondary, updated.liq_prof_1_currency_secondary);
+                if (updated.showSecondary_2) checkSub(updated.liq_prof_2_secondary, updated.liq_prof_2_currency_secondary);
+                if (updated.showSecondary_3) checkSub(updated.liq_prof_3_secondary, updated.liq_prof_3_currency_secondary);
+                if (updated.showSecondaryAnes) checkSub(updated.liq_anestesista_secondary, updated.liq_anestesista_currency_secondary);
+
                 updated.coat_pesos = (updated.pesos || 0) - totalSubPesos;
                 updated.coat_dolares = (updated.dolares || 0) - totalSubUSD;
             }
@@ -275,15 +281,8 @@ const CajaForm = () => {
     };
 
     const toggleCurrency = (id, field) => {
-        setEntries(entries.map(e => {
-            if (e.id === id) {
-                const current = e[field];
-                const newValue = current === 'ARS' ? 'USD' : 'ARS';
-                updateEntry(id, field, newValue); // Use updateEntry to trigger recalcs
-                return { ...e, [field]: newValue };
-            }
-            return e;
-        }));
+        const newValue = entries.find(e => e.id === id)?.[field] === 'ARS' ? 'USD' : 'ARS';
+        updateEntry(id, field, newValue);
     };
 
     const removeRow = (id) => {
@@ -335,7 +334,7 @@ const CajaForm = () => {
                 liq_prof_1: 0, liq_prof_1_currency: 'ARS', liq_prof_1_secondary: 0, liq_prof_1_currency_secondary: 'USD', showSecondary_1: false,
                 liq_prof_2: 0, liq_prof_2_currency: 'ARS', liq_prof_2_secondary: 0, liq_prof_2_currency_secondary: 'USD', showSecondary_2: false,
                 liq_prof_3: 0, liq_prof_3_currency: 'ARS', liq_prof_3_secondary: 0, liq_prof_3_currency_secondary: 'USD', showSecondary_3: false,
-                anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS',
+                anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS', liq_anestesista_secondary: 0, liq_anestesista_currency_secondary: 'USD', showSecondaryAnes: false,
                 coat_pesos: 0, coat_dolares: 0,
                 comentario: ''
             }]);
@@ -385,7 +384,7 @@ const CajaForm = () => {
                 liq_prof_1: 0, liq_prof_1_currency: 'ARS', liq_prof_1_secondary: 0, liq_prof_1_currency_secondary: 'USD', showSecondary_1: false,
                 liq_prof_2: 0, liq_prof_2_currency: 'ARS', liq_prof_2_secondary: 0, liq_prof_2_currency_secondary: 'USD', showSecondary_2: false,
                 liq_prof_3: 0, liq_prof_3_currency: 'ARS', liq_prof_3_secondary: 0, liq_prof_3_currency_secondary: 'USD', showSecondary_3: false,
-                anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS',
+                anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS', liq_anestesista_secondary: 0, liq_anestesista_currency_secondary: 'USD', showSecondaryAnes: false,
                 coat_pesos: 0, coat_dolares: 0,
                 comentario: ''
             }]);
@@ -853,22 +852,36 @@ const CajaForm = () => {
                                                 {anestesistas.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
                                             </select>
                                         </div>
-                                        <div>
-                                            <label className="block text-[9px] font-bold text-purple-400 uppercase mb-1">Monto Honorario</label>
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    onClick={() => toggleCurrency(entry.id, 'liq_anestesista_currency')}
-                                                    className="text-[10px] font-black text-white bg-purple-500 px-2 py-1.5 rounded-lg shadow-sm hover:bg-purple-600 uppercase"
-                                                >
-                                                    {entry.liq_anestesista_currency}
-                                                </button>
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex-1">
+                                                <label className="block text-[9px] font-bold text-purple-400 uppercase mb-1">Honorario</label>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => toggleCurrency(entry.id, 'liq_anestesista_currency')}
+                                                        className="text-[10px] font-black text-white bg-purple-500 px-2 py-1.5 rounded-lg shadow-sm hover:bg-purple-600 uppercase"
+                                                    >
+                                                        {entry.liq_anestesista_currency}
+                                                    </button>
+                                                    <MoneyInput
+                                                        className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-sm font-black text-purple-800 focus:ring-4 focus:ring-purple-100 outline-none"
+                                                        value={entry.liq_anestesista}
+                                                        onChange={(val) => updateEntry(entry.id, 'liq_anestesista', val)}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <button onClick={() => updateEntry(entry.id, 'showSecondaryAnes', !entry.showSecondaryAnes)} className="p-2 text-purple-300 hover:text-purple-600 transition-colors mt-4"><Plus size={16} /></button>
+                                        </div>
+                                        {entry.showSecondaryAnes && (
+                                            <div className="pt-2 flex items-center gap-2 border-t border-purple-100/50 animate-in slide-in-from-top-1">
+                                                <span className="text-[10px] font-bold text-slate-400">Secundario:</span>
+                                                <button onClick={() => toggleCurrency(entry.id, 'liq_anestesista_currency_secondary')} className="text-[10px] font-bold text-purple-400 uppercase">{entry.liq_anestesista_currency_secondary}</button>
                                                 <MoneyInput
-                                                    className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-sm font-black text-purple-800 focus:ring-4 focus:ring-purple-100 outline-none"
-                                                    value={entry.liq_anestesista}
-                                                    onChange={(val) => updateEntry(entry.id, 'liq_anestesista', val)}
+                                                    className="w-full bg-transparent border-b border-purple-200 text-xs text-purple-800 font-bold outline-none"
+                                                    value={entry.liq_anestesista_secondary}
+                                                    onChange={(val) => updateEntry(entry.id, 'liq_anestesista_secondary', val)}
                                                 />
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -948,36 +961,80 @@ const CajaForm = () => {
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-6">
+                                <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+                                    <div className="flex flex-col gap-1 min-w-[200px]">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Liquidación Detallada</p>
+                                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                            {/* Prof 1 */}
+                                            {item.prof_1 && (
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-500">{item.prof_1}:</span>
+                                                    <span className="text-[11px] font-black text-blue-600">
+                                                        {item.liq_prof_1_currency === 'USD' ? 'U$D' : '$'} {item.liq_prof_1?.toLocaleString('es-AR')}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {/* Prof 2 */}
+                                            {item.prof_2 && (
+                                                <div className="flex items-center gap-1.5 border-l border-slate-200 pl-4">
+                                                    <span className="text-[10px] font-bold text-slate-500">{item.prof_2}:</span>
+                                                    <span className="text-[11px] font-black text-indigo-600">
+                                                        {item.liq_prof_2_currency === 'USD' ? 'U$D' : '$'} {item.liq_prof_2?.toLocaleString('es-AR')}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {/* Prof 3 */}
+                                            {item.prof_3 && (
+                                                <div className="flex items-center gap-1.5 border-l border-slate-200 pl-4">
+                                                    <span className="text-[10px] font-bold text-slate-500">{item.prof_3}:</span>
+                                                    <span className="text-[11px] font-black text-teal-600">
+                                                        {item.liq_prof_3_currency === 'USD' ? 'U$D' : '$'} {item.liq_prof_3?.toLocaleString('es-AR')}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {/* Anestesista */}
+                                            {item.anestesista && (
+                                                <div className="flex items-center gap-1.5 border-l border-slate-300 pl-4">
+                                                    <span className="text-[10px] font-bold text-purple-500">Anest: {item.anestesista}</span>
+                                                    <span className="text-[11px] font-black text-purple-600">
+                                                        {item.liq_anestesista_currency === 'USD' ? 'U$D' : '$'} {item.liq_anestesista?.toLocaleString('es-AR')}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
                                     <div className="text-right">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Honorarios</p>
-                                        <div className="flex items-center gap-2">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Abonado Paciente</p>
+                                        <div className="flex items-center gap-2 justify-end">
                                             {item.pesos > 0 && <span className="text-xs font-black text-emerald-600">${item.pesos.toLocaleString('es-AR')}</span>}
                                             {item.dolares > 0 && <span className="text-xs font-black text-blue-600">U$D {item.dolares.toLocaleString('es-AR')}</span>}
                                         </div>
                                     </div>
-
-                                    <div className="h-8 w-px bg-slate-100" />
-
-                                    {!isReadOnly && (
-                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => requestHistoryAction(item, 'edit')}
-                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
-                                                title="Cargar para editar"
-                                            >
-                                                <Edit2 size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => requestHistoryAction(item, 'delete')}
-                                                className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-all"
-                                                title="Eliminar"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </div>
-                                    )}
                                 </div>
+
+                                <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
+                                {!isReadOnly && (
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={() => requestHistoryAction(item, 'edit')}
+                                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                            title="Cargar para editar"
+                                        >
+                                            <Edit2 size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => requestHistoryAction(item, 'delete')}
+                                            className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-all"
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ))
                     )}
@@ -985,45 +1042,47 @@ const CajaForm = () => {
             </div>
 
             {/* PIN MODAL for History */}
-            {showHistoryPinModal && (
-                <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-center mb-6">
-                            <div className="p-4 bg-blue-50 rounded-2xl text-blue-600">
-                                <Shield size={32} />
+            {
+                showHistoryPinModal && (
+                    <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in zoom-in-95 duration-200">
+                            <div className="flex justify-center mb-6">
+                                <div className="p-4 bg-blue-50 rounded-2xl text-blue-600">
+                                    <Shield size={32} />
+                                </div>
+                            </div>
+                            <h3 className="text-xl font-black text-slate-800 text-center mb-2">PIN de Seguridad</h3>
+                            <p className="text-xs text-slate-500 text-center mb-6 font-medium">Acción protegida. Ingresa tu PIN de administrador.</p>
+
+                            <input
+                                type="password"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-center text-3xl font-black tracking-[1em] focus:ring-2 focus:ring-blue-100 outline-none mb-6"
+                                placeholder="****"
+                                maxLength={8}
+                                value={historyPinInput}
+                                onChange={(e) => setHistoryPinInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleVerifyPin()}
+                                autoFocus
+                            />
+
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => { setShowHistoryPinModal(false); setHistoryPinInput(''); }}
+                                    className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-50 rounded-2xl transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleVerifyPin}
+                                    className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all font-black uppercase tracking-widest text-xs"
+                                >
+                                    Verificar
+                                </button>
                             </div>
                         </div>
-                        <h3 className="text-xl font-black text-slate-800 text-center mb-2">PIN de Seguridad</h3>
-                        <p className="text-xs text-slate-500 text-center mb-6 font-medium">Acción protegida. Ingresa tu PIN de administrador.</p>
-
-                        <input
-                            type="password"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-center text-3xl font-black tracking-[1em] focus:ring-2 focus:ring-blue-100 outline-none mb-6"
-                            placeholder="****"
-                            maxLength={8}
-                            value={historyPinInput}
-                            onChange={(e) => setHistoryPinInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleVerifyPin()}
-                            autoFocus
-                        />
-
-                        <div className="flex gap-4">
-                            <button
-                                onClick={() => { setShowHistoryPinModal(false); setHistoryPinInput(''); }}
-                                className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-50 rounded-2xl transition-all"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleVerifyPin}
-                                className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all font-black uppercase tracking-widest text-xs"
-                            >
-                                Verificar
-                            </button>
-                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
 
             {/* Reminders Section */}
@@ -1121,7 +1180,7 @@ const CajaForm = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

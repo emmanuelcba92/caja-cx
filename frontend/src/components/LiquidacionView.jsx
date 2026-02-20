@@ -717,6 +717,10 @@ const LiquidacionView = () => {
                     const amt = parseFloat(item.liq_prof_3_secondary) || 0;
                     if (item.liq_prof_3_currency_secondary === 'USD') liqDolaresTotal += amt; else liqPesosTotal += amt;
                     if (amt !== 0) hasLiquidation = true;
+                } else if (item.anestesista === prof.nombre) {
+                    const amt = parseFloat(item.liq_anestesista_secondary) || 0;
+                    if (item.liq_anestesista_currency_secondary === 'USD') liqDolaresTotal += amt; else liqPesosTotal += amt;
+                    if (amt !== 0) hasLiquidation = true;
                 }
 
                 const isRelevantManual = item.isManualLiquidation && (
@@ -1063,9 +1067,11 @@ const LiquidacionView = () => {
                     currentRow++;
                     const dRow = worksheet.getRow(currentRow);
                     dRow.getCell(5).value = d.desc;
-                    dRow.getCell(6).value = -d.amount; // Negative for Excel math visually
-                    dRow.getCell(6).numFmt = '"-$"#,##0.00';
-                    dRow.getCell(6).font = { color: { argb: 'FFCC0000' } };
+                    const isUSD = d.currency === 'USD';
+                    const col = isUSD ? 7 : 6;
+                    dRow.getCell(col).value = -d.amount;
+                    dRow.getCell(col).numFmt = isUSD ? '"-USD"#,##0.00' : '"-$"#,##0.00';
+                    dRow.getCell(col).font = { color: { argb: 'FFCC0000' } };
                 });
             }
 
@@ -1078,7 +1084,7 @@ const LiquidacionView = () => {
             totalRow.getCell(6).numFmt = '"$"#,##0.00';
             totalRow.getCell(6).font = { bold: true, underline: true, size: 11 };
 
-            totalRow.getCell(7).value = data.totales.liq_dolares;
+            totalRow.getCell(7).value = finalTotalDolares;
             totalRow.getCell(7).numFmt = '"USD" #,##0.00';
             totalRow.getCell(7).font = { bold: true, underline: true };
 
@@ -1143,9 +1149,11 @@ const LiquidacionView = () => {
                     currentRow++;
                     const dRow = worksheet.getRow(currentRow);
                     dRow.getCell(3).value = d.desc;
-                    dRow.getCell(4).value = -d.amount;
-                    dRow.getCell(4).numFmt = '"-$"#,##0.00';
-                    dRow.getCell(4).font = { color: { argb: 'FFCC0000' } };
+                    const isUSD = d.currency === 'USD';
+                    const col = isUSD ? 5 : 4;
+                    dRow.getCell(col).value = -d.amount;
+                    dRow.getCell(col).numFmt = isUSD ? '"-USD"#,##0.00' : '"-$"#,##0.00';
+                    dRow.getCell(col).font = { color: { argb: 'FFCC0000' } };
                 });
             }
 
@@ -1158,7 +1166,7 @@ const LiquidacionView = () => {
             totalRow.getCell(4).numFmt = '"$"#,##0.00';
             totalRow.getCell(4).font = { bold: true, underline: true, size: 11 };
 
-            totalRow.getCell(5).value = data.totales.liq_dolares;
+            totalRow.getCell(5).value = finalTotalDolares;
             totalRow.getCell(5).numFmt = '"USD" #,##0.00';
             totalRow.getCell(5).font = { bold: true, underline: true };
         }
