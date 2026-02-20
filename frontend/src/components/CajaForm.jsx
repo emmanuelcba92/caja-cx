@@ -220,42 +220,43 @@ const CajaForm = () => {
                 const share2 = pct2 / 100;
                 const share3 = pct3 / 100;
 
-                // Auto-currency detection: If user enters only USD, switch prof currencies to USD automatically
-                if (field === 'dolares' && value > 0 && updated.pesos === 0) {
-                    if (updated.prof_1) updated.liq_prof_1_currency = 'USD';
-                    if (updated.prof_2) updated.liq_prof_2_currency = 'USD';
-                    if (updated.prof_3) updated.liq_prof_3_currency = 'USD';
-                } else if (field === 'pesos' && value > 0 && updated.dolares === 0) {
-                    if (updated.prof_1) updated.liq_prof_1_currency = 'ARS';
-                    if (updated.prof_2) updated.liq_prof_2_currency = 'ARS';
-                    if (updated.prof_3) updated.liq_prof_3_currency = 'ARS';
+                const pPesos = field === 'pesos' ? (value || 0) : (updated.pesos || 0);
+                const pDolares = field === 'dolares' ? (value || 0) : (updated.dolares || 0);
+
+                // Aggressive Auto-currency detection: If only USD is paid, switch everyone to USD
+                if (pDolares > 0 && pPesos === 0) {
+                    if (updated.prof_1 && updated.liq_prof_1_currency === 'ARS') updated.liq_prof_1_currency = 'USD';
+                    if (updated.prof_2 && updated.liq_prof_2_currency === 'ARS') updated.liq_prof_2_currency = 'USD';
+                    if (updated.prof_3 && updated.liq_prof_3_currency === 'ARS') updated.liq_prof_3_currency = 'USD';
+                } else if (pPesos > 0 && pDolares === 0) {
+                    if (updated.prof_1 && updated.liq_prof_1_currency === 'USD') updated.liq_prof_1_currency = 'ARS';
+                    if (updated.prof_2 && updated.liq_prof_2_currency === 'USD') updated.liq_prof_2_currency = 'ARS';
+                    if (updated.prof_3 && updated.liq_prof_3_currency === 'USD') updated.liq_prof_3_currency = 'ARS';
                 }
 
-                // Only update amounts if they are currently linked to percentages
-                // (In this system they always are, but we trigger the update here)
-                if (updated.liq_prof_1_currency === 'ARS') updated.liq_prof_1 = payPesos * share1;
-                else updated.liq_prof_1 = payDolares * share1;
+                // Final Pay amounts to use in calculation (taking into account auto-switches above)
+                if (updated.liq_prof_1_currency === 'ARS') updated.liq_prof_1 = pPesos * share1;
+                else updated.liq_prof_1 = pDolares * share1;
 
-                if (updated.liq_prof_2_currency === 'ARS') updated.liq_prof_2 = payPesos * share2;
-                else updated.liq_prof_2 = payDolares * share2;
+                if (updated.liq_prof_2_currency === 'ARS') updated.liq_prof_2 = pPesos * share2;
+                else updated.liq_prof_2 = pDolares * share2;
 
-                if (updated.liq_prof_3_currency === 'ARS') updated.liq_prof_3 = payPesos * share3;
-                else updated.liq_prof_3 = payDolares * share3;
+                if (updated.liq_prof_3_currency === 'ARS') updated.liq_prof_3 = pPesos * share3;
+                else updated.liq_prof_3 = pDolares * share3;
 
                 // Secondary calculations
                 if (updated.showSecondary_1) {
-                    updated.liq_prof_1_secondary = (updated.liq_prof_1_currency_secondary === 'USD' ? payDolares : payPesos) * share1;
+                    updated.liq_prof_1_secondary = (updated.liq_prof_1_currency_secondary === 'USD' ? pDolares : pPesos) * share1;
                 }
                 if (updated.showSecondary_2) {
-                    updated.liq_prof_2_secondary = (updated.liq_prof_2_currency_secondary === 'USD' ? payDolares : payPesos) * share2;
+                    updated.liq_prof_2_secondary = (updated.liq_prof_2_currency_secondary === 'USD' ? pDolares : pPesos) * share2;
                 }
                 if (updated.showSecondary_3) {
-                    updated.liq_prof_3_secondary = (updated.liq_prof_3_currency_secondary === 'USD' ? payDolares : payPesos) * share3;
+                    updated.liq_prof_3_secondary = (updated.liq_prof_3_currency_secondary === 'USD' ? pDolares : pPesos) * share3;
                 }
             }
 
             // 2. SALDO COAT = Pago - (Prof1 + Prof2 + Prof3 + Anestesista)
-            // Trigger whenever payments, pro amounts, anesthetist fee, or currencies change
             const balanceAffected = [
                 'pesos', 'dolares',
                 'liq_prof_1', 'liq_prof_2', 'liq_prof_3', 'liq_anestesista',
@@ -411,7 +412,8 @@ const CajaForm = () => {
 
     const handleVerifyPin = async () => {
         try {
-            const settingsSnap = await getDoc(doc(db, "user_settings", viewingUid));
+            console.log("Verificando PIN para viewingUid:", viewingUid);
+            const settingsSnap = await getDoc(doc(db, "user_settings", viewingUid || currentUser.uid));
             let validPins = ['0511', 'admin', '1234'];
             if (settingsSnap.exists() && settingsSnap.data().adminPin) {
                 validPins.push(settingsSnap.data().adminPin);

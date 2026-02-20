@@ -18,14 +18,16 @@
     --color-blue-100: #b2dfdb;
     --color-blue-200: #80cbc4;
     --color-blue-500: #00acc1;
-    --color-blue-600: #008c95; /* Base Teal */
+    --color-blue-600: #008c95;
+    /* Base Teal */
     --color-blue-700: #00796b;
 
     /* Secondary: COAT Orange (#F39200) */
     --color-amber-50: #fff8e1;
     --color-amber-100: #ffecb3;
     --color-amber-400: #ffb300;
-    --color-amber-500: #f39200; /* Base Orange */
+    --color-amber-500: #f39200;
+    /* Base Orange */
     --color-amber-600: #e65100;
 
     --color-emerald-50: #ecfdf5;
@@ -154,4 +156,50 @@ input[type="number"]::-webkit-outer-spin-button {
     ::-webkit-scrollbar {
         display: none;
     }
+}
+
+/* --- LEGACY BROWSER FIXES (Chrome < 111 / Windows 7) --- */
+@supports not (color: oklch(0% 0 0)) {
+    :root {
+        --fallback-blue: #008c95;
+        --fallback-amber: #f39200;
+        --fallback-emerald: #10b981;
+    }
+
+    button,
+    .bg-blue-600,
+    .text-blue-600 {
+        background-color: var(--fallback-blue) !important;
+        color: white;
+    }
+
+    .bg-amber-500,
+    .text-amber-500 {
+        background-color: var(--fallback-amber) !important;
+    }
+
+    .bg-emerald-600,
+    .text-emerald-600 {
+        background-color: var(--fallback-emerald) !important;
+    }
+}
+
+/* Fix for buttons that use backdrop-blur or modern filters */
+.backdrop-blur-sm,
+.backdrop-blur-md,
+.backdrop-blur-xl {
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+}
+
+/* Ensure buttons are always visible even if filters fail */
+button {
+    min-height: 36px;
+    min-width: 36px;
+    opacity: 1 !important;
+}
+
+/* Fix for truncated sidebar text in old Chrome */
+aside span {
+    white-space: nowrap;
 }
