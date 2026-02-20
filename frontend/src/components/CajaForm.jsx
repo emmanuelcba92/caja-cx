@@ -842,13 +842,25 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                             Administración COAT
                         </label>
                         <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-white border border-orange-100 rounded-xl px-3 py-2">
-                                <span className="block text-[10px] font-bold text-orange-300">PESOS</span>
-                                <span className="block text-base font-bold text-orange-600">{fmt(entry.coat_ars)}</span>
+                            <div className="bg-white border border-orange-100 rounded-xl px-2 py-1 relative">
+                                <span className="absolute top-1 left-2 text-[8px] font-bold text-orange-300">PESOS</span>
+                                <MoneyInput
+                                    className="w-full text-right px-1 pt-3 pb-1 text-base font-bold text-orange-600 outline-none rounded-xl"
+                                    value={entry.coat_ars}
+                                    onChange={val => onUpdate({ coat_ars: val })}
+                                    placeholder="0,00"
+                                    readOnly={isReadOnly}
+                                />
                             </div>
-                            <div className="bg-white border border-orange-100 rounded-xl px-3 py-2">
-                                <span className="block text-[10px] font-bold text-orange-300">DOLARES</span>
-                                <span className="block text-base font-bold text-orange-600">{fmt(entry.coat_usd, 'USD')}</span>
+                            <div className="bg-white border border-orange-100 rounded-xl px-2 py-1 relative">
+                                <span className="absolute top-1 left-2 text-[8px] font-bold text-orange-300">DOLARES</span>
+                                <MoneyInput
+                                    className="w-full text-right px-1 pt-3 pb-1 text-base font-bold text-orange-600 outline-none rounded-xl"
+                                    value={entry.coat_usd}
+                                    onChange={val => onUpdate({ coat_usd: val })}
+                                    placeholder="0,00"
+                                    readOnly={isReadOnly}
+                                />
                             </div>
                         </div>
                     </div>
