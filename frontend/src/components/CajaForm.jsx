@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Save, Plus, Trash2, MessageSquare, Calendar, X, Bell, CheckCircle2, Circle, ChevronDown, ChevronUp, User, DollarSign, Percent, Building2 } from 'lucide-react';
+import { Save, Plus, Trash2, MessageSquare, Calendar, X, Bell, CheckCircle2, Circle, ChevronDown, ChevronUp, User, DollarSign, Percent, Building2, Lock, Edit2 } from 'lucide-react';
 import { db } from '../firebase/config';
-import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import MoneyInput from './MoneyInput';
 
@@ -61,13 +61,16 @@ const CajaForm = () => {
     const [commentModalId, setCommentModalId] = useState(null);
     const [profesionales, setProfesionales] = useState([]);
 
-    const [entries, setEntries] = useState(() => {
-        try {
-            const saved = localStorage.getItem('cajaDiariaEntries_v2');
-            if (saved) return JSON.parse(saved);
-        } catch { }
-        return [EMPTY_ENTRY()];
-    });
+    const [entries, setEntries] = useState([EMPTY_ENTRY()]); // Always 1 entry for the form
+    const [historyEntries, setHistoryEntries] = useState([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+    // PIN & Edit States
+    const [showPinModal, setShowPinModal] = useState(false);
+    const [pinAction, setPinAction] = useState(null); // { type: 'edit' | 'delete', item: ... }
+    const [pinInput, setPinInput] = useState('');
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState(null);
 
     // ── Fetch ──────────────────────────────────────────────────────────────
 
@@ -97,15 +100,46 @@ const CajaForm = () => {
         return unsub;
     };
 
-    React.useEffect(() => {
-        fetchProfs();
-        const unsub = fetchReminders();
-        return () => unsub();
-    }, [viewingUid, catalogOwnerUid]);
+    const fetchHistory = async () => {
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return;
+        setIsLoadingHistory(true);
+        try {
+            // Query by date and user
+            const q = query(
+                collection(db, 'caja'),
+                where('userId', '==', ownerToUse),
+                where('fecha', '==', globalDate)
+            );
+            const snap = await getDocs(q);
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Start by newest created
+            data.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+            setHistoryEntries(data);
+        } catch (e) { console.error(e); }
+        setIsLoadingHistory(false);
+    };
 
     React.useEffect(() => {
-        localStorage.setItem('cajaDiariaEntries_v2', JSON.stringify(entries));
+        fetchProfs();
+        fetchHistory(); // Fetch history when date/user changes
+        const unsub = fetchReminders();
+        return () => unsub();
+    }, [viewingUid, catalogOwnerUid, globalDate]);
+
+    // No local storage sync needed for single volatile entry essentially, 
+    // or we can keep it but just for the current form-in-progress.
+    React.useEffect(() => {
+        localStorage.setItem('cajaDiariaCurrentForm', JSON.stringify(entries));
     }, [entries]);
+
+    // Restore form on load if exists
+    React.useEffect(() => {
+        try {
+            const saved = localStorage.getItem('cajaDiariaCurrentForm');
+            if (saved) setEntries(JSON.parse(saved));
+        } catch { }
+    }, []);
 
     // ── Entry mutations ────────────────────────────────────────────────────
 
@@ -125,38 +159,148 @@ const CajaForm = () => {
 
     // ── Cerrar Caja ────────────────────────────────────────────────────────
 
-    const handleCerrarCaja = async () => {
-        if (!window.confirm('¿Cerrás la caja? Se guardará en el historial y el formulario se limpiará.')) return;
+    // ── OPerations ─────────────────────────────────────────────────────────
+
+    const handleGuardarOperacion = async () => {
+        const entry = entries[0];
+        // Validation
+        if (!entry.paciente) return alert('Ingresá al menos el nombre del paciente.');
+
         const ownerToUse = catalogOwnerUid || viewingUid;
-        const docs = entries.map((e, i) => ({
-            ...e,
-            // Mapear al esquema legacy para compatibilidad con HistorialCaja
-            pesos: e.moneda === 'ARS' ? e.total : 0,
-            dolares: e.moneda === 'USD' ? e.total : 0,
-            coat_pesos: e.moneda === 'ARS' ? e.coat : 0,
-            coat_dolares: e.moneda === 'USD' ? e.coat : 0,
-            liq_prof_1_currency: e.moneda, liq_prof_2_currency: e.moneda, liq_prof_3_currency: e.moneda,
-            liq_anestesista_currency: e.moneda,
+        const docData = {
+            ...entry,
+            // Mapping fields
+            pesos: entry.moneda === 'ARS' ? entry.total : 0,
+            dolares: entry.moneda === 'USD' ? entry.total : 0,
+            coat_pesos: entry.moneda === 'ARS' ? entry.coat : 0,
+            coat_dolares: entry.moneda === 'USD' ? entry.coat : 0,
+            liq_prof_1_currency: entry.moneda, liq_prof_2_currency: entry.moneda, liq_prof_3_currency: entry.moneda,
+            liq_anestesista_currency: entry.moneda,
             fecha: globalDate,
             userId: ownerToUse,
             createdBy: currentUser?.email || 'unknown',
-            createdAt: new Date(Date.now() + i).toISOString(),
-        }));
+            createdAt: new Date().toISOString(),
+        };
+
+        // Remove ID so Firestore generates one, or keep entry.id if we want random? 
+        // Better let Firestore generate a clean ID
+        const { id, collapsed, ...finalData } = docData;
+
         try {
-            await Promise.all(docs.map(d => { const { id, collapsed, ...rest } = d; return addDoc(collection(db, 'caja'), rest); }));
-            if (dailyComment.trim()) {
+            await addDoc(collection(db, 'caja'), finalData);
+            setEntries([EMPTY_ENTRY()]); // Reset form
+            fetchHistory(); // Update list
+            alert('Operación guardada exitosamente.');
+        } catch (e) {
+            console.error(e);
+            alert('Error al guardar operación.');
+        }
+    };
+
+    const handleGuardarJornada = async () => {
+        // Maybe this just adds the daily comment?
+        if (dailyComment.trim()) {
+            const ownerToUse = catalogOwnerUid || viewingUid;
+            try {
                 await addDoc(collection(db, 'daily_comments'), {
                     date: globalDate, comment: dailyComment,
                     userId: ownerToUse, timestamp: new Date(),
                 });
+                alert('Jornada guardada (comentario registrado).');
+                setDailyComment('');
+            } catch (e) { console.error(e); }
+        } else {
+            alert('La jornada ya está actualizada con las operaciones guardadas. Agregá un comentario general si es necesario.');
+        }
+    };
+
+    // ── PIN & Actions ──────────────────────────────────────────────────────
+
+    const verifyPin = async () => {
+        try {
+            if (!viewingUid) return;
+            const settingsRef = doc(db, "user_settings", viewingUid);
+            const settingsSnap = await getDoc(settingsRef); // Import getDoc
+
+            let valid = false;
+            // Default PINs
+            const defaultPins = ['0511', 'admin', '1234'];
+            if (defaultPins.includes(pinInput)) valid = true;
+
+            if (settingsSnap.exists() && settingsSnap.data().adminPin) {
+                if (pinInput === settingsSnap.data().adminPin) valid = true;
             }
-            alert('¡Caja cerrada correctamente!');
-            localStorage.removeItem('cajaDiariaEntries_v2');
-            setEntries([EMPTY_ENTRY()]);
-            setDailyComment('');
-        } catch (err) {
-            console.error(err);
-            alert('Error al guardar. Intentá nuevamente.');
+
+            if (valid) {
+                setShowPinModal(false);
+                setPinInput('');
+                if (pinAction) {
+                    if (pinAction.type === 'edit') {
+                        setEditingItem(pinAction.item);
+                        setEditModalOpen(true);
+                    } else if (pinAction.type === 'delete') {
+                        await deleteDoc(doc(db, 'caja', pinAction.item.id));
+                        fetchHistory();
+                    }
+                }
+                setPinAction(null);
+            } else {
+                alert('PIN Incorrecto');
+            }
+        } catch (error) {
+            console.error("Error verifying PIN:", error);
+            alert("Error al verificar PIN.");
+        }
+    };
+
+    const requestEdit = (item) => {
+        setPinAction({ type: 'edit', item });
+        setShowPinModal(true);
+    };
+
+    const requestDelete = (item) => {
+        if (!window.confirm('¿Borrar esta operación del historial?')) return;
+        setPinAction({ type: 'delete', item });
+        setShowPinModal(true);
+    };
+
+    const handleUpdateItem = async (updatedData) => {
+        try {
+            // Recalculate derived fields
+            let processed = { ...updatedData };
+            const total = processed.total || 0;
+            const liq1 = total * ((processed.pct_prof_1 || 0) / 100);
+            const liq2 = total * ((processed.pct_prof_2 || 0) / 100);
+            const liq3 = processed.showProf3 ? total * ((processed.pct_prof_3 || 0) / 100) : 0;
+            const anest = processed.liq_anestesista || 0;
+            const coat = Math.max(0, total - liq1 - liq2 - liq3 - anest);
+
+            processed = {
+                ...processed,
+                liq_prof_1: liq1,
+                liq_prof_2: liq2,
+                liq_prof_3: liq3,
+                coat
+            };
+
+            // Map to legacy fields for HistorialCaja compatibility
+            processed.pesos = processed.moneda === 'ARS' ? processed.total : 0;
+            processed.dolares = processed.moneda === 'USD' ? processed.total : 0;
+            processed.coat_pesos = processed.moneda === 'ARS' ? processed.coat : 0;
+            processed.coat_dolares = processed.moneda === 'USD' ? processed.coat : 0;
+            processed.liq_prof_1_currency = processed.moneda;
+            processed.liq_prof_2_currency = processed.moneda;
+            processed.liq_prof_3_currency = processed.moneda;
+            processed.liq_anestesista_currency = processed.moneda;
+
+            await updateDoc(doc(db, 'caja', editingItem.id), processed);
+            setEditModalOpen(false);
+            setEditingItem(null);
+            fetchHistory();
+            alert('Registro actualizado.');
+        } catch (e) {
+            console.error(e);
+            alert('Error al actualizar.');
         }
     };
 
@@ -187,8 +331,16 @@ const CajaForm = () => {
     const surgeons = profesionales.filter(p => p.categoria !== 'Anestesista');
     const anestesistas = profesionales.filter(p => p.categoria === 'Anestesista');
 
-    // ── Grand totals ───────────────────────────────────────────────────────
-    const totals = entries.reduce((acc, e) => {
+    // ── Grand totals (From History) ────────────────────────────────────────
+    const totals = historyEntries.reduce((acc, raw) => {
+        // Normalize for legacy compatibility
+        const e = (raw.total !== undefined) ? raw : {
+            ...raw,
+            moneda: (raw.dolares || 0) > 0 ? 'USD' : 'ARS',
+            total: (raw.dolares || 0) > 0 ? raw.dolares : raw.pesos,
+            coat: (raw.dolares || 0) > 0 ? raw.coat_dolares : raw.coat_pesos,
+        };
+
         const isUSD = e.moneda === 'USD';
         acc.totalARS += isUSD ? 0 : (e.total || 0);
         acc.totalUSD += isUSD ? (e.total || 0) : 0;
@@ -262,21 +414,91 @@ const CajaForm = () => {
                 </div>
             )}
 
-            {/* ── Cards de Pacientes ─────────────────────────────────────── */}
+            {/* PIN Modal */}
+            {showPinModal && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in zoom-in-95">
+                        <div className="flex justify-center mb-4">
+                            <div className="p-3 bg-blue-50 rounded-full">
+                                <Lock size={24} className="text-blue-600" />
+                            </div>
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-2 text-center">Acceso Restringido</h3>
+                        <p className="text-xs text-slate-500 text-center mb-6">Ingresá tu PIN de seguridad para modificar el historial.</p>
+
+                        <input
+                            type="password"
+                            className="w-full text-center text-3xl tracking-[0.5em] font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-blue-500 focus:outline-none transition-all placeholder:tracking-normal"
+                            placeholder="PIN"
+                            value={pinInput}
+                            onChange={(e) => setPinInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && verifyPin()}
+                            autoFocus
+                        />
+                        <div className="flex gap-3">
+                            <button onClick={() => { setShowPinModal(false); setPinInput(''); setPinAction(null); }} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-all">Cancelar</button>
+                            <button onClick={verifyPin} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">Confirmar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Modal (Reuses PatientCard structure but handled independently) */}
+            {editModalOpen && editingItem && (
+                <div className="fixed inset-0 bg-black/50 z-[50] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+                    <div className="bg-slate-100 p-6 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-slate-800">Editar Operación</h3>
+                            <button onClick={() => setEditModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <PatientCard
+                            entry={editingItem}
+                            idx={0}
+                            surgeons={surgeons}
+                            anestesistas={anestesistas}
+                            isReadOnly={false}
+                            onUpdate={(patch) => {
+                                // Real-time local update in the modal state
+                                const updated = { ...editingItem, ...patch };
+                                // Auto-recalc logic inline here to keep UI consistent
+                                const total = updated.total || 0;
+                                const liq1 = total * ((updated.pct_prof_1 || 0) / 100);
+                                const liq2 = total * ((updated.pct_prof_2 || 0) / 100);
+                                const liq3 = updated.showProf3 ? total * ((updated.pct_prof_3 || 0) / 100) : 0;
+                                const anest = updated.liq_anestesista || 0;
+                                const coat = Math.max(0, total - liq1 - liq2 - liq3 - anest);
+                                setEditingItem({ ...updated, liq_prof_1: liq1, liq_prof_2: liq2, liq_prof_3: liq3, coat });
+                            }}
+                            onRemove={() => { }}
+                            onComment={() => { }} // Could implement comment modal inside edit if needed
+                            hideCollapse={true}
+                        />
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button onClick={() => setEditModalOpen(false)} className="px-6 py-2.5 text-slate-500 font-bold hover:bg-white rounded-xl transition-all">Cancelar</button>
+                            <button onClick={() => handleUpdateItem(editingItem)} className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Cards de Pacientes (Single Form) ───────────────────────── */}
             <div className="space-y-4">
-                {entries.map((entry, idx) => (
-                    <PatientCard
-                        key={entry.id}
-                        entry={entry}
-                        idx={idx}
-                        surgeons={surgeons}
-                        anestesistas={anestesistas}
-                        isReadOnly={isReadOnly}
-                        onUpdate={(patch) => updateEntry(entry.id, patch)}
-                        onRemove={() => removeRow(entry.id)}
-                        onComment={() => setCommentModalId(entry.id)}
-                    />
-                ))}
+                <PatientCard
+                    key={entries[0].id}
+                    entry={entries[0]}
+                    idx={0}
+                    surgeons={surgeons}
+                    anestesistas={anestesistas}
+                    isReadOnly={isReadOnly}
+                    onUpdate={(patch) => updateEntry(entries[0].id, patch)}
+                    onRemove={() => { }} // Remove functionality disabled for main form
+                    onComment={() => setCommentModalId(entries[0].id)}
+                    hideCollapse={true} // New prop to prevent collapsing the main form
+                />
             </div>
 
             {/* ── Acciones ───────────────────────────────────────────────── */}
@@ -291,20 +513,92 @@ const CajaForm = () => {
                     </button>
                     <div className="flex gap-3">
                         <button
-                            onClick={addRow}
+                            onClick={handleGuardarOperacion}
                             className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-all font-semibold shadow-lg shadow-emerald-100 text-sm"
                         >
-                            <Plus size={18} /> Agregar Paciente
+                            <Save size={18} /> Guardar Operación
                         </button>
                         <button
-                            onClick={handleCerrarCaja}
+                            onClick={handleGuardarJornada}
                             className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-semibold shadow-lg shadow-blue-200 text-sm"
                         >
-                            <Save size={18} /> Cerrar Caja
+                            <Save size={18} /> Guardar Jornada
                         </button>
                     </div>
                 </div>
             )}
+
+            {/* ── Historial del Día ─────────────────────────────────────── */}
+            <div className="mt-8">
+                <div className="flex items-center justify-between mb-4 px-2">
+                    <h3 className="text-lg font-bold text-slate-800">Historial del Día</h3>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{historyEntries.length} REGISTROS</span>
+                </div>
+
+                {isLoadingHistory ? (
+                    <div className="text-center py-8 text-slate-400">Cargando historial...</div>
+                ) : historyEntries.length === 0 ? (
+                    <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                        <p className="text-slate-400 text-sm">Aún no hay operaciones guardadas para hoy.</p>
+                    </div>
+                ) : (
+                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-500 font-bold text-xs uppercase tracking-wider border-b border-slate-200">
+                                <tr>
+                                    <th className="px-4 py-3">Paciente</th>
+                                    <th className="px-4 py-3">Obra Social</th>
+                                    <th className="px-4 py-3 text-right">Total</th>
+                                    <th className="px-4 py-3 text-right">COAT</th>
+                                    <th className="px-4 py-3 text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {historyEntries.map(raw => {
+                                    // Normalize for display
+                                    const item = (raw.total !== undefined) ? raw : {
+                                        ...raw,
+                                        moneda: (raw.dolares || 0) > 0 ? 'USD' : 'ARS',
+                                        total: (raw.dolares || 0) > 0 ? raw.dolares : raw.pesos,
+                                        coat: (raw.dolares || 0) > 0 ? raw.coat_dolares : raw.coat_pesos,
+                                    };
+
+                                    return (
+                                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                                            <td className="px-4 py-3 font-medium text-slate-700">{item.paciente}</td>
+                                            <td className="px-4 py-3 text-slate-500">{item.obraSocial || '-'}</td>
+                                            <td className="px-4 py-3 text-right font-bold text-blue-700">
+                                                {item.moneda === 'USD' ? 'USD ' : '$ '}
+                                                {new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(item.total || 0)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-bold text-orange-600">
+                                                {item.moneda === 'USD' ? 'USD ' : '$ '}
+                                                {new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(item.coat || 0)}
+                                            </td>
+                                            <td className="px-4 py-3 flex justify-center gap-2">
+                                                <button
+                                                    onClick={() => requestEdit(item)}
+                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                    title="Editar (Requiere PIN)"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => requestDelete(item)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                    title="Eliminar (Requiere PIN)"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
 
             {/* ── Recordatorios ─────────────────────────────────────────── */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mt-4">
@@ -384,7 +678,7 @@ const CajaForm = () => {
 
 // ─── PatientCard ─────────────────────────────────────────────────────────────
 
-const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate, onRemove, onComment }) => {
+const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate, onRemove, onComment, hideCollapse = false }) => {
     const collapsed = entry.collapsed;
 
     const monedaSymbol = entry.moneda === 'USD' ? 'USD' : '$';
@@ -394,8 +688,8 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
 
             {/* ─ Card Header ─ */}
             <div
-                className="flex items-center gap-3 px-5 py-4 cursor-pointer select-none"
-                onClick={() => onUpdate({ collapsed: !collapsed })}
+                className={`flex items-center gap-3 px-5 py-4 cursor-pointer select-none ${hideCollapse ? 'cursor-default' : ''}`}
+                onClick={() => !hideCollapse && onUpdate({ collapsed: !collapsed })}
             >
                 {/* Número */}
                 <span className="flex-shrink-0 w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center">
@@ -431,8 +725,8 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                     </button>
                 )}
 
-                {/* Delete */}
-                {!isReadOnly && (
+                {/* Delete - Only show if not hiding collapse (main form uses clear instead or just no delete) */}
+                {!isReadOnly && !hideCollapse && (
                     <button
                         onClick={e => { e.stopPropagation(); onRemove(); }}
                         className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
@@ -443,13 +737,15 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                 )}
 
                 {/* Chevron */}
-                <span className="text-slate-300 ml-1">
-                    {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-                </span>
+                {!hideCollapse && (
+                    <span className="text-slate-300 ml-1">
+                        {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                    </span>
+                )}
             </div>
 
             {/* ─ Card Body ─ */}
-            {!collapsed && (
+            {(!collapsed || hideCollapse) && (
                 <div className="px-5 pb-5 space-y-5 border-t border-slate-100">
 
                     {/* Fila 1: Obra Social + Total + Moneda */}
