@@ -374,13 +374,24 @@ const CajaForm = () => {
         try {
             const promises = entriesToSave.map(async (e, index) => {
                 const { id, ...dataToSave } = e;
-                return addDoc(collection(db, "caja"), {
+                const finalData = {
                     ...dataToSave,
                     fecha: globalDate,
                     userId: ownerToUse,
                     createdBy: currentUser?.email || 'unknown',
-                    createdAt: new Date(Date.now() + index).toISOString()
-                });
+                    updatedAt: new Date().toISOString()
+                };
+
+                // If ID is a string, it's a Firebase ID (existing record)
+                if (typeof id === 'string') {
+                    return updateDoc(doc(db, "caja", id), finalData);
+                } else {
+                    // It's a temporary numeric ID (new record)
+                    return addDoc(collection(db, "caja"), {
+                        ...finalData,
+                        createdAt: new Date(Date.now() + index).toISOString()
+                    });
+                }
             });
 
             await Promise.all(promises);
@@ -432,11 +443,14 @@ const CajaForm = () => {
             }
 
             const settingsSnap = await getDoc(doc(db, "user_settings", uidToUse));
-            if (settingsSnap.exists() && settingsSnap.data().adminPin) {
-                const dbPin = settingsSnap.data().adminPin.toString().trim();
-                if (input === dbPin) {
-                    executePinAction();
-                    return;
+            if (settingsSnap.exists()) {
+                const data = settingsSnap.data();
+                if (data.adminPin) {
+                    const dbPin = data.adminPin.toString().trim();
+                    if (input === dbPin) {
+                        executePinAction();
+                        return;
+                    }
                 }
             }
 
@@ -444,7 +458,8 @@ const CajaForm = () => {
             setHistoryPinInput('');
         } catch (error) {
             console.error("Error verifying PIN:", error);
-            alert("Error al conectar con la base de datos. Use un PIN maestro si tiene problemas de red.");
+            // On Windows 7 / Old Chrome, Firestore might fail due to gRPC/security issues
+            alert("Error de conexión al verificar el PIN personalizado. Por favor, intente con un PIN maestro (ej: 0511) o use un navegador actualizado.");
         }
     };
 
@@ -456,10 +471,10 @@ const CajaForm = () => {
         if (historyAction === 'delete') {
             handleDeleteHistory(historyToEdit.id);
         } else if (historyAction === 'edit') {
-            const { id, fecha, userId, createdBy, createdAt, ...editableData } = historyToEdit;
-            setEntries([{ ...editableData, id: Date.now() }]);
+            // LOAD FOR EDIT: Keep the Firestore ID so we update instead of duplicate
+            setEntries([{ ...historyToEdit }]);
             window.scrollTo({ top: 0, behavior: 'smooth' });
-            alert("Cargado en el formulario.");
+            alert("Cargado en el formulario para editar.");
         }
     };
 
@@ -471,8 +486,7 @@ const CajaForm = () => {
         if (isPinVerified) {
             if (action === 'delete') handleDeleteHistory(item.id);
             else {
-                const { id, fecha, userId, createdBy, createdAt, ...editableData } = item;
-                setEntries([{ ...editableData, id: Date.now() }]);
+                setEntries([{ ...item }]);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         } else {
