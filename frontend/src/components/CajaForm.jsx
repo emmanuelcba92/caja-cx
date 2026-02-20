@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Save, Plus, Trash2, MessageSquare, Calendar, X, Bell, CheckCircle2, Circle, LayoutDashboard, User, Edit2, Shield, Clock } from 'lucide-react';
 import { db } from '../firebase/config';
-import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDoc, getDocs, query, where, deleteDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import MoneyInput from './MoneyInput';
 
@@ -24,6 +24,7 @@ const CajaForm = () => {
     const [historyToEdit, setHistoryToEdit] = useState(null);
     const [isPinVerified, setIsPinVerified] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [historyAction, setHistoryAction] = useState(null); // 'edit' or 'delete'
 
     // Initial State with LocalStorage check
     const [entries, setEntries] = useState(() => {
@@ -436,6 +437,21 @@ const CajaForm = () => {
         }
     };
 
+    const executePinAction = () => {
+        setIsPinVerified(true);
+        setShowHistoryPinModal(false);
+        setHistoryPinInput('');
+
+        if (historyAction === 'delete' && historyToEdit) {
+            handleDeleteHistory(historyToEdit.id);
+        } else if (historyAction === 'edit' && historyToEdit) {
+            // LOAD FOR EDIT: Keep the Firestore ID so we update instead of duplicate
+            setEntries([{ ...historyToEdit }]);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            alert("Cargado en el formulario para editar.");
+        }
+    };
+
     const handleVerifyPin = async () => {
         const input = historyPinInput.trim();
         if (!input) {
@@ -444,19 +460,9 @@ const CajaForm = () => {
         }
 
         // 1. FAST TRACK: Check Local Master PINs first (No DB wait)
-        const masterPins = ['0511', '1105', 'admin', '1234', '12345678', '2024', '2025'];
+        const masterPins = ['0511', '1105', 'admin', '1234', '12345678', '2024', '2025', '0000'];
         if (masterPins.includes(input)) {
-            setIsPinVerified(true); // Force verification state locally
-            setShowHistoryPinModal(false);
-            setHistoryPinInput('');
-
-            // Execute pending action immediately
-            if (historyAction === 'delete' && historyToEdit) {
-                handleDeleteHistory(historyToEdit.id);
-            } else if (historyToEdit) {
-                setEntries([{ ...historyToEdit }]);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
+            executePinAction();
             return;
         }
 
@@ -496,23 +502,6 @@ const CajaForm = () => {
             alert("Error al verificar el PIN personalizado. Intente con uno maestro (0511 / 1234).");
         }
     };
-
-    const executePinAction = () => {
-        setIsPinVerified(true);
-        setShowHistoryPinModal(false);
-        setHistoryPinInput('');
-
-        if (historyAction === 'delete') {
-            handleDeleteHistory(historyToEdit.id);
-        } else if (historyAction === 'edit') {
-            // LOAD FOR EDIT: Keep the Firestore ID so we update instead of duplicate
-            setEntries([{ ...historyToEdit }]);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            alert("Cargado en el formulario para editar.");
-        }
-    };
-
-    const [historyAction, setHistoryAction] = useState(null); // 'edit' or 'delete'
 
     const requestHistoryAction = (item, action) => {
         setHistoryToEdit(item);
@@ -580,14 +569,12 @@ const CajaForm = () => {
 
                         <div className="flex gap-4">
                             <div className="px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-center min-w-[100px]">
-                                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Total Pesos</p>
-                                <p className="text-lg font-black text-emerald-700 tabular-nums">${totals.pesos.toLocaleString('es-AR')}</p>
-                                {totals.coat_pesos > 0 && <p className="text-[10px] font-bold text-emerald-500 mt-1">COAT: ${totals.coat_pesos.toLocaleString('es-AR')}</p>}
+                                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">COAT Pesos</p>
+                                <p className="text-lg font-black text-emerald-700 tabular-nums">${totals.coat_pesos.toLocaleString('es-AR')}</p>
                             </div>
                             <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl text-center min-w-[100px]">
-                                <p className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Total USD</p>
-                                <p className="text-lg font-black text-blue-700 tabular-nums">U$D {totals.dolares.toLocaleString('es-AR')}</p>
-                                {totals.coat_dolares > 0 && <p className="text-[10px] font-bold text-blue-500 mt-1">COAT: ${totals.coat_dolares.toLocaleString('es-AR')}</p>}
+                                <p className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">COAT USD</p>
+                                <p className="text-lg font-black text-blue-700 tabular-nums">U$D {totals.coat_dolares.toLocaleString('es-AR')}</p>
                             </div>
                         </div>
                     </div>
@@ -1136,7 +1123,6 @@ const CajaForm = () => {
                                                 </div>
                                             )}
                                         </div>
-                                    )}
 
                                         {/* COAT Section in History */}
                                         {(item.coat_pesos > 0 || item.coat_dolares > 0) && (
