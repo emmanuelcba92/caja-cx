@@ -938,6 +938,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             >
                                 <option value="proximas">Próximas Cirugías</option>
                                 <option value="realizadas">Cirugías Realizadas (Historial)</option>
+                                <option value="suspendidas">Cirugías Canceladas</option>
                                 <option value="todas">Ver Todas</option>
                             </select>
 
@@ -978,7 +979,6 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 <option value="">Todos los estados</option>
                                 <option value="pendientes">Pendientes</option>
                                 <option value="enviadas">Enviadas</option>
-                                <option value="suspendidas">Suspendidas</option>
                             </select>
                             {/* Search by Patient */}
                             <div className="relative">
@@ -1014,8 +1014,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         const matchDate = !filterDate || orden.fechaCirugia === filterDate;
                         const matchStatus = !filterStatus || (
                             filterStatus === 'enviadas' ? (orden.enviada && !orden.suspendida) :
-                                filterStatus === 'suspendidas' ? orden.suspendida :
-                                    (!orden.enviada && !orden.suspendida)
+                                (!orden.enviada && !orden.suspendida)
                         );
                         const matchPaciente = !searchPaciente || orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase());
 
@@ -1027,7 +1026,14 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 matchPeriodo = targetDateStr >= todayStr && !orden.suspendida;
                             } else if (filterPeriodo === 'realizadas') {
                                 matchPeriodo = targetDateStr < todayStr && !orden.suspendida;
+                            } else if (filterPeriodo === 'suspendidas') {
+                                matchPeriodo = orden.suspendida;
                             }
+                        } else if (filterPeriodo === 'todas') {
+                            matchPeriodo = true;
+                        } else if (!targetDateStr && filterPeriodo !== 'todas') {
+                            // If no date, only show in "Todas" or if specifically handled
+                            matchPeriodo = false;
                         }
 
                         return matchProfesional && matchObraSocial && matchDate && matchStatus && matchPaciente && matchPeriodo;
