@@ -31,6 +31,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const [filterProfesional, setFilterProfesional] = useState('');
     const [filterObraSocial, setFilterObraSocial] = useState('');
     const [filterDate, setFilterDate] = useState('');
+    const [filterPeriodo, setFilterPeriodo] = useState('proximas'); // 'proximas' | 'realizadas' | 'todas'
     const [filterStatus, setFilterStatus] = useState('');
     const [searchPaciente, setSearchPaciente] = useState('');
 
@@ -898,6 +899,17 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     <div className="flex flex-wrap items-center justify-between gap-4">
                         <h3 className="font-bold text-slate-700">Historial de Órdenes</h3>
                         <div className="flex flex-wrap items-center gap-3">
+                            {/* Filter by Period */}
+                            <select
+                                value={filterPeriodo}
+                                onChange={(e) => setFilterPeriodo(e.target.value)}
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-teal-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            >
+                                <option value="proximas">Próximas Cirugías</option>
+                                <option value="realizadas">Cirugías Realizadas (Historial)</option>
+                                <option value="todas">Ver Todas</option>
+                            </select>
+
                             {/* Filter by Date */}
                             <input
                                 type="date"
@@ -954,6 +966,15 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     // Decide which list to filter
                     const listToFilter = activeTab === 'pedidos' ? pedidos : ordenes;
 
+                    // Determine today for comparisons
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    // A stable timezone-independent way to get today's string
+                    const offset = today.getTimezoneOffset()
+                    const todayLocal = new Date(today.getTime() - (offset * 60 * 1000))
+                    const todayStr = todayLocal.toISOString().split('T')[0]
+
                     // Apply filters
                     const filteredOrdenes = listToFilter.filter(orden => {
                         const matchProfesional = !filterProfesional || orden.profesional === filterProfesional;
@@ -962,13 +983,21 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         const matchStatus = !filterStatus || (filterStatus === 'enviadas' ? orden.enviada : !orden.enviada);
                         const matchPaciente = !searchPaciente || orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase());
 
-                        return matchProfesional && matchObraSocial && matchDate && matchStatus && matchPaciente;
+                        // Period Match Logic
+                        const targetDateStr = orden.fechaCirugia || orden.fechaDocumento;
+                        let matchPeriodo = true;
+                        if (targetDateStr && filterPeriodo !== 'todas') {
+                            if (filterPeriodo === 'proximas') {
+                                matchPeriodo = targetDateStr >= todayStr;
+                            } else if (filterPeriodo === 'realizadas') {
+                                matchPeriodo = targetDateStr < todayStr;
+                            }
+                        }
+
+                        return matchProfesional && matchObraSocial && matchDate && matchStatus && matchPaciente && matchPeriodo;
                     });
 
                     // Urgency logic: less than 14 days and not authorized
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-
                     const checkUrgency = (orden) => {
                         if (orden.autorizada) return false;
                         const surgeryDateStr = orden.fechaCirugia || orden.fechaDocumento;
