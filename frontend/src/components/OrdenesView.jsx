@@ -12,6 +12,17 @@ const FIRMAS_MAP = {
     // 'Dra. Valenzuela': 'valenzuela.png',
 };
 
+// Helper to abbreviate name to "Prefix Surname"
+const shortProfName = (fullName) => {
+    if (!fullName) return '';
+    const parts = fullName.trim().split(' ');
+    const prefixes = ['dr', 'dra', 'lic', 'dr.', 'dra.', 'lic.'];
+    if (parts.length >= 2 && prefixes.includes(parts[0].toLowerCase())) {
+        return `${parts[0]} ${parts[1]}`;
+    }
+    return parts.slice(0, 2).join(' ');
+};
+
 const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftConsumed = () => { } }) => {
     const { viewingUid, catalogOwnerUid, isSuperAdmin, permissions } = useAuth();
     const [profesionales, setProfesionales] = useState([]);
@@ -710,7 +721,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     <span style={{ fontSize: '24pt' }}>{(previewData.afiliado || '').toUpperCase()}</span><br />
                     <span style={{ fontSize: '24pt' }}>DNI {previewData.dni || '-'}</span><br />
                     <span style={{ fontSize: '24pt' }}>{(previewData.obraSocial || '').toUpperCase()}</span><br />
-                    <span style={{ fontSize: '24pt' }}>{(previewData.profesional || '').toUpperCase()}</span><br />
+                    <span style={{ fontSize: '24pt' }}>{(shortProfName(previewData.profesional) || '').toUpperCase()}</span><br />
                     <span style={{ fontSize: '24pt' }}>{formatDate(previewData.fechaCirugia || previewData.fechaDocumento)}</span><br />
                     <span style={{ fontSize: '24pt' }}>ALERGIA (-)</span>
                 </div>

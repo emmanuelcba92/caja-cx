@@ -16,7 +16,30 @@ const ProfesionalesView = () => {
     // Actually, COAT users are usually managing their own data but using a shared catalog.
     const [profesionales, setProfesionales] = useState([]);
     const [nombre, setNombre] = useState('');
+    const [prefijo, setPrefijo] = useState('Dr.');
     const [categoria, setCategoria] = useState('ORL');
+
+    useEffect(() => {
+        if (categoria === 'Fonoaudiologa') {
+            setPrefijo('Lic.');
+        } else if (['ORL', 'Anestesista', 'Estetica'].includes(categoria)) {
+            if (prefijo === 'Lic.' || !prefijo) setPrefijo('Dr.');
+        } else if (categoria === 'Tutoras') {
+            setPrefijo('');
+        }
+    }, [categoria]);
+
+    // Helper to abbreviate name to "Prefix Surname"
+    const shortProfName = (fullName) => {
+        if (!fullName) return '';
+        const parts = fullName.trim().split(' ');
+        const prefixes = ['dr', 'dra', 'lic', 'dr.', 'dra.', 'lic.'];
+        if (parts.length >= 2 && prefixes.includes(parts[0].toLowerCase())) {
+            return `${parts[0]} ${parts[1]}`;
+        }
+        // If no known prefix, return just first 2 words max
+        return parts.slice(0, 2).join(' ');
+    };
 
     // Edit Modal State
     const [showEditModal, setShowEditModal] = useState(false);
@@ -112,9 +135,11 @@ const ProfesionalesView = () => {
         const ownerToUse = catalogOwnerUid || viewingUid;
         if (!ownerToUse) return alert("Debes iniciar sesión");
 
+        const fullName = prefijo ? `${prefijo.trim()} ${nombre.trim()}` : nombre.trim();
+
         try {
             await addDoc(collection(db, "profesionales"), {
-                nombre: nombre.trim(),
+                nombre: fullName,
                 categoria,
                 userId: ownerToUse
             });
@@ -354,7 +379,7 @@ const ProfesionalesView = () => {
             ws.getCell(2, 1).style = headerStyle;
             profs.forEach((p, i) => {
                 const c = ws.getCell(2, i + 2);
-                c.value = p;
+                c.value = shortProfName(p);
                 c.style = headerStyle;
             });
 
@@ -499,14 +524,27 @@ const ProfesionalesView = () => {
                         )}
                     </h2>
                     <form onSubmit={handleAdd} className="flex flex-wrap gap-4 items-end">
+                        <div className="w-24">
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Título</label>
+                            <select
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all text-sm font-medium text-slate-700"
+                                value={prefijo}
+                                onChange={(e) => setPrefijo(e.target.value)}
+                            >
+                                <option value="Dr.">Dr.</option>
+                                <option value="Dra.">Dra.</option>
+                                <option value="Lic.">Lic.</option>
+                                <option value="">(Nada)</option>
+                            </select>
+                        </div>
                         <div className="flex-1 min-w-[200px]">
-                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre Completo</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Apellido y Nombres</label>
                             <input
                                 type="text"
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all font-medium text-slate-700"
                                 value={nombre}
                                 onChange={(e) => setNombre(e.target.value)}
-                                placeholder="Ej: Dra. García"
+                                placeholder="Ej: García, Juan"
                             />
                         </div>
                         <div className="w-48">
@@ -649,7 +687,7 @@ const ProfesionalesView = () => {
                                     <tr>
                                         <th className="border border-black px-1 py-1 bg-slate-100">FECHA</th>
                                         {matrixData.profs.map(p => (
-                                            <th key={p} className="border border-black px-1 py-1 bg-slate-100">{p}</th>
+                                            <th key={p} className="border border-black px-1 py-1 bg-slate-100">{shortProfName(p).toUpperCase()}</th>
                                         ))}
                                     </tr>
                                 </thead>
