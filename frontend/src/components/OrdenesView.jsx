@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle, Clock, Home, StickyNote } from 'lucide-react';
+import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle, Clock, Home, StickyNote, LayoutGrid, List } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -37,6 +37,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const [copiedToast, setCopiedToast] = useState(false); // Show toast when message is copied
     const [activeTab, setActiveTab] = useState(initialTab); // 'internacion' | 'pedidos'
     const [pedidos, setPedidos] = useState([]); // List of medical orders (pedidos)
+    const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
 
     // Filter State
     const [filterProfesional, setFilterProfesional] = useState('');
@@ -908,7 +909,25 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
                 <div className="p-4 border-b border-slate-100 bg-slate-50">
                     <div className="flex flex-wrap items-center justify-between gap-4">
-                        <h3 className="font-bold text-slate-700">Historial de Órdenes</h3>
+                        <div className="flex items-center gap-4">
+                            <h3 className="font-bold text-slate-700">Historial de Órdenes</h3>
+                            <div className="flex bg-slate-200/50 p-1 rounded-lg">
+                                <button
+                                    onClick={() => setViewMode('list')}
+                                    className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                    title="Vista de Lista"
+                                >
+                                    <List size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('grid')}
+                                    className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                    title="Vista de Mosaico"
+                                >
+                                    <LayoutGrid size={18} />
+                                </button>
+                            </div>
+                        </div>
                         <div className="flex flex-wrap items-center gap-3">
                             {/* Filter by Period */}
                             <select
@@ -1047,139 +1066,291 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     }
 
                     return (
-                        <div className="divide-y divide-slate-100">
+                        <div className={viewMode === 'list' ? "divide-y divide-slate-100" : "grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-100/30"}>
                             {sortedOrdenes.map(orden => {
                                 const isUrgent = checkUrgency(orden);
-                                return (
-                                    <div
-                                        key={orden.id}
-                                        className={`p-4 flex items-center justify-between transition-colors ${orden.enviada ? 'bg-slate-50 opacity-75 grayscale-[0.5]' :
-                                            isUrgent ? 'bg-red-50 hover:bg-red-100 border-l-4 border-red-500' : 'hover:bg-slate-50'
-                                            }`}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isUrgent ? 'bg-red-100 text-red-600 animate-pulse' :
-                                                activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600')
-                                                }`}>
-                                                {isUrgent ? <AlertCircle size={20} /> : (orden.enviada ? <CheckCircle2 size={20} /> : (activeTab === 'pedidos' ? <FileHeart size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />)))}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <p className={`font-bold ${orden.enviada ? 'text-slate-500' : isUrgent ? 'text-red-700' : 'text-slate-800'}`}>
-                                                        {orden.afiliado}
-                                                    </p>
-                                                    {isUrgent ? (
-                                                        <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold uppercase tracking-wide rounded-full flex items-center gap-1 animate-pulse">
-                                                            <AlertCircle size={10} /> Urgente - Sin Autorizar
-                                                        </span>
-                                                    ) : orden.enviada ? (
-                                                        <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-wide rounded-full">
-                                                            Enviada
-                                                        </span>
-                                                    ) : (
-                                                        <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
-                                                            Pendiente
-                                                        </span>
-                                                    )}
+                                if (viewMode === 'list') {
+                                    return (
+                                        <div
+                                            key={orden.id}
+                                            className={`p-4 flex items-center justify-between transition-colors ${orden.enviada ? 'bg-slate-50 opacity-75 grayscale-[0.5]' :
+                                                isUrgent ? 'bg-red-50 hover:bg-red-100 border-l-4 border-red-500' : 'hover:bg-slate-50'
+                                                }`}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isUrgent ? 'bg-red-100 text-red-600 animate-pulse' :
+                                                    activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600')
+                                                    }`}>
+                                                    {isUrgent ? <AlertCircle size={20} /> : (orden.enviada ? <CheckCircle2 size={20} /> : (activeTab === 'pedidos' ? <FileHeart size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />)))}
                                                 </div>
-                                                <p className="text-sm text-slate-500">
-                                                    {orden.profesional} • {orden.obraSocial} • Fecha: {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
-                                                    {activeTab === 'pedidos' && <span className="ml-2 font-medium text-pink-600">• Pedido Médico</span>}
-                                                    {orden.habitacion && <span className="ml-2 font-medium text-amber-600">• Hab: {orden.habitacion}</span>}
-                                                    {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
-                                                    {orden.status === 'auditada' && <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded uppercase tracking-tighter shadow-sm border border-emerald-200">Auditada</span>}
-                                                </p>
-                                                {orden.observaciones && (
-                                                    <div className="mt-1 p-2 bg-teal-50 border-l-2 border-teal-400 text-xs text-teal-700 italic rounded">
-                                                        <strong>Nota:</strong> {orden.observaciones}
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className={`font-bold ${orden.enviada ? 'text-slate-500' : isUrgent ? 'text-red-700' : 'text-slate-800'}`}>
+                                                            {orden.afiliado}
+                                                        </p>
+                                                        {isUrgent ? (
+                                                            <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold uppercase tracking-wide rounded-full flex items-center gap-1 animate-pulse">
+                                                                <AlertCircle size={10} /> Urgente - Sin Autorizar
+                                                            </span>
+                                                        ) : orden.enviada ? (
+                                                            <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                                Enviada
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                                Pendiente
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                )}
+                                                    <p className="text-sm text-slate-500">
+                                                        {orden.profesional} • {orden.obraSocial} • {orden.dni && <span className="font-bold text-slate-700">DNI: {orden.dni} • </span>}Fecha: {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
+                                                        {activeTab === 'pedidos' && <span className="ml-2 font-medium text-pink-600">• Pedido Médico</span>}
+                                                        {orden.habitacion && <span className="ml-2 font-medium text-amber-600">• Hab: {orden.habitacion}</span>}
+                                                        {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
+                                                        {orden.status === 'auditada' && <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded uppercase tracking-tighter shadow-sm border border-emerald-200">Auditada</span>}
+                                                    </p>
+                                                    {orden.observaciones && (
+                                                        <div className="mt-1 p-2 bg-teal-50 border-l-2 border-teal-400 text-xs text-teal-700 italic rounded">
+                                                            <strong>Nota:</strong> {orden.observaciones}
+                                                        </div>
+                                                    )}
 
-                                                {/* Status Toggles */}
-                                                <div className="flex flex-wrap items-center gap-2 mt-2">
-                                                    <button
-                                                        onClick={() => handleToggleField(orden, 'autorizada')}
-                                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
-                                                            ? 'bg-teal-600 text-white border-teal-700 shadow-sm hover:bg-teal-700'
-                                                            : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
-                                                            }`}
-                                                    >
-                                                        <ShieldCheck size={12} strokeWidth={2.5} />
-                                                        {orden.autorizada ? 'Autorizada' : 'Autorizar'}
-                                                    </button>
-
-                                                    {orden.incluyeMaterial && activeTab !== 'pedidos' && (
+                                                    {/* Status Toggles */}
+                                                    <div className="flex flex-wrap items-center gap-2 mt-2">
                                                         <button
-                                                            onClick={() => handleToggleField(orden, 'materialSolicitado')}
-                                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
-                                                                ? 'bg-purple-600 text-white border-purple-700 shadow-sm hover:bg-purple-700'
+                                                            onClick={() => handleToggleField(orden, 'autorizada')}
+                                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
+                                                                ? 'bg-teal-600 text-white border-teal-700 shadow-sm hover:bg-teal-700'
                                                                 : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
                                                                 }`}
                                                         >
-                                                            <Truck size={12} strokeWidth={2.5} />
-                                                            {orden.materialSolicitado ? 'Mat. Solicitado' : 'Solicitar Material'}
+                                                            <ShieldCheck size={12} strokeWidth={2.5} />
+                                                            {orden.autorizada ? 'Autorizada' : 'Autorizar'}
+                                                        </button>
+
+                                                        {orden.incluyeMaterial && activeTab !== 'pedidos' && (
+                                                            <button
+                                                                onClick={() => handleToggleField(orden, 'materialSolicitado')}
+                                                                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
+                                                                    ? 'bg-purple-600 text-white border-purple-700 shadow-sm hover:bg-purple-700'
+                                                                    : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
+                                                                    }`}
+                                                            >
+                                                                <Truck size={12} strokeWidth={2.5} />
+                                                                {orden.materialSolicitado ? 'Mat. Solicitado' : 'Solicitar Material'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => handleToggleStatus(orden)}
+                                                        className={`p-2 rounded-lg transition-colors ${orden.enviada
+                                                            ? 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
+                                                            : 'text-slate-400 hover:bg-green-50 hover:text-green-600'
+                                                            }`}
+                                                        title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
+                                                    >
+                                                        {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEdit(orden)}
+                                                        className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                                        title="Editar"
+                                                    >
+                                                        <Edit3 size={18} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handlePreview(orden, activeTab === 'pedidos' ? 'pedido' : 'internacion')}
+                                                        className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                                        title="Ver Documento"
+                                                    >
+                                                        <Printer size={18} />
+                                                    </button>
+                                                    {orden.incluyeMaterial &&
+                                                        orden.descripcionMaterial &&
+                                                        activeTab !== 'pedidos' && (
+                                                            <button
+                                                                onClick={() => handlePreview(orden, 'material')}
+                                                                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                                                title="Ver Material"
+                                                            >
+                                                                <Package size={18} />
+                                                            </button>
+                                                        )}
+                                                    <button
+                                                        onClick={() => handlePreview(orden, 'caratula')}
+                                                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                        title="Ver Carátula"
+                                                    >
+                                                        <Folder size={18} />
+                                                    </button>
+                                                    {orden.telefono && (
+                                                        <button
+                                                            onClick={() => setWhatsappModal(orden)}
+                                                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                            title="Enviar WhatsApp"
+                                                        >
+                                                            <MessageCircle size={18} />
                                                         </button>
                                                     )}
+                                                    <button
+                                                        onClick={() => handleDelete(orden.id)}
+                                                        className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                                                        title="Eliminar"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1">
+                                        </div>
+                                    );
+                                }
+
+                                // GRID VIEW (Mosaic)
+                                return (
+                                    <div
+                                        key={orden.id}
+                                        className={`bg-white rounded-2xl border p-5 flex flex-col justify-between transition-all hover:shadow-md ${orden.enviada ? 'opacity-75 grayscale-[0.3] border-slate-200' :
+                                            isUrgent ? 'border-red-200 shadow-sm shadow-red-50 ring-1 ring-red-100' : 'border-slate-100'
+                                            }`}
+                                    >
+                                        <div>
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isUrgent ? 'bg-red-100 text-red-600' :
+                                                    activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600')
+                                                    }`}>
+                                                    {isUrgent ? <AlertCircle size={24} /> : (orden.enviada ? <CheckCircle2 size={24} /> : (activeTab === 'pedidos' ? <FileHeart size={24} /> : (orden.incluyeMaterial ? <FileStack size={24} /> : <FileText size={24} />)))}
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    {isUrgent ? (
+                                                        <span className="px-2 py-1 bg-red-600 text-white text-[10px] font-bold uppercase rounded-lg animate-pulse">
+                                                            Urgente
+                                                        </span>
+                                                    ) : orden.enviada ? (
+                                                        <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[10px] font-bold uppercase rounded-lg">
+                                                            Enviada
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase rounded-lg">
+                                                            Pendiente
+                                                        </span>
+                                                    )}
+                                                    {orden.status === 'auditada' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded uppercase shadow-sm border border-emerald-200">Auditada</span>}
+                                                </div>
+                                            </div>
+
+                                            <h4 className={`text-lg font-bold truncate ${orden.enviada ? 'text-slate-500' : 'text-slate-800'}`}>
+                                                {orden.afiliado}
+                                            </h4>
+
+                                            <div className="mt-3 space-y-2">
+                                                <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
+                                                    <User size={14} className="text-slate-400 shrink-0" />
+                                                    <span className="truncate">{orden.profesional}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
+                                                    <Building2 size={14} className="text-slate-400 shrink-0" />
+                                                    <span className="truncate">{orden.obraSocial}</span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
+                                                        <Hash size={14} className="text-slate-400 shrink-0" />
+                                                        <span className="font-bold">{orden.dni || '-'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
+                                                        <Calendar size={14} className="text-slate-400 shrink-0" />
+                                                        <span>{formatDate(orden.fechaCirugia || orden.fechaDocumento)}</span>
+                                                    </div>
+                                                </div>
+                                                {orden.habitacion && (
+                                                    <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 p-2 rounded-lg font-medium">
+                                                        <Home size={14} className="shrink-0" />
+                                                        <span>Habitación: {orden.habitacion}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {orden.observaciones && (
+                                                <div className="mt-3 p-3 bg-teal-50 border-l-2 border-teal-400 text-xs text-teal-700 italic rounded">
+                                                    <strong>Nota:</strong> {orden.observaciones}
+                                                </div>
+                                            )}
+
+                                            <div className="flex flex-wrap gap-2 mt-4">
+                                                <button
+                                                    onClick={() => handleToggleField(orden, 'autorizada')}
+                                                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
+                                                        ? 'bg-teal-600 text-white border-teal-700 shadow-sm'
+                                                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                                        }`}
+                                                >
+                                                    <ShieldCheck size={14} />
+                                                    {orden.autorizada ? 'Autoriz.' : 'Autoriz.'}
+                                                </button>
+
+                                                {orden.incluyeMaterial && activeTab !== 'pedidos' && (
+                                                    <button
+                                                        onClick={() => handleToggleField(orden, 'materialSolicitado')}
+                                                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
+                                                            ? 'bg-purple-600 text-white border-purple-700 shadow-sm'
+                                                            : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                                            }`}
+                                                    >
+                                                        <Truck size={14} />
+                                                        {orden.materialSolicitado ? 'Ped.' : 'Ped.'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
+                                            <div className="flex gap-1">
                                                 <button
                                                     onClick={() => handleToggleStatus(orden)}
-                                                    className={`p-2 rounded-lg transition-colors ${orden.enviada
-                                                        ? 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
-                                                        : 'text-slate-400 hover:bg-green-50 hover:text-green-600'
-                                                        }`}
-                                                    title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
+                                                    className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"
+                                                    title="Estado"
                                                 >
-                                                    {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
+                                                    {orden.enviada ? <ArchiveRestore size={20} /> : <CheckCircle2 size={20} />}
                                                 </button>
                                                 <button
                                                     onClick={() => handleEdit(orden)}
-                                                    className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                                    className="p-2.5 text-teal-600 hover:bg-teal-50 rounded-xl transition-colors"
                                                     title="Editar"
                                                 >
-                                                    <Edit3 size={18} />
+                                                    <Edit3 size={20} />
                                                 </button>
+                                            </div>
+                                            <div className="flex gap-1">
                                                 <button
                                                     onClick={() => handlePreview(orden, activeTab === 'pedidos' ? 'pedido' : 'internacion')}
-                                                    className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                                                    title="Ver Documento"
+                                                    className="p-2.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-xl transition-colors"
+                                                    title="Imprimir"
                                                 >
-                                                    <Printer size={18} />
+                                                    <Printer size={20} />
                                                 </button>
-                                                {orden.incluyeMaterial &&
-                                                    orden.descripcionMaterial &&
-                                                    activeTab !== 'pedidos' && (
-                                                        <button
-                                                            onClick={() => handlePreview(orden, 'material')}
-                                                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                                                            title="Ver Material"
-                                                        >
-                                                            <Package size={18} />
-                                                        </button>
-                                                    )}
                                                 <button
                                                     onClick={() => handlePreview(orden, 'caratula')}
-                                                    className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                                    title="Ver Carátula"
+                                                    className="p-2.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-xl transition-colors"
+                                                    title="Carátula"
                                                 >
-                                                    <Folder size={18} />
+                                                    <Folder size={20} />
                                                 </button>
                                                 {orden.telefono && (
                                                     <button
                                                         onClick={() => setWhatsappModal(orden)}
-                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                                        title="Enviar WhatsApp"
+                                                        className="p-2.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-xl transition-colors"
+                                                        title="WhatsApp"
                                                     >
-                                                        <MessageCircle size={18} />
+                                                        <MessageCircle size={20} />
                                                     </button>
                                                 )}
                                                 <button
                                                     onClick={() => handleDelete(orden.id)}
-                                                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                                                    className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
                                                     title="Eliminar"
                                                 >
-                                                    <Trash2 size={18} />
+                                                    <Trash2 size={20} />
                                                 </button>
                                             </div>
                                         </div>
@@ -1666,34 +1837,38 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             <div className="flex justify-between items-center mb-8 no-print border-b pb-4">
                                 <div>
                                     <h2 className="text-2xl font-bold">Vista Previa</h2>
-                                    {previewData.incluyeMaterial && previewData.descripcionMaterial && (
-                                        <div className="flex gap-2 mt-2">
-                                            <button
-                                                onClick={() => setPreviewType('internacion')}
-                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'internacion' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                            >
-                                                Internación
-                                            </button>
-                                            <button
-                                                onClick={() => setPreviewType('material')}
-                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                            >
-                                                Material
-                                            </button>
-                                            <button
-                                                onClick={() => setPreviewType('ambas')}
-                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                            >
-                                                📄 Ambas (2 pág.)
-                                            </button>
-                                        </div>
-                                    )}
-                                    <button
-                                        onClick={() => setPreviewType('caratula')}
-                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                    >
-                                        📂 Carátula
-                                    </button>
+                                    <div className="flex gap-2 mt-2">
+                                        <button
+                                            onClick={() => setPreviewType(previewData.practicas ? 'pedido' : 'internacion')}
+                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${(previewType === 'internacion' || previewType === 'pedido') ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                        >
+                                            {previewData.practicas ? 'Pedido Médico' : 'Internación'}
+                                        </button>
+
+                                        {previewData.incluyeMaterial && previewData.descripcionMaterial && (
+                                            <>
+                                                <button
+                                                    onClick={() => setPreviewType('material')}
+                                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                >
+                                                    Material
+                                                </button>
+                                                <button
+                                                    onClick={() => setPreviewType('ambas')}
+                                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                >
+                                                    📄 Ambas (2 pág.)
+                                                </button>
+                                            </>
+                                        )}
+
+                                        <button
+                                            onClick={() => setPreviewType('caratula')}
+                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                        >
+                                            📂 Carátula
+                                        </button>
+                                    </div>
 
                                     {/* Consent Printing Section - one button per surgery */}
                                     {getApplicableConsents(previewData).length > 0 && (
