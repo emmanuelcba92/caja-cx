@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:test": "vite build --mode staging",
+    "deploy:test": "npm run build:test && firebase deploy --only hosting:test --project test",
+    "deploy:live": "vite build --mode production && firebase deploy --only hosting:live --project default",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -13,6 +16,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "autoprefixer": "^10.4.23",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "firebase": "^12.8.0",

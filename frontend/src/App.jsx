@@ -1,86 +1,141 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { AuthProvider, useAuth } from './context/AuthContext';
-
-// Components
-import LoginView from './components/LoginView';
 import CajaForm from './components/CajaForm';
 import LiquidacionView from './components/LiquidacionView';
 import ProfesionalesView from './components/ProfesionalesView';
+import HistorialCaja from './components/HistorialCaja';
 import AccessManager from './components/AccessManager';
 import NotesView from './components/NotesView';
 import OrdenesView from './components/OrdenesView';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import LoginView from './components/LoginView';
 import AdminView from './components/AdminView';
-import AdminMigration from './components/AdminMigration';
+import { ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
+
 import UserMenu from './components/UserMenu';
+import { Users, LayoutDashboard, FileText, History, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, FileHeart, Calendar as CalendarIcon, ShieldCheck } from 'lucide-react';
+import CalendarView from './components/CalendarView';
+import AuditView from './components/AuditView';
 
-// Icons
-import {
-  Users, LayoutDashboard, FileText, History, Menu, ChevronLeft, ChevronRight,
-  StickyNote, ClipboardList, Calendar, ShieldCheck, Archive, Coins,
-  Settings, Stethoscope, X, ShieldAlert, LogOut, CheckCircle2
-} from 'lucide-react';
 
-const MainLayout = () => {
-  const { currentUser, logout, permission, viewingUid } = useAuth();
-  const [activeTab, setActiveTab] = useState('caja');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [showNextFeatures, setShowNextFeatures] = useState(false);
+function AuthenticatedApp() {
+  const { currentUser, logout, viewingUid, sharedAccounts, switchContext, catalogOwnerUid } = useAuth();
+  const { isAuthorized, isSuperAdmin, userRole, permissions } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Sync Pending Reminders Count for Browser Tab
+  // Ensure light mode is always active
+  useEffect(() => {
+    document.documentElement.classList.remove('dark');
+  }, []);
+
+  // Sync Pending Reminders Count for Browser Tab (PER USER)
   useEffect(() => {
     if (!currentUser?.uid) return;
 
     const q = query(
       collection(db, "reminders"),
-      where("userId", "==", viewingUid || currentUser.uid),
+      where("userId", "==", currentUser.uid),
       where("completed", "==", false)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const count = snapshot.docs.length;
       setPendingCount(count);
-      document.title = count > 0 ? `(${count}) Caja de Cirugía` : `Caja de Cirugía`;
+      if (count > 0) {
+        document.title = `(${count}) Caja de Cirugía`;
+      } else {
+        document.title = `Caja de Cirugía`;
+      }
     });
 
     return () => {
       unsubscribe();
       document.title = `Caja de Cirugía`;
     };
-  }, [currentUser, viewingUid]);
+  }, [viewingUid, catalogOwnerUid]);
 
-  const isAdmin = permission === 'admin';
-  const isCaja = permission === 'caja' || isAdmin;
-  const isAuditor = permission === 'auditor' || isAdmin;
+  // Tabs Definition
+  const allTabs = [
+    { id: 'caja', icon: LayoutDashboard, label: 'Caja Diaria' },
+    { id: 'calendario', icon: CalendarIcon, label: 'Calendario' },
+    { id: 'auditoria', icon: ShieldCheck, label: 'Auditoría' },
+    { id: 'notas', icon: StickyNote, label: 'Notas' },
+    { id: 'historial', icon: History, label: 'Cajas' },
+    { id: 'liquidaciones', icon: FileText, label: 'Liquidaciones' },
+    { id: 'profesionales', icon: Users, label: 'Profesionales' },
+    { id: 'ordenes', icon: ClipboardList, label: 'Órdenes' },
+    { id: 'pedidos', icon: FileHeart, label: 'Pedidos (PM)' },
+    { id: 'compartir', icon: Share2, label: 'Compartir' },
+    { id: 'admin', icon: ShieldAlert, label: 'Administración' }
+  ];
 
-  const menuItems = [
-    { id: 'caja', label: 'Caja Diaria', icon: LayoutDashboard, visible: isCaja || permission === 'viewer' },
-    { id: 'notas', label: 'Notas', icon: StickyNote, visible: true },
-    { id: 'ordenes', label: 'Órdenes', icon: ClipboardList, visible: true },
-    { id: 'pedidos', label: 'Pedidos (PM)', icon: Stethoscope, visible: true },
-    { id: 'liquidaciones', label: 'Liquidaciones', icon: Coins, visible: isAdmin },
-    { id: 'profesionales', label: 'Profesionales', icon: Users, visible: isAdmin },
-    { id: 'cajas', label: 'Cajas', icon: Archive, visible: isAdmin },
-    { id: 'auditoria', label: 'Auditoría', icon: ShieldCheck, visible: isAuditor },
-    { id: 'administracion', label: 'Administración', icon: Settings, visible: isAdmin },
-  ].filter(item => item.visible);
+  // Filter tabs logic
+  const visibleTabs = allTabs.filter(tab => {
+    // 1. Admin Tab Security
+    if (tab.id === 'admin') {
+      return isSuperAdmin;
+    }
 
-  if (!permission && currentUser) {
+    // 1.5. Ordenes Tab - for Super Admin or users with ordenes permissions
+    if (tab.id === 'ordenes' || tab.id === 'pedidos') {
+      return isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes;
+    }
+
+    // 1.7. Calendario & Auditoria security (DESACTIVADOS TEMPORALMENTE)
+    if (tab.id === 'auditoria' || tab.id === 'calendario') {
+      return false; // Oculto hasta que se habilite oficialmente
+    }
+
+    // 2. Shared Catalog Viewers (COAT behavior)
+    // Users with 'can_view_shared_catalog' are restricted to essential tabs
+    if (permissions?.can_view_shared_catalog) {
+      return ['caja', 'calendario', 'liquidaciones', 'profesionales', 'historial', 'notas'].includes(tab.id);
+    }
+
+    return true;
+  });
+
+  const [activeTab, setActiveTab] = useState(userRole === 'coat' ? 'profesionales' : 'caja'); // Default tab logic
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+  const [showNextFeatures, setShowNextFeatures] = useState(false);
+  const [draftSurgery, setDraftSurgery] = useState(null);
+
+  const handleNavigate = (tab, payload = null) => {
+    setActiveTab(tab);
+    if (payload) {
+      setDraftSurgery(payload);
+    }
+  };
+
+
+  if (!currentUser) {
+    return <LoginView />;
+  }
+
+  if (!isAuthorized) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full text-center space-y-6 border border-slate-200">
-          <div className="w-20 h-20 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl max-w-md w-full text-center space-y-6 border border-slate-200 animate-in zoom-in-95 duration-300">
+          <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <ShieldAlert size={40} />
           </div>
           <div className="space-y-2">
             <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Acceso Restringido</h2>
             <p className="text-slate-500 font-medium leading-relaxed">
-              Tu cuenta (<span className="text-slate-900 font-bold">{currentUser.email}</span>) no está autorizada.
+              Tu cuenta (<span className="text-slate-900 font-bold">{currentUser.email}</span>) no está autorizada para acceder a este sistema.
             </p>
           </div>
-          <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-red-600 transition-all shadow-lg">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-600 space-y-2">
+            <div className="flex items-center gap-2 justify-center">
+              <CheckCircle2 size={16} className="text-emerald-500" />
+              <span>Solicita acceso al administrador</span>
+            </div>
+          </div>
+          <button
+            onClick={logout}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-red-600 transition-all shadow-lg"
+          >
             <LogOut size={18} /> Cerrar Sesión
           </button>
         </div>
@@ -89,120 +144,210 @@ const MainLayout = () => {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFB] text-slate-900 font-sans selection:bg-teal-100 selection:text-teal-900">
+    <div className="min-h-screen font-sans text-slate-900 flex bg-slate-50">
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-20 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} hidden md:flex flex-col bg-white border-r border-slate-100 transition-all duration-300 relative z-30`}>
+      <aside className={`${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-0 md:translate-x-0 md:w-20'} fixed md:relative min-h-screen bg-white border-r border-slate-200 flex flex-col shadow-xl md:shadow-none transition-all duration-300 z-30`}>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="absolute -right-3 top-8 bg-teal-600 text-white p-1 rounded-full shadow-md z-30 hover:bg-teal-700 transition-colors"
+          className={`absolute -right-3 top-8 bg-amber-500 text-white p-1 rounded-full shadow-md z-30 hover:bg-amber-600 transition-colors hidden md:flex`}
         >
           {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
 
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-teal-100">
-            <span className="font-black text-xl">C</span>
-          </div>
-          {sidebarOpen && (
-            <div className="animate-in fade-in duration-300">
-              <h1 className="font-black text-slate-800 tracking-tighter leading-none text-lg">CAJA DE CIRUGÍA</h1>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Centro COAT</p>
+        <div className="p-4 md:p-6">
+          <div className={`flex items-center gap-3 mb-8 overflow-hidden whitespace-nowrap ${!sidebarOpen && 'justify-center'}`}>
+            <img src="/c_logo.svg" alt="Logo" className="w-8 h-8 rounded-lg flex-shrink-0" />
+            <div className={`transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>
+              <h1 className="font-bold text-lg leading-tight uppercase tracking-tight text-blue-600">Caja de cirugía</h1>
+              <p className="text-[10px] text-slate-400 font-medium truncate">{currentUser?.email}</p>
             </div>
-          )}
+          </div>
+
+          <nav className="space-y-1">
+            {visibleTabs.map(item => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  if (window.innerWidth < 768) setSidebarOpen(false); // Close on mobile select
+                }}
+                className={`w-full flex items-center px-4 py-3 rounded-xl transition-all font-medium whitespace-nowrap overflow-hidden ${activeTab === item.id
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                  } ${!sidebarOpen ? 'justify-center px-0' : 'gap-3'}`}
+                title={!sidebarOpen ? item.label : ''}
+              >
+                <item.icon size={sidebarOpen ? 20 : 28} className={`flex-shrink-0 transition-all ${!sidebarOpen && 'hover:scale-110'}`} />
+                <span className={`transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>{item.label}</span>
+              </button>
+            ))}
+          </nav>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-hidden">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all font-bold whitespace-nowrap ${activeTab === item.id
-                ? 'bg-teal-50 text-teal-600 shadow-sm'
-                : 'text-slate-400 hover:bg-slate-50 hover:text-teal-600'
-                } ${!sidebarOpen ? 'justify-center px-0' : 'gap-3'}`}
-            >
-              <item.icon size={20} />
-              {sidebarOpen && <span className="text-sm">{item.label}</span>}
-            </button>
-          ))}
-        </nav>
 
-        <div className="mt-auto p-6">
-          <div onClick={() => setShowNextFeatures(true)} className="text-[10px] text-slate-400 font-mono cursor-pointer hover:text-teal-500 transition-colors flex flex-col gap-0.5">
-            <span>v1.3.1</span>
-            {sidebarOpen && <span>Actualizado: 19/02/2026</span>}
+        <div className={`mt-auto p-6 transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>
+          <div
+            onClick={() => setShowNextFeatures(true)}
+            className="text-[10px] text-slate-400 font-mono cursor-pointer hover:text-blue-500 transition-colors flex flex-col gap-0.5"
+          >
+            <span>v1.3.2</span>
+            <span>Actualizado: 19/02/2026 - 20:05</span>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 max-h-screen overflow-hidden">
-        <header className="h-16 flex items-center justify-between px-8 bg-white border-b border-slate-100 shrink-0 z-10 no-print">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
-            <span>Principal</span>
-            <ChevronRight size={12} className="opacity-50" />
-            <span className="text-teal-600 font-black">{menuItems.find(i => i.id === activeTab)?.label}</span>
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10 transition-colors duration-300">
+          <div className="text-sm font-medium text-slate-500 capitalize flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className={`md:hidden mr-2 p-2 rounded-lg hover:bg-slate-100 transition-colors ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+            >
+              <Menu size={24} className="text-slate-600" />
+            </button>
+            <span className="hidden sm:inline">Principal /</span> {activeTab}
           </div>
-          <UserMenu />
+          <div className="flex items-center gap-4">
+            <UserMenu />
+          </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto p-8 relative scroll-smooth">
-          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <section className="flex-1 overflow-y-auto p-8 bg-slate-50 transition-colors duration-300">
+          <div className={`mx-auto space-y-6 transition-all duration-300 ${sidebarOpen ? 'max-w-7xl' : 'max-w-[1600px]'}`}>
             {activeTab === 'caja' && <CajaForm />}
+            {activeTab === 'calendario' && <CalendarView onNavigate={handleNavigate} />}
+            {activeTab === 'auditoria' && <AuditView onNavigate={handleNavigate} />}
+            {activeTab === 'notas' && <NotesView />}
+            {activeTab === 'historial' && <HistorialCaja />}
             {activeTab === 'liquidaciones' && <LiquidacionView />}
             {activeTab === 'profesionales' && <ProfesionalesView />}
-            {activeTab === 'ordenes' && <OrdenesView />}
-            {activeTab === 'pedidos' && <OrdenesView initialTab="pedidos" />}
-            {activeTab === 'notas' && <NotesView />}
-            {activeTab === 'cajas' && <AdminMigration />}
-            {activeTab === 'auditoria' && <AdminView />}
-            {activeTab === 'administracion' && <AccessManager />}
+            {activeTab === 'compartir' && <AccessManager />}
+            {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
+              <OrdenesView
+                initialTab="internacion"
+                draftData={draftSurgery}
+                onDraftConsumed={() => setDraftSurgery(null)}
+              />
+            )}
+            {activeTab === 'pedidos' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
+              <OrdenesView
+                initialTab="pedidos"
+                draftData={draftSurgery}
+                onDraftConsumed={() => setDraftSurgery(null)}
+              />
+            )}
+            {activeTab === 'admin' && (isSuperAdmin || permissions?.can_view_admin) && <AdminView />}
           </div>
         </section>
-      </main>
 
-      {/* Version Modal */}
-      {showNextFeatures && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-teal-500" />
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-black text-slate-900 tracking-tight">Actualizaciones</h3>
-              <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-50 rounded-full text-slate-400"><X size={20} /></button>
-            </div>
-            <div className="space-y-4 text-sm text-slate-600">
-              <div className="flex gap-3">
-                <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
-                <p><strong>Branding Teal & Orange:</strong> Interfaz unificada con la imagen institucional.</p>
+        {/* HISTORIAL DE CAMBIOS MODAL */}
+        {showNextFeatures && (
+          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-100 animate-in zoom-in-95 duration-200">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Historial de Cambios 📓</h3>
+                  <p className="text-xs text-slate-400 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
+                </div>
+                <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                  <Menu size={20} className="rotate-45" />
+                </button>
               </div>
-              <div className="flex gap-3">
-                <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
-                <p><strong>Historial Dual:</strong> Seguimiento completo de ARS y USD por profesional.</p>
+
+              <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">19 de Enero, 2026</h4>
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <strong>Compatibilidad W7:</strong>
+                        <p className="text-xs opacity-70">Añadidos fallbacks de colores y estilos para soportar Chrome 109 y navegadores antiguos.</p>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <strong>Diseño Responsivo:</strong>
+                        <p className="text-xs opacity-70">Menú de botones adaptativo en Liquidaciones y mejoras de visualización en móviles.</p>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <strong>URL Corta:</strong>
+                        <p className="text-xs opacity-70">Migración al nuevo dominio corto: cajacx.web.app.</p>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-l-2 border-slate-300 pl-3">18 de Enero, 2026</h4>
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <strong>Sistema de Fechas Seguro:</strong>
+                        <p className="text-xs opacity-70">Implementación de escudos contra errores de renderizado por fechas inválidas.</p>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <strong>Deducciones Detalladas:</strong>
+                        <p className="text-xs opacity-70">Añadida fecha individual a cada ítem de "Agregar Detalle".</p>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <strong>Liquidación Multi-profesional:</strong>
+                        <p className="text-xs opacity-70">Nueva funcionalidad para dividir honorarios manuales entre múltiples médicos.</p>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <strong>Recibos Dinámicos:</strong>
+                        <p className="text-xs opacity-70">La fecha del recibo ahora coincide con el periodo de liquidación seleccionado.</p>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
               </div>
+
+              <button
+                onClick={() => setShowNextFeatures(false)}
+                className="w-full mt-8 py-3 bg-slate-900 text-white font-bold rounded-xl hover:opacity-90 transition-opacity"
+              >
+                Cerrar Registro
+              </button>
             </div>
-            <button onClick={() => setShowNextFeatures(false)} className="w-full mt-8 py-3 bg-teal-600 text-white rounded-xl font-bold uppercase tracking-widest hover:bg-teal-700 shadow-lg shadow-teal-50">Cerrar</button>
           </div>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   );
-};
+}
 
-const AppContent = () => {
-  const { currentUser, loading } = useAuth();
-  if (loading) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-      <div className="w-10 h-10 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin" />
-    </div>
+function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
   );
-  return currentUser ? <MainLayout /> : <LoginView />;
-};
+}
 
-const App = () => (
-  <AuthProvider>
-    <AppContent />
-  </AuthProvider>
-);
 
 export default App;

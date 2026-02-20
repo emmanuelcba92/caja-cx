@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { useAuth } from '../context/AuthContext';
+import { DEFAULT_PROFESIONALES } from '../data/seedProfs';
 
 
 const ProfesionalesView = () => {
@@ -123,6 +124,31 @@ const ProfesionalesView = () => {
         } catch (error) {
             console.error("Error adding professional:", error);
             alert("Error de conexión al agregar profesional");
+        }
+    };
+
+    const handleSeed = async () => {
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return alert("Debes iniciar sesión");
+        if (!window.confirm("¿Deseas cargar la lista predefinida de profesionales de COAT? Solo se agregarán los que falten.")) return;
+
+        try {
+            let addedCount = 0;
+            for (const p of DEFAULT_PROFESIONALES) {
+                const exists = profesionales.some(existing => existing.nombre.toLowerCase().includes(p.nombre.toLowerCase()));
+                if (!exists) {
+                    await addDoc(collection(db, "profesionales"), {
+                        ...p,
+                        userId: ownerToUse
+                    });
+                    addedCount++;
+                }
+            }
+            fetchProfs();
+            alert(`Se agregaron ${addedCount} profesionales correctamente.`);
+        } catch (error) {
+            console.error("Error seeding professionals:", error);
+            alert("Error al cargar la lista");
         }
     };
 
@@ -501,6 +527,22 @@ const ProfesionalesView = () => {
                             Guardar
                         </button>
                     </form>
+
+                    {/* Seed Button - Only for Super Admin or owners */}
+                    {!isReadOnly && (
+                        <div className="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-slate-400">
+                                <FileText size={16} />
+                                <span className="text-xs font-medium italic">Acciones rápidas para administración COAT</span>
+                            </div>
+                            <button
+                                onClick={handleSeed}
+                                className="px-6 py-2.5 bg-amber-50 text-amber-600 border border-amber-200 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-amber-100 transition-all"
+                            >
+                                Cargar Lista Profesionales COAT
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 

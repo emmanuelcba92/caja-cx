@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-    /* Tailwind v4 theme extension for Chrome 109 fallbacks */
+    /* COAT Brand Palette */
     --color-slate-50: #f8fafc;
     --color-slate-100: #f1f5f9;
     --color-slate-200: #e2e8f0;
@@ -13,12 +13,20 @@
     --color-slate-800: #1e293b;
     --color-slate-900: #0f172a;
 
-    --color-blue-50: #eff6ff;
-    --color-blue-100: #dbeafe;
-    --color-blue-200: #bfdbfe;
-    --color-blue-500: #3b82f6;
-    --color-blue-600: #2563eb;
-    --color-blue-700: #1d4ed8;
+    /* Primary: COAT Teal (#008C95) */
+    --color-blue-50: #e0f2f1;
+    --color-blue-100: #b2dfdb;
+    --color-blue-200: #80cbc4;
+    --color-blue-500: #00acc1;
+    --color-blue-600: #008c95; /* Base Teal */
+    --color-blue-700: #00796b;
+
+    /* Secondary: COAT Orange (#F39200) */
+    --color-amber-50: #fff8e1;
+    --color-amber-100: #ffecb3;
+    --color-amber-400: #ffb300;
+    --color-amber-500: #f39200; /* Base Orange */
+    --color-amber-600: #e65100;
 
     --color-emerald-50: #ecfdf5;
     --color-emerald-100: #d1fae5;
@@ -26,6 +34,9 @@
     --color-emerald-500: #10b981;
     --color-emerald-600: #059669;
     --color-emerald-700: #047857;
+
+    --color-teal-500: #008c95;
+    --color-teal-600: #00796b;
 
     --color-purple-600: #9333ea;
     --color-purple-700: #7e22ce;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle } from 'lucide-react';
+import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle, Clock, Home, StickyNote } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -12,7 +12,7 @@ const FIRMAS_MAP = {
     // 'Dra. Valenzuela': 'valenzuela.png',
 };
 
-const OrdenesView = ({ initialTab = 'internacion' }) => {
+const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftConsumed = () => { } }) => {
     const { viewingUid, catalogOwnerUid, isSuperAdmin, permissions } = useAuth();
     const [profesionales, setProfesionales] = useState([]);
     const [ordenes, setOrdenes] = useState([]);
@@ -57,11 +57,15 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
         ],
         tipoAnestesia: 'general',
         fechaCirugia: '',
+        horaCirugia: '', // New field
+        salaCirugia: '', // New field (Room)
+        anotacionCalendario: '', // New field for calendar display
         incluyeMaterial: false, // Toggle for material order
         descripcionMaterial: '', // Material description
         diagnostico: '',
         habitacion: '',
         fechaDocumento: new Date().toISOString().split('T')[0],
+        status: 'pendiente',
         // Additional fields for Pedidos Medicos
         practicas: ['', '', '', '', ''], // Array of strings (practice names)
     };
@@ -168,6 +172,20 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
         fetchOrdenes();
         fetchPedidos();
     }, [viewingUid, catalogOwnerUid]);
+
+    useEffect(() => {
+        if (draftData) {
+            setFormData(prev => ({
+                ...prev,
+                ...draftData
+            }));
+            if (draftData.id) {
+                setEditingId(draftData.id);
+            }
+            setShowForm(true);
+            onDraftConsumed();
+        }
+    }, [draftData, onDraftConsumed]);
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -412,6 +430,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                 ...formData,
                 codigosCirugia: cleanedCodigos.length > 0 ? cleanedCodigos : [{ codigo: '', nombre: '' }],
                 userId: ownerToUse,
+                status: formData.status || 'pendiente',
                 updatedAt: new Date().toISOString()
             };
 
@@ -517,41 +536,66 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
 
     const handleToggleStatus = async (orden) => {
         const newStatus = !orden.enviada;
+        const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+
         // Optimistic update
-        setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: newStatus } : o));
+        if (activeTab === 'pedidos') {
+            setPedidos(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: newStatus } : o));
+        } else {
+            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: newStatus } : o));
+        }
 
         try {
-            const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
             const ordenRef = doc(db, collectionName, orden.id);
             await updateDoc(ordenRef, { enviada: newStatus });
         } catch (error) {
             console.error("Error updating status:", error);
             // Revert on error
-            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: !newStatus } : o));
-            alert("Error al actualizar el estado.");
+            if (activeTab === 'pedidos') {
+                setPedidos(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: !newStatus } : o));
+            } else {
+                setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: !newStatus } : o));
+            }
+            alert("No se pudo actualizar el estado.");
         }
     };
 
     const handleToggleField = async (orden, field) => {
         const newValue = !orden[field];
+        const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+
         // Optimistic update
-        setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: newValue } : o));
+        if (activeTab === 'pedidos') {
+            setPedidos(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: newValue } : o));
+        } else {
+            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: newValue } : o));
+        }
 
         try {
-            const ordenRef = doc(db, "ordenes_internacion", orden.id);
+            const ordenRef = doc(db, collectionName, orden.id);
             await updateDoc(ordenRef, { [field]: newValue });
         } catch (error) {
             console.error(`Error updating ${field}:`, error);
             // Revert on error
-            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: !newValue } : o));
+            if (activeTab === 'pedidos') {
+                setPedidos(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: !newValue } : o));
+            } else {
+                setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: !newValue } : o));
+            }
+            alert("No se pudo actualizar. Verifica tus permisos.");
         }
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm("¿Eliminar esta orden?")) return;
+        if (!window.confirm("¿Confirmar eliminación definitiva de este documento? No se podrá deshacer.")) return;
+
+        setLoading(true);
+        const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+
         try {
-            const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
             await deleteDoc(doc(db, collectionName, id));
+
+            // Success: update local state
             if (activeTab === 'pedidos') {
                 setPedidos(prev => prev.filter(o => o.id !== id));
             } else {
@@ -559,7 +603,9 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
             }
         } catch (error) {
             console.error("Error deleting order:", error);
-            alert("Error al eliminar.");
+            alert(`Error al eliminar: ${error.message || 'Permiso denegado.'}`);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -1001,6 +1047,7 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                                     {activeTab === 'pedidos' && <span className="ml-2 font-medium text-pink-600">• Pedido Médico</span>}
                                                     {orden.habitacion && <span className="ml-2 font-medium text-amber-600">• Hab: {orden.habitacion}</span>}
                                                     {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
+                                                    {orden.status === 'auditada' && <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded uppercase tracking-tighter shadow-sm border border-emerald-200">Auditada</span>}
                                                 </p>
                                                 {orden.observaciones && (
                                                     <div className="mt-1 p-2 bg-teal-50 border-l-2 border-teal-400 text-xs text-teal-700 italic rounded">
@@ -1432,15 +1479,56 @@ const OrdenesView = ({ initialTab = 'internacion' }) => {
                                             <option value="sedación">Sedación</option>
                                         </select>
                                     </div>
-                                    <div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                                <Calendar size={14} className="inline mr-1" /> Fecha de Cirugía
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={formData.fechaCirugia}
+                                                onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
+                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                                <Clock size={14} className="inline mr-1" /> Hora
+                                            </label>
+                                            <input
+                                                type="time"
+                                                value={formData.horaCirugia}
+                                                onChange={(e) => handleInputChange('horaCirugia', e.target.value)}
+                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                                <Home size={14} className="inline mr-1" /> Sala (Quirófano)
+                                            </label>
+                                            <select
+                                                value={formData.salaCirugia}
+                                                onChange={(e) => handleInputChange('salaCirugia', e.target.value)}
+                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold"
+                                            >
+                                                <option value="">- Seleccionar -</option>
+                                                <option value="Sala A">Sala A</option>
+                                                <option value="Sala B">Sala B</option>
+                                                <option value="Sala C">Sala C</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4">
                                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                            <Calendar size={14} className="inline mr-1" /> Fecha de Cirugía
+                                            <StickyNote size={14} className="inline mr-1" /> Anotación para Calendario
                                         </label>
-                                        <input
-                                            type="date"
-                                            value={formData.fechaCirugia}
-                                            onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        <textarea
+                                            value={formData.anotacionCalendario || ''}
+                                            onChange={(e) => handleInputChange('anotacionCalendario', e.target.value)}
+                                            placeholder="Ej: Ayunas, Material especial, contactado, etc..."
+                                            rows={2}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
                                         />
                                     </div>
                                 </div>

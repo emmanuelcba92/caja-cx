@@ -1,19 +1,17 @@
 {
   "projects": {
-    "default": "caja-de-cirugia"
+    "default": "caja-de-cirugia",
+    "test": "cajacx-test"
   },
   "targets": {
     "caja-de-cirugia": {
       "hosting": {
-        "old-app": [
-          "caja-de-cirugia"
-        ],
-        "live": [
-          "cajacx"
-        ],
-        "test": [
-          "cajacxtest"
-        ]
+        "live": ["cajacx"]
+      }
+    },
+    "cajacx-test": {
+      "hosting": {
+        "test": ["cajacx-test"]
       }
     }
   },

@@ -166,11 +166,11 @@ const UserMenu = () => {
             >
                 <div className="text-right hidden sm:block">
                     <p className="text-xs font-bold text-slate-700">{currentUser?.email}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium group-hover:text-teal-500 transition-colors">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium group-hover:text-blue-500 transition-colors">
                         {viewingUid === currentUser.uid ? 'Mi Caja' : 'Caja Compartida'}
                     </p>
                 </div>
-                <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 group-hover:bg-teal-100 group-hover:text-teal-600 transition-colors">
+                <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
                     <User size={20} />
                 </div>
                 <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
@@ -199,7 +199,7 @@ const UserMenu = () => {
 
                             <button
                                 onClick={() => { switchContext(currentUser.uid); setIsOpen(false); }}
-                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === currentUser.uid ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === currentUser.uid ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
                             >
                                 <span className="flex items-center gap-2">
                                     <Shield size={16} /> Mi Caja
@@ -211,7 +211,7 @@ const UserMenu = () => {
                                 <button
                                     key={acc.id}
                                     onClick={() => { switchContext(acc.ownerUid); setIsOpen(false); }}
-                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === acc.ownerUid ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === acc.ownerUid ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
                                 >
                                     <span className="flex items-center gap-2">
                                         <Users size={16} /> {acc.ownerEmail.split('@')[0]}
@@ -252,7 +252,7 @@ const UserMenu = () => {
                             {!hasPasswordProvider() && (
                                 <button
                                     onClick={() => { setShowLinkPasswordModal(true); setIsOpen(false); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-teal-600 hover:bg-teal-50 transition-colors"
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-emerald-600 hover:bg-emerald-50 transition-colors"
                                 >
                                     <Key size={16} /> Vincular Contraseña
                                 </button>
@@ -296,7 +296,7 @@ const UserMenu = () => {
                                 <input
                                     type="password"
                                     placeholder="Contraseña Actual"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     value={currentPassword}
                                     onChange={(e) => setCurrentPassword(e.target.value)}
                                     required
@@ -306,7 +306,7 @@ const UserMenu = () => {
                                 <input
                                     type="password"
                                     placeholder="Nueva conraseña (min 6 caracteres)"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     value={newPassword}
                                     onChange={(e) => setNewPassword(e.target.value)}
                                     minLength={6}
@@ -317,7 +317,7 @@ const UserMenu = () => {
                                 <input
                                     type="password"
                                     placeholder="Confirmar Nueva Contraseña"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     minLength={6}
@@ -335,7 +335,7 @@ const UserMenu = () => {
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-2 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50"
+                                    className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
                                 >
                                     {loading ? '...' : 'Guardar'}
                                 </button>
@@ -354,7 +354,7 @@ const UserMenu = () => {
                             <input
                                 type="email"
                                 placeholder="Nuevo correo electrónico"
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 value={newEmail}
                                 onChange={(e) => setNewEmail(e.target.value)}
                                 required
@@ -370,7 +370,7 @@ const UserMenu = () => {
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-2 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50"
+                                    className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
                                 >
                                     {loading ? '...' : 'Guardar'}
                                 </button>
@@ -392,7 +392,7 @@ const UserMenu = () => {
                                 <input
                                     type="text"
                                     placeholder="PIN Actual (ej: 1234)"
-                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-center tracking-widest"
+                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center tracking-widest"
                                     value={currentPin}
                                     onChange={(e) => setCurrentPin(e.target.value)}
                                     required
@@ -404,7 +404,7 @@ const UserMenu = () => {
                                 <input
                                     type="text"
                                     placeholder="Nuevo PIN"
-                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold tracking-widest text-xl"
+                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold tracking-widest text-xl"
                                     value={newPin}
                                     onChange={(e) => setNewPin(e.target.value)}
                                     maxLength={8}
@@ -417,7 +417,7 @@ const UserMenu = () => {
                                 <input
                                     type="text"
                                     placeholder="Repetir Nuevo PIN"
-                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold tracking-widest text-xl"
+                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold tracking-widest text-xl"
                                     value={confirmPin}
                                     onChange={(e) => setConfirmPin(e.target.value)}
                                     maxLength={8}
@@ -436,7 +436,7 @@ const UserMenu = () => {
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-2 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50"
+                                    className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
                                 >
                                     {loading ? '...' : 'Guardar'}
                                 </button>
@@ -486,7 +486,7 @@ const UserMenu = () => {
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-2 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50"
+                                    className="flex-1 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50"
                                 >
                                     {loading ? '...' : 'Vincular'}
                                 </button>
