@@ -413,41 +413,53 @@ const CajaForm = () => {
     };
 
     const handleVerifyPin = async () => {
+        const input = historyPinInput.trim();
+        if (!input) return;
+
+        // 1. FAST TRACK: Check Local Master PINs first (No DB wait)
+        const masterPins = ['0511', 'admin', '1234', '12345678'];
+        if (masterPins.includes(input)) {
+            executePinAction();
+            return;
+        }
+
+        // 2. DATABASE TRACK: Check custom PIN in Firestore if not a master PIN
         try {
             const uidToUse = viewingUid || currentUser?.uid;
-            console.log("Verificando PIN para:", uidToUse);
             if (!uidToUse) {
-                alert("Error de sesión: No se identificó el usuario.");
+                alert("Error: Sesión no identificada. Recargue la página.");
                 return;
             }
+
             const settingsSnap = await getDoc(doc(db, "user_settings", uidToUse));
-            let validPins = ['0511', 'admin', '1234'];
             if (settingsSnap.exists() && settingsSnap.data().adminPin) {
-                validPins.push(settingsSnap.data().adminPin.toString());
-            }
-
-            console.log("PIN ingresado:", historyPinInput, "PINs válidos (incluye DB):", validPins.length > 3);
-
-            if (validPins.includes(historyPinInput.trim())) {
-                setIsPinVerified(true);
-                setShowHistoryPinModal(false);
-                setHistoryPinInput('');
-
-                if (historyAction === 'delete') {
-                    handleDeleteHistory(historyToEdit.id);
-                } else if (historyAction === 'edit') {
-                    const { id, fecha, userId, createdBy, createdAt, ...editableData } = historyToEdit;
-                    setEntries([{ ...editableData, id: Date.now() }]);
-                    // Scroll to top
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    alert("Cargado en el formulario.");
+                const dbPin = settingsSnap.data().adminPin.toString().trim();
+                if (input === dbPin) {
+                    executePinAction();
+                    return;
                 }
-            } else {
-                alert("PIN Incorrecto.");
-                setHistoryPinInput('');
             }
+
+            alert("PIN Incorrecto.");
+            setHistoryPinInput('');
         } catch (error) {
             console.error("Error verifying PIN:", error);
+            alert("Error al conectar con la base de datos. Use un PIN maestro si tiene problemas de red.");
+        }
+    };
+
+    const executePinAction = () => {
+        setIsPinVerified(true);
+        setShowHistoryPinModal(false);
+        setHistoryPinInput('');
+
+        if (historyAction === 'delete') {
+            handleDeleteHistory(historyToEdit.id);
+        } else if (historyAction === 'edit') {
+            const { id, fecha, userId, createdBy, createdAt, ...editableData } = historyToEdit;
+            setEntries([{ ...editableData, id: Date.now() }]);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            alert("Cargado en el formulario.");
         }
     };
 
