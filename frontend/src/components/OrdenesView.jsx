@@ -1479,7 +1479,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                             <option value="sedación">Sedación</option>
                                         </select>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
                                                 <Calendar size={14} className="inline mr-1" /> Fecha de Cirugía
@@ -1501,21 +1501,6 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 onChange={(e) => handleInputChange('horaCirugia', e.target.value)}
                                                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold"
                                             />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                                <Home size={14} className="inline mr-1" /> Sala (Quirófano)
-                                            </label>
-                                            <select
-                                                value={formData.salaCirugia}
-                                                onChange={(e) => handleInputChange('salaCirugia', e.target.value)}
-                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold"
-                                            >
-                                                <option value="">- Seleccionar -</option>
-                                                <option value="Sala A">Sala A</option>
-                                                <option value="Sala B">Sala B</option>
-                                                <option value="Sala C">Sala C</option>
-                                            </select>
                                         </div>
                                     </div>
 
