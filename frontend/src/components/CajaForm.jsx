@@ -438,12 +438,25 @@ const CajaForm = () => {
 
     const handleVerifyPin = async () => {
         const input = historyPinInput.trim();
-        if (!input) return;
+        if (!input) {
+            alert("Por favor ingresa un PIN.");
+            return;
+        }
 
         // 1. FAST TRACK: Check Local Master PINs first (No DB wait)
         const masterPins = ['0511', '1105', 'admin', '1234', '12345678', '2024', '2025'];
         if (masterPins.includes(input)) {
-            executePinAction();
+            setIsPinVerified(true); // Force verification state locally
+            setShowHistoryPinModal(false);
+            setHistoryPinInput('');
+
+            // Execute pending action immediately
+            if (historyAction === 'delete' && historyToEdit) {
+                handleDeleteHistory(historyToEdit.id);
+            } else if (historyToEdit) {
+                setEntries([{ ...historyToEdit }]);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
             return;
         }
 
@@ -528,11 +541,14 @@ const CajaForm = () => {
     };
 
     // Calculate Totals for Summary
-    const totals = entries.reduce((acc, entry) => {
+    // Calculate Totals for Summary based on HISTORY (Confirmed operations)
+    const totals = history.reduce((acc, entry) => {
         acc.pesos += parseFloat(entry.pesos) || 0;
         acc.dolares += parseFloat(entry.dolares) || 0;
+        acc.coat_pesos += parseFloat(entry.coat_pesos) || 0;
+        acc.coat_dolares += parseFloat(entry.coat_dolares) || 0;
         return acc;
-    }, { pesos: 0, dolares: 0 });
+    }, { pesos: 0, dolares: 0, coat_pesos: 0, coat_dolares: 0 });
 
     return (
         <div className="space-y-6">
@@ -562,14 +578,16 @@ const CajaForm = () => {
 
                         <div className="h-10 w-px bg-slate-200 mx-1" />
 
-                        <div className="flex gap-2">
-                            <div className="px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-center">
-                                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Total Pesos</p>
+                        <div className="flex gap-4">
+                            <div className="px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-center min-w-[100px]">
+                                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Total Pesos</p>
                                 <p className="text-lg font-black text-emerald-700 tabular-nums">${totals.pesos.toLocaleString('es-AR')}</p>
+                                {totals.coat_pesos > 0 && <p className="text-[10px] font-bold text-emerald-500 mt-1">COAT: ${totals.coat_pesos.toLocaleString('es-AR')}</p>}
                             </div>
-                            <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl text-center">
-                                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Total USD</p>
+                            <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl text-center min-w-[100px]">
+                                <p className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Total USD</p>
                                 <p className="text-lg font-black text-blue-700 tabular-nums">U$D {totals.dolares.toLocaleString('es-AR')}</p>
+                                {totals.coat_dolares > 0 && <p className="text-[10px] font-bold text-blue-500 mt-1">COAT: ${totals.coat_dolares.toLocaleString('es-AR')}</p>}
                             </div>
                         </div>
                     </div>
@@ -1118,11 +1136,21 @@ const CajaForm = () => {
                                                 </div>
                                             )}
                                         </div>
+                                    )}
+
+                                        {/* COAT Section in History */}
+                                        {(item.coat_pesos > 0 || item.coat_dolares > 0) && (
+                                            <div className="mt-2 pt-2 border-t border-slate-100 flex items-center gap-3">
+                                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest bg-orange-50 px-1.5 py-0.5 rounded">COAT</span>
+                                                {item.coat_pesos > 0 && <span className="text-[10px] font-bold text-orange-600">${item.coat_pesos.toLocaleString('es-AR')}</span>}
+                                                {item.coat_dolares > 0 && <span className="text-[10px] font-bold text-orange-600">U$D {item.coat_dolares.toLocaleString('es-AR')}</span>}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="h-8 w-px bg-slate-100 hidden md:block" />
 
-                                    <div className="text-right">
+                                    <div className="text-right ml-auto">
                                         <p className="text-[9px] font-bold text-slate-400 uppercase">Abonado Paciente</p>
                                         <div className="flex items-center gap-2 justify-end">
                                             {item.pesos > 0 && <span className="text-xs font-black text-emerald-600">${item.pesos.toLocaleString('es-AR')}</span>}
