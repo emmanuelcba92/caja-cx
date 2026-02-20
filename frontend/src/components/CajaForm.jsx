@@ -174,13 +174,29 @@ const CajaForm = () => {
         setEntries(prev => prev.map(e => {
             if (e.id !== id) return e;
             const updated = { ...e, ...patch };
-            // Si cambió algo que afecte el cálculo, recalcular
-            const calcKeys = [
+
+            const fullCalcKeys = [
                 'total_ars', 'total_usd',
-                'pct_prof_1', 'pct_prof_2', 'pct_prof_3', 'showProf3',
+                'pct_prof_1', 'pct_prof_2', 'pct_prof_3', 'showProf3'
+            ];
+
+            const partialCalcKeys = [
+                'liq_prof_1_ars', 'liq_prof_1_usd',
+                'liq_prof_2_ars', 'liq_prof_2_usd',
+                'liq_prof_3_ars', 'liq_prof_3_usd',
                 'liq_anestesista_ars', 'liq_anestesista_usd'
             ];
-            if (calcKeys.some(k => k in patch)) return recalc(updated);
+
+            if (fullCalcKeys.some(k => k in patch)) {
+                return recalc(updated);
+            }
+
+            if (partialCalcKeys.some(k => k in patch)) {
+                const coat_ars = Math.max(0, (updated.total_ars || 0) - (updated.liq_prof_1_ars || 0) - (updated.liq_prof_2_ars || 0) - (updated.liq_prof_3_ars || 0) - (updated.liq_anestesista_ars || 0));
+                const coat_usd = Math.max(0, (updated.total_usd || 0) - (updated.liq_prof_1_usd || 0) - (updated.liq_prof_2_usd || 0) - (updated.liq_prof_3_usd || 0) - (updated.liq_anestesista_usd || 0));
+                return { ...updated, coat_ars, coat_usd };
+            }
+
             return updated;
         }));
     };
@@ -868,6 +884,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                                 liqArs={entry.liq_prof_1_ars} liqUsd={entry.liq_prof_1_usd}
                                 onChangeProf={v => onUpdate({ prof_1: v })}
                                 onChangePct={v => onUpdate({ pct_prof_1: v })}
+                                onLiqChange={(v, currency) => currency === 'ars' ? onUpdate({ liq_prof_1_ars: v }) : onUpdate({ liq_prof_1_usd: v })}
                                 isReadOnly={isReadOnly}
                             />
                             <ProfRow
@@ -878,6 +895,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                                 liqArs={entry.liq_prof_2_ars} liqUsd={entry.liq_prof_2_usd}
                                 onChangeProf={v => onUpdate({ prof_2: v })}
                                 onChangePct={v => onUpdate({ pct_prof_2: v })}
+                                onLiqChange={(v, currency) => currency === 'ars' ? onUpdate({ liq_prof_2_ars: v }) : onUpdate({ liq_prof_2_usd: v })}
                                 isReadOnly={isReadOnly}
                             />
                             {entry.showProf3 && (
@@ -890,6 +908,7 @@ const PatientCard = ({ entry, idx, surgeons, anestesistas, isReadOnly, onUpdate,
                                         liqArs={entry.liq_prof_3_ars} liqUsd={entry.liq_prof_3_usd}
                                         onChangeProf={v => onUpdate({ prof_3: v })}
                                         onChangePct={v => onUpdate({ pct_prof_3: v })}
+                                        onLiqChange={(v, currency) => currency === 'ars' ? onUpdate({ liq_prof_3_ars: v }) : onUpdate({ liq_prof_3_usd: v })}
                                         isReadOnly={isReadOnly}
                                     />
                                     <button
@@ -998,19 +1017,27 @@ const ProfRow = ({ label, color, surgeons, prof, pct, liqArs, liqUsd, onChangePr
                 </div>
             </div>
 
-            {/* Liquidations (Read Only) */}
+            {/* Liquidations (Manual) */}
             <div className="flex-1 flex gap-2 w-full">
                 <div className="relative flex-1">
                     <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">ARS</span>
-                    <div className="w-full bg-slate-100 border border-transparent rounded-xl pl-10 pr-2 py-2.5 text-sm font-bold text-slate-600 text-right">
-                        {new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(liqArs || 0)}
-                    </div>
+                    <MoneyInput
+                        className="w-full bg-slate-50 border border-transparent rounded-xl pl-10 pr-2 py-2 text-sm font-bold text-slate-600 text-right focus:bg-white focus:border-blue-300 outline-none transition-all"
+                        value={liqArs}
+                        onChange={val => onLiqChange && onLiqChange(val, 'ars')}
+                        placeholder="0,00"
+                        readOnly={isReadOnly}
+                    />
                 </div>
                 <div className="relative flex-1">
                     <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">USD</span>
-                    <div className="w-full bg-slate-100 border border-transparent rounded-xl pl-10 pr-2 py-2.5 text-sm font-bold text-slate-600 text-right">
-                        {new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(liqUsd || 0)}
-                    </div>
+                    <MoneyInput
+                        className="w-full bg-slate-50 border border-transparent rounded-xl pl-10 pr-2 py-2 text-sm font-bold text-slate-600 text-right focus:bg-white focus:border-blue-300 outline-none transition-all"
+                        value={liqUsd}
+                        onChange={val => onLiqChange && onLiqChange(val, 'usd')}
+                        placeholder="0,00"
+                        readOnly={isReadOnly}
+                    />
                 </div>
             </div>
 
