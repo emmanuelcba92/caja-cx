@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban } from 'lucide-react';
+import { FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash, Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search, CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle, FileHeart, AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban, TableProperties } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -198,6 +198,128 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             onDraftConsumed();
         }
     }, [draftData, onDraftConsumed]);
+
+    const handleExportWeeklyExcel = async () => {
+        try {
+            // Dynamically import libraries to save bundle size
+            const ExcelJS = (await import('exceljs')).default || await import('exceljs');
+            const { saveAs } = await import('file-saver');
+            const { startOfWeek, endOfWeek, isWithinInterval, parseISO, format } = await import('date-fns');
+
+            const now = new Date();
+            const start = startOfWeek(now, { weekStartsOn: 1 }); // Monday
+            const end = endOfWeek(now, { weekStartsOn: 1 }); // Sunday
+
+            const weekOrdenes = ordenes.filter(o => {
+                if (o.suspendida) return false;
+                if (!o.fechaCirugia) return false;
+                try {
+                    const date = parseISO(o.fechaCirugia);
+                    return isWithinInterval(date, { start, end });
+                } catch (e) {
+                    return false;
+                }
+            }).sort((a, b) => new Date(a.fechaCirugia) - new Date(b.fechaCirugia));
+
+            if (weekOrdenes.length === 0) {
+                alert("No hay cirugías registradas (no suspendidas) para esta semana.");
+                return;
+            }
+
+            // Create workbook and worksheet
+            const wb = new ExcelJS.Workbook();
+            const ws = wb.addWorksheet('Control Semanal');
+
+            ws.columns = [
+                { header: 'Fecha', key: 'fecha', width: 15 },
+                { header: 'Paciente', key: 'paciente', width: 35 },
+                { header: 'Obra Social', key: 'obraSocial', width: 25 },
+                { header: 'Códigos', key: 'codigos', width: 45 },
+                { header: 'Cirujano', key: 'cirujano', width: 30 },
+            ];
+
+            ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            ws.getRow(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF0F766E' } // teal-700
+            };
+
+            weekOrdenes.forEach(o => {
+                const codigosStr = (o.codigosCirugia || [])
+                    .map(c => c.codigo)
+                    .filter(Boolean)
+                    .join(' - ');
+
+                ws.addRow({
+                    fecha: formatDate(o.fechaCirugia),
+                    paciente: (o.afiliado || '').toUpperCase(),
+                    obraSocial: (o.obraSocial || '').toUpperCase(),
+                    codigos: codigosStr,
+                    cirujano: shortProfName(o.profesional) || ''
+                });
+            });
+
+            // Alternate row colors for readability
+            ws.eachRow((row, rowNumber) => {
+                if (rowNumber > 1) {
+                    row.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: rowNumber % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } // slate-50 alternating
+                    };
+                }
+            });
+
+            const buffer = await wb.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+            const startDateStr = format(start, 'dd-MM-yyyy');
+            const endDateStr = format(end, 'dd-MM-yyyy');
+            saveAs(blob, `Control_Facturacion_${startDateStr}_al_${endDateStr}.xlsx`);
+
+        } catch (error) {
+            console.error("Error generating Excel:", error);
+            alert("Hubo un error al generar el Excel. Verifica la consola para más detalles.");
+        }
+    };
+
+    const handlePrintWeeklyReport = async () => {
+        try {
+            const { startOfWeek, endOfWeek, isWithinInterval, parseISO, format } = await import('date-fns');
+
+            const now = new Date();
+            const start = startOfWeek(now, { weekStartsOn: 1 }); // Monday
+            const end = endOfWeek(now, { weekStartsOn: 1 }); // Sunday
+
+            const weekOrdenes = ordenes.filter(o => {
+                if (o.suspendida) return false;
+                if (!o.fechaCirugia) return false;
+                try {
+                    const date = parseISO(o.fechaCirugia);
+                    return isWithinInterval(date, { start, end });
+                } catch (e) {
+                    return false;
+                }
+            }).sort((a, b) => new Date(a.fechaCirugia) - new Date(b.fechaCirugia));
+
+            if (weekOrdenes.length === 0) {
+                alert("No hay cirugías registradas (no suspendidas) para esta semana.");
+                return;
+            }
+
+            setPreviewData({
+                ordenesSemana: weekOrdenes,
+                fechaInicio: format(start, 'dd/MM/yyyy'),
+                fechaFin: format(end, 'dd/MM/yyyy')
+            });
+            setPreviewType('reporte_semanal');
+            setShowPreview(true);
+        } catch (error) {
+            console.error("Error preparing print:", error);
+            alert("Hubo un error al preparar el reporte.");
+        }
+    };
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -711,6 +833,47 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
 
     const renderPrintContent = (type) => {
+        // Handle Reporte Semanal
+        if (type === 'reporte_semanal') {
+            return (
+                <div className="max-w-[210mm] mx-auto bg-white px-8 py-10 print:max-w-none print:px-0" style={{ minHeight: '297mm', fontFamily: 'Arial, sans-serif' }}>
+                    <div className="mb-6 text-center">
+                        <h1 className="text-xl font-bold uppercase mb-2">Control de Facturación - Cirugías</h1>
+                        <p className="text-sm text-slate-600 font-medium">Semana del {previewData.fechaInicio} al {previewData.fechaFin}</p>
+                    </div>
+
+                    <table className="w-full border-collapse text-sm">
+                        <thead>
+                            <tr className="bg-teal-700 text-white !print:bg-teal-700 !print:text-white" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                <th className="border border-slate-300 p-2 text-left w-[12%]">Fecha</th>
+                                <th className="border border-slate-300 p-2 text-left w-[28%]">Paciente</th>
+                                <th className="border border-slate-300 p-2 text-left w-[20%]">Obra Social</th>
+                                <th className="border border-slate-300 p-2 text-left w-[20%]">Códigos</th>
+                                <th className="border border-slate-300 p-2 text-left w-[20%]">Cirujano</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {previewData.ordenesSemana?.map((o, idx) => {
+                                const codigosStr = (o.codigosCirugia || [])
+                                    .map(c => c.codigo)
+                                    .filter(Boolean)
+                                    .join(' - ');
+                                return (
+                                    <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50 !print:bg-slate-50"} style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                        <td className="border border-slate-300 p-2 text-center text-[10px]">{formatDate(o.fechaCirugia)}</td>
+                                        <td className="border border-slate-300 p-2 font-bold text-[10px]">{(o.afiliado || '').toUpperCase()}</td>
+                                        <td className="border border-slate-300 p-2 text-[10px]">{(o.obraSocial || '').toUpperCase()}</td>
+                                        <td className="border border-slate-300 p-2 text-[10px] text-center font-mono">{codigosStr}</td>
+                                        <td className="border border-slate-300 p-2 text-[10px]">{shortProfName(o.profesional)}</td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
         // Handle Carátula
         if (type === 'caratula') {
             return (
@@ -895,13 +1058,35 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     </div>
 
                     {canShareOrdenes && (
-                        <button
-                            onClick={() => { resetForm(); setShowForm(true); }}
-                            className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-lg"
-                        >
-                            <Plus size={20} />
-                            {activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden'}
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {activeTab === 'internacion' && (
+                                <>
+                                    <button
+                                        onClick={handleExportWeeklyExcel}
+                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-teal-800 text-teal-100 rounded-xl font-bold hover:bg-teal-900 transition-all shadow-lg border border-teal-600"
+                                        title="Descargar Excel Semanal"
+                                    >
+                                        <TableProperties size={20} />
+                                        <span className="hidden sm:inline">Excel</span>
+                                    </button>
+                                    <button
+                                        onClick={handlePrintWeeklyReport}
+                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all shadow-lg border border-slate-700"
+                                        title="Imprimir Control Semanal"
+                                    >
+                                        <Printer size={20} />
+                                        <span className="hidden sm:inline">Imprimir Control</span>
+                                    </button>
+                                </>
+                            )}
+                            <button
+                                onClick={() => { resetForm(); setShowForm(true); }}
+                                className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-lg ml-2"
+                            >
+                                <Plus size={20} />
+                                {activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden'}
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -1875,74 +2060,76 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             <div className="flex justify-between items-center mb-8 no-print border-b pb-4">
                                 <div>
                                     <h2 className="text-2xl font-bold">Vista Previa</h2>
-                                    <div className="flex gap-2 mt-2">
-                                        <button
-                                            onClick={() => setPreviewType(previewData.practicas ? 'pedido' : 'internacion')}
-                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${(previewType === 'internacion' || previewType === 'pedido') ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                        >
-                                            {previewData.practicas ? 'Pedido Médico' : 'Internación'}
-                                        </button>
+                                    {previewType !== 'reporte_semanal' && (
+                                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                                            <button
+                                                onClick={() => setPreviewType(previewData.practicas ? 'pedido' : 'internacion')}
+                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${(previewType === 'internacion' || previewType === 'pedido') ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                {previewData.practicas ? 'Pedido Médico' : 'Internación'}
+                                            </button>
 
-                                        {previewData.incluyeMaterial && previewData.descripcionMaterial && (
-                                            <>
-                                                <button
-                                                    onClick={() => setPreviewType('material')}
-                                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                                >
-                                                    Material
-                                                </button>
-                                                <button
-                                                    onClick={() => setPreviewType('ambas')}
-                                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                                >
-                                                    📄 Ambas (2 pág.)
-                                                </button>
-                                            </>
-                                        )}
+                                            {previewData.incluyeMaterial && previewData.descripcionMaterial && (
+                                                <>
+                                                    <button
+                                                        onClick={() => setPreviewType('material')}
+                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                    >
+                                                        Material
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setPreviewType('ambas')}
+                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                    >
+                                                        📄 Ambas (2 pág.)
+                                                    </button>
+                                                </>
+                                            )}
 
-                                        <button
-                                            onClick={() => setPreviewType('caratula')}
-                                            className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                        >
-                                            📂 Carátula
-                                        </button>
-                                    </div>
+                                            <button
+                                                onClick={() => setPreviewType('caratula')}
+                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                📂 Carátula
+                                            </button>
 
-                                    {/* Consent Printing Section - one button per surgery */}
-                                    {getApplicableConsents(previewData).length > 0 && (
-                                        <div className="flex flex-wrap items-center gap-2 ml-4 pl-4 border-l border-slate-300">
-                                            <span className="text-xs font-bold text-slate-500 uppercase">Consentimientos:</span>
-                                            {getApplicableConsents(previewData).map((consent, idx) => (
-                                                <div key={idx} className="flex items-center gap-1">
-                                                    <span className="text-xs text-slate-600">{consent.nombre}:</span>
-                                                    {consent.adulto && (
-                                                        <button
-                                                            onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.adulto)}`, '_blank')}
-                                                            className="px-2 py-1 rounded-md font-bold text-xs bg-teal-100 text-teal-700 hover:bg-teal-200 transition-all"
-                                                        >
-                                                            Adulto
-                                                        </button>
-                                                    )}
-                                                    {consent.menor && (
-                                                        <button
-                                                            onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.menor)}`, '_blank')}
-                                                            className="px-2 py-1 rounded-md font-bold text-xs bg-pink-100 text-pink-700 hover:bg-pink-200 transition-all"
-                                                        >
-                                                            Menor
-                                                        </button>
-                                                    )}
+                                            {/* Generic consent button - always visible for orders */}
+                                            <button
+                                                onClick={() => window.open(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`, '_blank')}
+                                                className="px-3 py-1.5 rounded-lg font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all ml-2"
+                                            >
+                                                📋 Genérico
+                                            </button>
+
+                                            {/* Consent Printing Section - one button per surgery */}
+                                            {getApplicableConsents(previewData).length > 0 && (
+                                                <div className="flex flex-wrap items-center gap-2 ml-4 pl-4 border-l border-slate-300">
+                                                    <span className="text-xs font-bold text-slate-500 uppercase">Consentimientos:</span>
+                                                    {getApplicableConsents(previewData).map((consent, idx) => (
+                                                        <div key={idx} className="flex items-center gap-1">
+                                                            <span className="text-xs text-slate-600">{consent.nombre}:</span>
+                                                            {consent.adulto && (
+                                                                <button
+                                                                    onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.adulto)}`, '_blank')}
+                                                                    className="px-2 py-1 rounded-md font-bold text-xs bg-teal-100 text-teal-700 hover:bg-teal-200 transition-all"
+                                                                >
+                                                                    Adulto
+                                                                </button>
+                                                            )}
+                                                            {consent.menor && (
+                                                                <button
+                                                                    onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.menor)}`, '_blank')}
+                                                                    className="px-2 py-1 rounded-md font-bold text-xs bg-pink-100 text-pink-700 hover:bg-pink-200 transition-all"
+                                                                >
+                                                                    Menor
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
+                                            )}
                                         </div>
                                     )}
-
-                                    {/* Generic consent button - always visible */}
-                                    <button
-                                        onClick={() => window.open(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`, '_blank')}
-                                        className="px-3 py-1.5 rounded-lg font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all ml-2"
-                                    >
-                                        📋 Genérico
-                                    </button>
                                 </div>
                                 <div className="flex gap-4">
                                     <button
