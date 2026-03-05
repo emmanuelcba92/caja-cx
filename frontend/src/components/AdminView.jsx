@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase/config';
-import { collection, query, getDocs, addDoc, deleteDoc, doc, where, updateDoc, setDoc } from 'firebase/firestore';
-import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity } from 'lucide-react';
+import { collection, query, getDocs, addDoc, deleteDoc, doc, where, updateDoc, setDoc, getDoc } from 'firebase/firestore';
+import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, Download, Upload, Database, FileJson, AlertTriangle } from 'lucide-react';
 
 const AdminView = () => {
     const { switchContext, viewingUid, currentUser, isSuperAdmin } = useAuth();
@@ -14,11 +14,14 @@ const AdminView = () => {
     const [profiles, setProfiles] = useState({});
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState('users'); // 'users', 'roles', or 'maintenance'
+    const [activeTab, setActiveTab] = useState('users'); // 'users', 'roles', 'maintenance', 'backup', 'notifications'
     const [roles, setRoles] = useState([]);
     const [maintenanceUser, setMaintenanceUser] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [notificationEmails, setNotificationEmails] = useState('');
+    const [scriptUrl, setScriptUrl] = useState('');
+    const [appNotificationUids, setAppNotificationUids] = useState([]);
 
     // Role Form State
     const [roleName, setRoleName] = useState('');
@@ -28,9 +31,14 @@ const AdminView = () => {
         can_view_shared_catalog: false,
         can_view_ordenes: false,
         can_share_ordenes: false,
+        can_approve_ordenes: false,
         can_delete_data: false,
         is_ephemeral: false
     });
+
+    // Professionals for linking
+    const [allProfessionals, setAllProfessionals] = useState([]);
+    const [selectedLinkedProf, setSelectedLinkedProf] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
@@ -69,6 +77,22 @@ const AdminView = () => {
             const rolesSnap = await getDocs(collection(db, "roles"));
             setRoles(rolesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
+            // 5. Fetch Professionals (for linking accounts)
+            const ownerToUse = currentUser.uid;
+            const profsSnap = await getDocs(query(collection(db, "profesionales"), where("userId", "==", ownerToUse)));
+            const profsList = profsSnap.docs.map(doc => doc.data().nombre);
+            setAllProfessionals([...new Set(profsList)].sort());
+
+            // 6. Fetch Notification Email Config (from Firestore now for 24/7 access)
+            const emailDoc = await getDoc(doc(db, "settings", "notifications"));
+            if (emailDoc.exists()) {
+                setNotificationEmails(emailDoc.data().emails || '');
+                setScriptUrl(emailDoc.data().scriptUrl || '');
+                setAppNotificationUids(emailDoc.data().appNotificationUids || []);
+            } else {
+                setNotificationEmails('emmanuel.ag92@gmail.com');
+            }
+
         } catch (error) {
             console.error(error);
         } finally {
@@ -76,12 +100,39 @@ const AdminView = () => {
         }
     };
 
+    const [remapImport, setRemapImport] = useState(true);
+
+    const runNotificationCleanup = async () => {
+        try {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const limitIso = sevenDaysAgo.toISOString();
+
+            const q = query(
+                collection(db, "notifications"),
+                where("createdAt", "<", limitIso)
+            );
+
+            const snap = await getDocs(q);
+            if (snap.empty) return;
+
+            const batch = writeBatch(db);
+            snap.docs.forEach(d => {
+                batch.delete(d.ref);
+            });
+            await batch.commit();
+            console.log(`Limpieza de notificaciones: ${snap.size} eliminadas.`);
+        } catch (error) {
+            console.error("Error cleaning up notifications:", error);
+        }
+    };
+
     useEffect(() => {
         fetchData();
+        runNotificationCleanup();
     }, []);
 
     const handleUpdateRole = async (id, newRoleValue) => {
-        // Find the email for this authorization
         const authRecord = authorizedEmails.find(a => a.id === id);
         if (authRecord?.email === SUPER_ADMIN_EMAIL) {
             alert("No puedes cambiar el rol del Super Administrador.");
@@ -99,15 +150,10 @@ const AdminView = () => {
     };
 
     const runPruebaCleanup = async (authList) => {
-        // Only Super Admin runs the cleanup
         if (currentUser.email !== SUPER_ADMIN_EMAIL) return;
-
         const pruebaEmails = authList.filter(a => a.role === 'prueba').map(a => a.email);
         if (pruebaEmails.length === 0) return;
 
-        console.log("Iniciando purga de datos de usuarios de 'Prueba'...");
-
-        // Find UIDs for these emails
         const profSnap = await getDocs(collection(db, "profiles"));
         const pruebaUids = profSnap.docs
             .filter(d => pruebaEmails.includes(d.data().email))
@@ -132,11 +178,9 @@ const AdminView = () => {
                     const date = data.createdAt || data.date || data.timestamp || data.addedAt;
                     return date && date < yesterdayIso;
                 });
-
                 await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
             }
         }
-        console.log("Finalizada purga de datos antiguos.");
     };
 
     const handleAddAuthorized = async (e) => {
@@ -146,11 +190,13 @@ const AdminView = () => {
             await addDoc(collection(db, "authorized_emails"), {
                 email: newEmail.toLowerCase().trim(),
                 role: newRole,
+                linkedProfesionalName: selectedLinkedProf || null,
                 ownerUid: currentUser.uid,
                 addedAt: new Date().toISOString()
             });
             setNewEmail('');
             setNewRole('user');
+            setSelectedLinkedProf('');
             fetchData();
         } catch (error) {
             alert(error.message);
@@ -158,7 +204,6 @@ const AdminView = () => {
     };
 
     const handleRemoveAuthorized = async (id) => {
-        // Find the email for this authorization
         const authRecord = authorizedEmails.find(a => a.id === id);
         if (authRecord?.email === SUPER_ADMIN_EMAIL) {
             alert("No puedes eliminar al Super Administrador.");
@@ -189,6 +234,7 @@ const AdminView = () => {
                 can_view_shared_catalog: false,
                 can_view_ordenes: false,
                 can_share_ordenes: false,
+                can_approve_ordenes: false,
                 can_delete_data: false,
                 is_ephemeral: false
             });
@@ -208,22 +254,18 @@ const AdminView = () => {
         }
     };
 
-    // Toggle individual permission for an existing role
     const handleToggleRolePermission = async (roleId, permissionKey, currentValue) => {
         try {
             const role = roles.find(r => r.id === roleId);
             if (!role) return;
-
             const updatedPermissions = {
                 ...role.permissions,
                 [permissionKey]: !currentValue
             };
-
             await setDoc(doc(db, "roles", roleId), {
                 ...role,
                 permissions: updatedPermissions
             });
-
             fetchData();
         } catch (error) {
             alert("Error actualizando permiso: " + error.message);
@@ -232,21 +274,16 @@ const AdminView = () => {
 
     const handleWipeData = async (uid) => {
         const email = profiles[uid]?.email || uid;
-
-        // Protect Super Admin from being wiped
         if (email === SUPER_ADMIN_EMAIL) {
             alert("No puedes eliminar los datos del Super Administrador.");
             return;
         }
-
-        if (!window.confirm(`⚠️ ADVERTENCIA CRÍTICA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR TODA LA INFORMACIÓN de: ${email}?\n\nEsta acción eliminará:\n- Registros de Caja\n- Profesionales\n- Notas\n- Permisos de Acceso\n- Perfil y Configuración\n\nESTA ACCIÓN NO SE PUEDE DESHACER.`)) return;
-
+        if (!window.confirm(`⚠️ ADVERTENCIA CRÍTICA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR TODA LA INFORMACIÓN de: ${email}?\n\nEsta acción eliminará registros de Caja, Profesionales, Notas, Permisos de Acceso, Perfil y Configuración.`)) return;
         const secondConfirm = window.prompt(`Para confirmar, escribe el email o UID del usuario (${email}):`);
         if (secondConfirm !== email && secondConfirm !== uid) {
-            alert("Confirmación incorrecta. No se borró nada.");
+            alert("Confirmación incorrecta.");
             return;
         }
-
         setLoading(true);
         try {
             const collectionsToWipe = [
@@ -255,19 +292,13 @@ const AdminView = () => {
                 { name: 'notes', field: 'userId' },
                 { name: 'access_grants', field: 'ownerUid' }
             ];
-
-            // 1. Delete documents in shared collections
             for (const col of collectionsToWipe) {
                 const q = query(collection(db, col.name), where(col.field, "==", uid));
                 const snap = await getDocs(q);
-                const deletePromises = snap.docs.map(d => deleteDoc(d.ref));
-                await Promise.all(deletePromises);
+                await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
             }
-
-            // 2. Delete unique documents (Profile & Settings)
             await deleteDoc(doc(db, "profiles", uid));
             await deleteDoc(doc(db, "user_settings", uid));
-
             alert("Datos eliminados correctamente.");
             fetchData();
         } catch (error) {
@@ -282,10 +313,8 @@ const AdminView = () => {
             alert("Por favor selecciona un usuario y el rango de fechas.");
             return;
         }
-
         const email = profiles[maintenanceUser]?.email || maintenanceUser;
-        if (!window.confirm(`⚠️ ADVERTENCIA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR las órdenes de ${email} entre el ${startDate} y el ${endDate}?\n\nEsta acción afectará a Internaciones y Pedidos Médicos.`)) return;
-
+        if (!window.confirm(`⚠️ ADVERTENCIA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR las órdenes de ${email} entre el ${startDate} y el ${endDate}?`)) return;
         setLoading(true);
         try {
             let deletedCount = 0;
@@ -293,22 +322,17 @@ const AdminView = () => {
                 { name: 'ordenes_internacion', dateField: 'fechaCirugia' },
                 { name: 'pedidos_medicos', dateField: 'fechaDocumento' }
             ];
-
             for (const col of collections) {
                 const q = query(collection(db, col.name), where("userId", "==", maintenanceUser));
                 const snap = await getDocs(q);
-
                 const toDelete = snap.docs.filter(d => {
                     const data = d.data();
                     const date = data[col.dateField];
                     return date && date >= startDate && date <= endDate;
                 });
-
-                const deletePromises = toDelete.map(d => deleteDoc(d.ref));
-                await Promise.all(deletePromises);
+                await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
                 deletedCount += toDelete.length;
             }
-
             alert(`Se han eliminado ${deletedCount} registros.`);
             fetchData();
         } catch (error) {
@@ -316,6 +340,118 @@ const AdminView = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleExportData = async () => {
+        if (!maintenanceUser) {
+            alert("Selecciona un usuario para exportar sus datos.");
+            return;
+        }
+        setLoading(true);
+        try {
+            const collectionsToExport = ['pedidos_medicos', 'ordenes_internacion', 'profesionales', 'caja', 'notes'];
+            const exportData = {
+                version: '1.0',
+                exportDate: new Date().toISOString(),
+                userId: maintenanceUser,
+                data: {}
+            };
+            for (const colName of collectionsToExport) {
+                const q = query(collection(db, colName), where("userId", "==", maintenanceUser));
+                const snap = await getDocs(q);
+                exportData.data[colName] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `backup_${maintenanceUser}_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            alert("Exportación completada con éxito.");
+        } catch (error) {
+            alert("Error al exportar: " + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleImportData = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const importData = JSON.parse(event.target.result);
+                if (!importData.data || !importData.userId) throw new Error("Formato incorrecto.");
+                if (!window.confirm(`¿Importar datos en la cuenta de ${importData.userId}?`)) return;
+                setLoading(true);
+                let importedCount = 0;
+                for (const [colName, docs] of Object.entries(importData.data)) {
+                    for (const docData of docs) {
+                        const { id, ...cleanData } = docData;
+                        if (remapImport && maintenanceUser) cleanData.userId = maintenanceUser;
+                        await setDoc(doc(db, colName, id), cleanData);
+                        importedCount++;
+                    }
+                }
+                alert(`Importación completada. Se procesaron ${importedCount} documentos.`);
+                fetchData();
+            } catch (error) {
+                alert("Error al importar: " + error.message);
+            } finally {
+                setLoading(false);
+                e.target.value = '';
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const handleSaveEmailConfig = async () => {
+        try {
+            await setDoc(doc(db, "settings", "notifications"), {
+                emails: notificationEmails,
+                scriptUrl: scriptUrl,
+                appNotificationUids: appNotificationUids,
+                updatedAt: new Date().toISOString()
+            });
+            alert("Configuración de emails actualizada en la nube");
+        } catch (error) {
+            alert("Error al guardar en Firebase: " + error.message);
+        }
+    };
+
+    const handleTestEmail = async () => {
+        if (!scriptUrl || !notificationEmails) {
+            alert("Configura primero la URL y al menos un email.");
+            return;
+        }
+        if (!window.confirm(`¿Enviar un email de prueba a: ${notificationEmails}?`)) return;
+
+        try {
+            // Note: Cloud triggers are opaque in no-cors mode
+            fetch(scriptUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    to: notificationEmails,
+                    subject: "PRUEBA: Sistema de Notificaciones Caja de Cirugía",
+                    body: "Si recibes este correo, la integración con Google Apps Script está funcionando correctamente."
+                })
+            });
+            alert("Solicitud de prueba enviada. Revisa los correos (incluyendo SPAM). Si no llega en 1 minuto, revisa los permisos del script.");
+        } catch (error) {
+            alert("Error al intentar la prueba: " + error.message);
+        }
+    };
+
+    const toggleNotificationRecipient = (uid) => {
+        setAppNotificationUids(prev =>
+            prev.includes(uid)
+                ? prev.filter(id => id !== uid)
+                : [...prev, uid]
+        );
     };
 
     const filteredDoctors = allDoctors.filter(d => {
@@ -339,7 +475,8 @@ const AdminView = () => {
                 </div>
             </div>
 
-            <div className="flex gap-4 mb-8">
+            {/* Tabs */}
+            <div className="flex flex-wrap gap-4 mb-8">
                 <button
                     onClick={() => setActiveTab('users')}
                     className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
@@ -353,18 +490,32 @@ const AdminView = () => {
                     Gestión de Roles
                 </button>
                 {isSuperAdmin && (
-                    <button
-                        onClick={() => setActiveTab('maintenance')}
-                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                    >
-                        Mantenimiento
-                    </button>
+                    <>
+                        <button
+                            onClick={() => setActiveTab('maintenance')}
+                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                            Mantenimiento
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('backup')}
+                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'backup' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                            Backup / Migración
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('notifications')}
+                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'notifications' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                            Notificaciones
+                        </button>
+                    </>
                 )}
             </div>
 
             {activeTab === 'users' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Section: Authorized Emails */}
+                    {/* Authorized Emails */}
                     <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -373,100 +524,69 @@ const AdminView = () => {
                             <h3 className="text-xl font-bold">Usuarios Autorizados</h3>
                         </div>
 
-                        <form onSubmit={handleAddAuthorized} className="flex gap-3 mb-8">
-                            <div className="flex-1 relative">
-                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                <input
-                                    type="email"
-                                    placeholder="nuevo@usuario.com"
-                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                    value={newEmail}
-                                    onChange={(e) => setNewEmail(e.target.value)}
-                                    required
-                                />
+                        <form onSubmit={handleAddAuthorized} className="flex flex-col gap-3 mb-8">
+                            <div className="flex flex-wrap gap-3">
+                                <div className="flex-1 min-w-[200px] relative">
+                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                    <input
+                                        type="email"
+                                        placeholder="nuevo@usuario.com"
+                                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={newEmail}
+                                        onChange={(e) => setNewEmail(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                                <select
+                                    className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                                    value={newRole}
+                                    onChange={(e) => setNewRole(e.target.value)}
+                                >
+                                    {roles.map(r => (
+                                        <option key={r.id} value={r.id}>{r.name}</option>
+                                    ))}
+                                </select>
+                                <button type="submit" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100">
+                                    Autorizar
+                                </button>
                             </div>
-                            <select
-                                className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold"
-                                value={newRole}
-                                onChange={(e) => setNewRole(e.target.value)}
-                            >
-                                {roles.map(r => (
-                                    <option key={r.id} value={r.id}>{r.name}</option>
-                                ))}
-                            </select>
-                            <button type="submit" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 transition-all">
-                                <UserPlus size={20} />
-                                <span className="hidden sm:inline">Autorizar</span>
-                            </button>
                         </form>
 
                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                             {authorizedEmails.map(auth => (
                                 <div key={auth.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl group hover:border-blue-200 transition-all">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200 group-hover:text-blue-500 transition-colors">
+                                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200">
                                             {auth.email[0].toUpperCase()}
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="font-semibold text-slate-700">{auth.email}</span>
-                                            <select
-                                                value={auth.role || 'user'}
-                                                onChange={(e) => handleUpdateRole(auth.id, e.target.value)}
-                                                className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border-none outline-none cursor-pointer w-fit bg-slate-100 text-slate-500"
-                                            >
-                                                {roles.map(r => (
-                                                    <option key={r.id} value={r.id}>{r.name}</option>
-                                                ))}
-                                            </select>
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{auth.role}</span>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        {/* VIEW BUTTON FOR AUTHORIZED USERS */}
-                                        {profiles[auth.id || ''] || (auth.email && Object.values(profiles).find(p => p.email === auth.email)) ? (
-                                            <button
-                                                onClick={() => {
-                                                    const targetUid = auth.id || Object.keys(profiles).find(uid => profiles[uid].email === auth.email);
-                                                    if (targetUid) switchContext(targetUid);
-                                                }}
-                                                disabled={viewingUid === (auth.id || Object.keys(profiles).find(uid => profiles[uid].email === auth.email))}
-                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
-                                                title="Entrar a esta caja"
-                                            >
-                                                <ArrowRight size={18} />
-                                            </button>
-                                        ) : null}
-
-                                        <button
-                                            onClick={() => handleRemoveAuthorized(auth.id)}
-                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                            title="Eliminar autorización"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </div>
+                                    <button onClick={() => handleRemoveAuthorized(auth.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                                        <Trash2 size={18} />
+                                    </button>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* Section: All User Data (Doctors) */}
+                    {/* Active Accounts */}
                     <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                                 <Users size={24} />
                             </div>
-                            <div>
-                                <h3 className="text-xl font-bold">Cuentas Activas</h3>
-                                <p className="text-xs text-slate-400 font-medium">Bases de datos con registros</p>
-                            </div>
+                            <h3 className="text-xl font-bold">Cuentas Activas</h3>
                         </div>
 
                         <div className="relative mb-6">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                             <input
                                 type="text"
-                                placeholder="Buscar por Nombre, Email o UID..."
-                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                placeholder="Buscar..."
+                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
@@ -474,84 +594,44 @@ const AdminView = () => {
 
                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                             {filteredDoctors.map(doctor => (
-                                <div
-                                    key={doctor.uid}
-                                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${viewingUid === doctor.uid
-                                        ? 'bg-blue-50 border-blue-200'
-                                        : 'bg-white border-slate-100 hover:border-slate-300'
-                                        }`}
-                                >
+                                <div key={doctor.uid} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:border-slate-300 transition-all">
                                     <div className="flex items-center gap-3 overflow-hidden">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${viewingUid === doctor.uid ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                                            <Activity size={18} />
-                                        </div>
+                                        <Activity size={18} className="text-blue-500" />
                                         <div className="overflow-hidden">
-                                            <p className="text-sm font-bold text-slate-700 truncate">
-                                                {doctor.profile?.displayName || doctor.profile?.email || 'Usuario Sin Identificar'}
-                                            </p>
-                                            {doctor.profile?.email && (
-                                                <p className="text-[10px] text-slate-400 font-medium truncate">{doctor.profile.email}</p>
-                                            )}
-                                            <p className="text-[9px] font-mono text-slate-300 truncate">{doctor.uid}</p>
-                                            <p className="text-[10px] font-bold text-blue-500 mt-1">{doctor.count} Registros</p>
+                                            <p className="text-sm font-bold text-slate-700 truncate">{doctor.profile?.displayName || doctor.profile?.email || 'Sin Nombre'}</p>
+                                            <p className="text-[10px] text-slate-400">{doctor.count} Registros</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {isSuperAdmin && (
-                                            <button
-                                                onClick={() => handleWipeData(doctor.uid)}
-                                                title="Borrar toda la información"
-                                                className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                            >
-                                                <Trash2 size={20} />
+                                            <button onClick={() => handleWipeData(doctor.uid)} className="p-2 text-slate-400 hover:text-red-500 rounded-lg">
+                                                <Trash2 size={18} />
                                             </button>
                                         )}
-                                        <button
-                                            onClick={() => switchContext(doctor.uid)}
-                                            disabled={viewingUid === doctor.uid}
-                                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-tight transition-all ${viewingUid === doctor.uid
-                                                ? 'bg-emerald-500 text-white cursor-default'
-                                                : 'bg-slate-900 text-white hover:bg-blue-600 shadow-md transform hover:scale-105'
-                                                }`}
-                                        >
-                                            {viewingUid === doctor.uid ? 'Viendo' : (
-                                                <>Entrar <ArrowRight size={14} /></>
-                                            )}
+                                        <button onClick={() => switchContext(doctor.uid)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition">
+                                            Entrar
                                         </button>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                        {viewingUid !== currentUser.uid && (
-                            <button
-                                onClick={() => switchContext(currentUser.uid)}
-                                className="w-full mt-6 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-all font-bold text-sm"
-                            >
-                                Volver a mi cuenta personal
-                            </button>
-                        )}
                     </div>
                 </div>
             ) : activeTab === 'roles' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Create Role Form */}
+                    {/* Create Role */}
                     <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-                        <h3 className="text-xl font-bold mb-6">Crear Nuevo Rol</h3>
+                        <h3 className="text-xl font-bold mb-6">Nuevo Rol</h3>
                         <form onSubmit={handleCreateRole} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-400 mb-2">Nombre del Rol</label>
-                                <input
-                                    type="text"
-                                    value={roleName}
-                                    onChange={(e) => setRoleName(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
-                                    placeholder="Ej: Secretaria"
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-3">
-                                <label className="block text-sm font-bold text-slate-400">Permisos</label>
+                            <input
+                                type="text"
+                                value={roleName}
+                                onChange={(e) => setRoleName(e.target.value)}
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                                placeholder="Nombre (ej: Secretaria)"
+                                required
+                            />
+                            <div className="space-y-2">
                                 {Object.keys(rolePermissions).map(perm => (
                                     <label key={perm} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100">
                                         <input
@@ -560,24 +640,11 @@ const AdminView = () => {
                                             onChange={(e) => setRolePermissions(prev => ({ ...prev, [perm]: e.target.checked }))}
                                             className="w-5 h-5 accent-blue-600"
                                         />
-                                        <span className="text-sm font-medium text-slate-600">
-                                            {{
-                                                can_view_admin: "Acceso al Panel Admin",
-                                                can_manage_users: "Gestión de Usuarios",
-                                                can_view_shared_catalog: "Ver Catálogo Compartido",
-                                                can_view_ordenes: "Ver Órdenes",
-                                                can_share_ordenes: "Compartir Órdenes (crear con profesionales)",
-                                                can_delete_data: "Borrar Información",
-                                                is_ephemeral: "Datos Temporales (24h)"
-                                            }[perm] || perm}
-                                        </span>
+                                        <span className="text-sm font-medium text-slate-600">{perm.replace(/_/g, ' ')}</span>
                                     </label>
                                 ))}
                             </div>
-
-                            <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">
-                                Guardar Rol
-                            </button>
+                            <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">Guardar Rol</button>
                         </form>
                     </div>
 
@@ -587,45 +654,13 @@ const AdminView = () => {
                         <div className="space-y-4">
                             {roles.map(role => (
                                 <div key={role.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50">
-                                    <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center justify-between mb-2">
                                         <h4 className="font-bold text-slate-800">{role.name}</h4>
-                                        {!role.isSystem && (
-                                            <button
-                                                onClick={() => handleDeleteRole(role.id)}
-                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        )}
+                                        {!role.isSystem && <button onClick={() => handleDeleteRole(role.id)} className="p-2 text-red-500"><Trash2 size={16} /></button>}
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {Object.entries(role.permissions || {}).map(([permKey, permValue]) => (
-                                            <label
-                                                key={permKey}
-                                                className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all text-xs ${permValue
-                                                    ? 'bg-green-50 text-green-700'
-                                                    : 'bg-slate-100 text-slate-400'
-                                                    }`}
-                                                onClick={() => handleToggleRolePermission(role.id, permKey, permValue)}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={permValue}
-                                                    onChange={() => { }}
-                                                    className="w-4 h-4 accent-green-600 pointer-events-none"
-                                                />
-                                                <span className="font-medium">
-                                                    {{
-                                                        can_view_admin: "Panel Admin",
-                                                        can_manage_users: "Gestión Usuarios",
-                                                        can_view_shared_catalog: "Catálogo",
-                                                        can_view_ordenes: "Ver Órdenes",
-                                                        can_share_ordenes: "Compartir Órdenes",
-                                                        can_delete_data: "Borrar Datos",
-                                                        is_ephemeral: "Temporal (24h)"
-                                                    }[permKey] || permKey}
-                                                </span>
-                                            </label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {Object.entries(role.permissions || {}).map(([k, v]) => (
+                                            v && <span key={k} className="px-2 py-1 bg-green-100 text-green-700 rounded-md text-[9px] font-bold uppercase">{k.replace('can_', '')}</span>
                                         ))}
                                     </div>
                                 </div>
@@ -633,76 +668,139 @@ const AdminView = () => {
                         </div>
                     </div>
                 </div>
-            ) : (
-                <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-                    <div className="flex items-center gap-3 mb-8">
-                        <div className="p-3 bg-red-50 text-red-600 rounded-xl">
-                            <Trash2 size={24} />
-                        </div>
-                        <div>
-                            <h3 className="text-xl font-bold">Borrado por Rango de Fecha</h3>
-                            <p className="text-xs text-slate-400 font-medium">Elimina órdenes según la fecha de cirugía/realización</p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-6 max-w-md">
-                        <div>
-                            <label className="block text-sm font-bold text-slate-400 mb-2">Usuario / Doctor</label>
-                            <select
-                                value={maintenanceUser}
-                                onChange={(e) => setMaintenanceUser(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none"
-                            >
-                                <option value="">Seleccionar cuenta...</option>
-                                {allDoctors.map(doctor => (
-                                    <option key={doctor.uid} value={doctor.uid}>
-                                        {doctor.profile?.displayName || doctor.profile?.email || doctor.uid}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-400 mb-2">Desde (Cirugía / Pedido)</label>
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-400 mb-2">Hasta (Cirugía / Pedido)</label>
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none"
-                                />
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={handleDeleteByRange}
-                            disabled={loading || !maintenanceUser || !startDate || !endDate}
-                            className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${loading || !maintenanceUser || !startDate || !endDate
-                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                : 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-100'
-                                }`}
+            ) : activeTab === 'maintenance' ? (
+                <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 max-w-md mx-auto">
+                    <h3 className="text-xl font-bold mb-8">Borrado por Rango</h3>
+                    <div className="space-y-4">
+                        <select
+                            value={maintenanceUser}
+                            onChange={(e) => setMaintenanceUser(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl"
                         >
-                            <Trash2 size={20} />
-                            Eliminar Registros en Rango
+                            <option value="">Seleccionar cuenta...</option>
+                            {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
+                        </select>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
+                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
+                        </div>
+                        <button onClick={handleDeleteByRange} className="w-full py-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-100">
+                            Eliminar en Rango
                         </button>
-
-                        <div className="p-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-xl">
-                            <p className="text-xs text-amber-800 leading-relaxed font-medium">
-                                <strong>Nota:</strong> Esta herramienta filtra por la fecha de realización de la cirugía (Internación) o la fecha del documento (Pedidos Médicos). No afecta a los registros de Caja Diaria.
-                            </p>
+                    </div>
+                </div>
+            ) : activeTab === 'backup' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="p-8 bg-white rounded-3xl shadow-xl border border-slate-100">
+                        <h3 className="text-xl font-bold mb-4">Exportar Datos</h3>
+                        <p className="text-sm text-slate-500 mb-6">Descarga un backup JSON completo de un usuario.</p>
+                        <select
+                            value={maintenanceUser}
+                            onChange={(e) => setMaintenanceUser(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl mb-4"
+                        >
+                            <option value="">Seleccionar cuenta...</option>
+                            {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
+                        </select>
+                        <button onClick={handleExportData} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700">
+                            <Download size={20} /> Exportar JSON
+                        </button>
+                    </div>
+                    <div className="p-8 bg-white rounded-3xl shadow-xl border border-slate-100">
+                        <h3 className="text-xl font-bold mb-4">Importar Datos</h3>
+                        <p className="text-sm text-slate-500 mb-6">Carga un backup JSON en una cuenta.</p>
+                        <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-8 hover:bg-emerald-50 transition min-h-[160px] flex flex-col items-center justify-center">
+                            <input type="file" onChange={handleImportData} className="absolute inset-0 opacity-0 cursor-pointer" />
+                            <FileJson size={32} className="text-slate-300 mb-2" />
+                            <span className="text-sm font-bold text-slate-400">Seleccionar Archivo</span>
                         </div>
                     </div>
                 </div>
-            )}
+            ) : activeTab === 'notifications' ? (
+                <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 max-w-2xl mx-auto">
+                    <div className="flex items-center gap-3 mb-8">
+                        <Mail className="text-blue-600" size={24} />
+                        <div>
+                            <h3 className="text-xl font-bold">Configuración de Emails</h3>
+                            <p className="text-xs text-slate-400">Destinatarios de alertas de internación</p>
+                        </div>
+                    </div>
+                    <div className="space-y-6">
+                        <div className="p-4 bg-amber-50 rounded-2xl text-amber-800 text-sm italic border border-amber-100">
+                            Separa múltiples correos con comas. Ej: doctor@gmail.com, admin@clinica.com
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-400 mb-2">Destinatarios</label>
+                            <textarea
+                                value={notificationEmails}
+                                onChange={(e) => setNotificationEmails(e.target.value)}
+                                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl min-h-[120px] outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                                placeholder="lista@correos.com"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-slate-400 mb-2">Google Apps Script URL</label>
+                            <input
+                                type="text"
+                                value={scriptUrl}
+                                onChange={(e) => setScriptUrl(e.target.value)}
+                                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                                placeholder="https://script.google.com/macros/s/.../exec"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-2 px-2">
+                                Pega aquí la URL que obtendrás al publicar tu Google Apps Script.
+                            </p>
+                        </div>
+
+                        <div className="pt-6 border-t border-slate-100">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Activity className="text-emerald-600" size={18} />
+                                <h4 className="font-bold text-slate-700">Notificaciones en la App (Campana)</h4>
+                            </div>
+                            <p className="text-xs text-slate-400 mb-4">
+                                Selecciona los usuarios que verán las alertas de cirugía auditada directamente en la aplicación.
+                            </p>
+                            <div className="max-h-48 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                                {allDoctors.map(doctor => (
+                                    <label key={doctor.uid} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all">
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-slate-400 border border-slate-100">
+                                                {doctor.profile?.displayName?.[0] || '?'}
+                                            </div>
+                                            <div className="overflow-hidden">
+                                                <p className="text-xs font-bold text-slate-700 truncate">{doctor.profile?.displayName || doctor.profile?.email || 'Sin Nombre'}</p>
+                                                <p className="text-[10px] text-slate-400 truncate">{doctor.profile?.email}</p>
+                                            </div>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={appNotificationUids.includes(doctor.uid)}
+                                            onChange={() => toggleNotificationRecipient(doctor.uid)}
+                                            className="w-5 h-5 rounded-lg border-slate-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <button
+                                onClick={handleSaveEmailConfig}
+                                className="py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
+                            >
+                                <Activity size={20} /> Guardar
+                            </button>
+                            <button
+                                onClick={handleTestEmail}
+                                className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 border border-slate-200 flex items-center justify-center gap-2"
+                            >
+                                <Mail size={20} /> Probar Envío
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 };

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth } from '../firebase/config';
+import { auth, USE_LOCAL_DB } from '../firebase/config';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, signInWithPopup, GoogleAuthProvider, EmailAuthProvider, linkWithCredential } from 'firebase/auth';
 import { db } from '../firebase/config';
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc, setDoc } from 'firebase/firestore';
@@ -18,6 +18,7 @@ export const AuthProvider = ({ children }) => {
     const [userRole, setUserRole] = useState('user'); // 'user', 'admin', 'coat', 'prueba'
     const [permissions, setPermissions] = useState({}); // New Permissions Object
     const [catalogOwnerUid, setCatalogOwnerUid] = useState(null);
+    const [linkedProfesionalName, setLinkedProfesionalName] = useState(null);
     const SUPER_ADMIN_EMAILS = ["emmanuel.ag92@gmail.com", "egomez@coat.com.ar"];
     const isSuperAdminEmail = (email) => SUPER_ADMIN_EMAILS.includes(email);
 
@@ -79,8 +80,8 @@ export const AuthProvider = ({ children }) => {
                             const perms = await getRolePermissions(role);
                             setPermissions(perms);
 
-                            // If COAT (or has shared permission), use the stamped ownerUid
-                            if (perms.can_view_shared_catalog || role === 'coat') {
+                            // If COAT (or has shared permission or needs global view), use the stamped ownerUid
+                            if (perms.can_view_shared_catalog || perms.can_view_global_calendar || role === 'coat') {
                                 if (authData.ownerUid) {
                                     setCatalogOwnerUid(authData.ownerUid);
                                 } else {
@@ -96,6 +97,9 @@ export const AuthProvider = ({ children }) => {
                             } else {
                                 setCatalogOwnerUid(user.uid);
                             }
+
+                            // Load Linked Professional Name if exists
+                            setLinkedProfesionalName(authData.linkedProfesionalName || null);
                         }
                     }
 
@@ -116,6 +120,7 @@ export const AuthProvider = ({ children }) => {
                     setIsAuthorized(false);
                     setUserRole('user');
                     setCatalogOwnerUid(null);
+                    setLinkedProfesionalName(null);
                 }
             } catch (error) {
                 console.error("Auth Logic Error:", error);
@@ -208,6 +213,7 @@ export const AuthProvider = ({ children }) => {
         userRole,
         permissions, // Export permissions
         catalogOwnerUid,
+        linkedProfesionalName,
         isSuperAdmin: isSuperAdminEmail(currentUser?.email),
         viewingUid: viewingUid || (currentUser ? currentUser.uid : null),
         sharedAccounts,

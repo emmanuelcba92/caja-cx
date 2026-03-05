@@ -8,8 +8,8 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
 const LiquidacionView = () => {
-    const { viewingUid, permission, catalogOwnerUid } = useAuth();
-    const isReadOnly = permission === 'viewer';
+    const { viewingUid, permission, catalogOwnerUid, permissions } = useAuth();
+    const isReadOnly = permission === 'viewer' || permissions?.readonly_caja;
     // Force Portrait for this view
     // v1.1.0 Fix USD
     const printStyle = `

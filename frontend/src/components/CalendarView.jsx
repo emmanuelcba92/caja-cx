@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, where, onSnapshot, getDoc, doc, updateDoc } from 'firebase/firestore';
+import { apiService } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
+import OrdenesView from './OrdenesView';
 import {
     ChevronLeft, ChevronRight, User, Clock, CheckCircle2,
     AlertCircle, FileText, ArrowRight, Calendar as CalendarIcon,
     Home, Layout, Plus, MapPin, Search, Maximize2, Minimize2,
     CalendarDays, CalendarRange, Calendar as CalendarSingle,
-    StickyNote, Save
+    StickyNote, Save, Pencil, Trash2, X, Ban
 } from 'lucide-react';
 import {
     format, addMonths, subMonths, startOfMonth, endOfMonth,
@@ -18,7 +20,7 @@ import {
 import { es } from 'date-fns/locale';
 
 const CalendarView = ({ onNavigate }) => {
-    const { viewingUid, catalogOwnerUid, isSuperAdmin, currentUser } = useAuth();
+    const { viewingUid, catalogOwnerUid, isSuperAdmin, currentUser, linkedProfesionalName } = useAuth();
     const [view, setView] = useState('month'); // 'month', 'week', 'day'
     const [currentDate, setCurrentDate] = useState(new Date());
     const [events, setEvents] = useState([]);
@@ -26,6 +28,9 @@ const CalendarView = ({ onNavigate }) => {
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [isEditingNote, setIsEditingNote] = useState(false);
     const [tempNote, setTempNote] = useState('');
+    const [draggingEvent, setDraggingEvent] = useState(null);
+    const [showOrderModal, setShowOrderModal] = useState(false);
+    const [orderDraft, setOrderDraft] = useState(null);
 
     // Business Hours
     const START_HOUR = 7;
@@ -35,41 +40,40 @@ const CalendarView = ({ onNavigate }) => {
         end: setHours(startOfDay(new Date()), END_HOUR)
     });
 
-    useEffect(() => {
+    const fetchEvents = async () => {
         const ownerToUse = catalogOwnerUid || viewingUid;
         if (!ownerToUse) return;
-
-        const q = query(
-            collection(db, "ordenes_internacion"),
-            where("userId", "==", ownerToUse)
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const items = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+        setLoading(true);
+        try {
+            const items = await apiService.getCollection("ordenes_internacion", { userId: ownerToUse });
             setEvents(items);
+        } catch (error) {
+            console.error("Error fetching calendar events:", error);
+        } finally {
             setLoading(false);
-        });
+        }
+    };
 
-        return () => unsubscribe();
+    useEffect(() => {
+        fetchEvents();
     }, [viewingUid, catalogOwnerUid]);
 
     const getInitials = (name) => {
         if (!name) return '';
-        return name.split(' ')
-            .map(n => n[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 3);
+        // Remove common titles
+        const cleanName = name.replace(/^(Dr\.|Dra\.|Dr|Dra|Lic\.|Lic)\s+/i, '').trim();
+        const parts = cleanName.split(' ').filter(Boolean);
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[1][0]).toUpperCase();
+        }
+        return parts[0] ? parts[0].substring(0, 2).toUpperCase() : '';
     };
 
     const getPracticesSummary = (event) => {
         if (event.type === 'pedido') {
             return event.practicas?.filter(p => p).join(', ') || '';
         }
-        return event.codigosCirugia?.map(c => c.nombre || c.codigo).filter(n => n).join(', ') || '';
+        return event.codigosCirugia?.map(c => c.codigo).filter(n => n).join(', ') || '';
     };
 
     const handlePrev = () => {
@@ -88,14 +92,68 @@ const CalendarView = ({ onNavigate }) => {
         if (!selectedEvent) return;
         try {
             const collectionName = selectedEvent.type === 'pedido' ? "pedidos_medicos" : "ordenes_internacion";
-            await updateDoc(doc(db, collectionName, selectedEvent.id), {
+            await apiService.updateDocument(collectionName, selectedEvent.id, {
                 anotacionCalendario: tempNote
             });
             setIsEditingNote(false);
             setSelectedEvent(prev => ({ ...prev, anotacionCalendario: tempNote }));
+            fetchEvents();
         } catch (error) {
             console.error("Error saving note:", error);
             alert("Error al guardar la anotación");
+        }
+    };
+
+    const handleUpdateSala = async (sala) => {
+        if (!selectedEvent) return;
+        try {
+            const collectionName = selectedEvent.type === 'pedido' ? "pedidos_medicos" : "ordenes_internacion";
+            await apiService.updateDocument(collectionName, selectedEvent.id, {
+                salaCirugia: sala
+            });
+            setSelectedEvent(prev => ({ ...prev, salaCirugia: sala }));
+            fetchEvents();
+        } catch (error) {
+            console.error("Error updating sala:", error);
+            alert("Error al actualizar la sala");
+        }
+    };
+
+    const handleDragStart = (e, event) => {
+        setDraggingEvent(event);
+        e.dataTransfer.setData("text/plain", event.id);
+        e.dataTransfer.effectAllowed = "move";
+        // Ghost image styling or custom element if needed
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleDrop = async (e, date, hour) => {
+        e.preventDefault();
+        if (!draggingEvent) return;
+
+        const formattedDate = format(date, "yyyy-MM-dd");
+        const formattedHour = hour ? format(hour, "HH:mm") : "";
+
+        try {
+            const collectionName = draggingEvent.type === 'pedido' ? "pedidos_medicos" : "ordenes_internacion";
+            await apiService.updateDocument(collectionName, draggingEvent.id, {
+                fechaCirugia: formattedDate,
+                horaCirugia: formattedHour,
+                ultimaModificacion: {
+                    por: linkedProfesionalName || currentUser?.displayName || currentUser?.email || 'Administrador',
+                    fecha: new Date().toISOString(),
+                    accion: 'Reprogramó cirugía desde Calendario'
+                }
+            });
+            setDraggingEvent(null);
+            fetchEvents();
+        } catch (error) {
+            console.error("Error moving event:", error);
+            alert("Error al mover el evento");
         }
     };
 
@@ -148,16 +206,32 @@ const CalendarView = ({ onNavigate }) => {
 
                     <div className="h-8 w-px bg-slate-200 mx-1 hidden md:block" />
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                         <button onClick={handlePrev} className="p-3 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm">
                             <ChevronLeft size={20} />
                         </button>
-                        <button
-                            onClick={() => setCurrentDate(new Date())}
-                            className="px-6 py-2.5 bg-white border border-slate-200 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
-                        >
-                            Hoy
-                        </button>
+                        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                            <button
+                                onClick={() => setCurrentDate(new Date())}
+                                className="px-4 py-1.5 hover:bg-slate-50 rounded-lg font-black text-xs uppercase tracking-widest transition-all"
+                            >
+                                Hoy
+                            </button>
+                            <div className="relative">
+                                <input
+                                    type="date"
+                                    value={format(currentDate, "yyyy-MM-dd")}
+                                    onChange={(e) => {
+                                        if (e.target.value) setCurrentDate(parseISO(e.target.value));
+                                    }}
+                                    className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                                    title="Elegir fecha"
+                                />
+                                <div className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
+                                    <CalendarIcon size={18} />
+                                </div>
+                            </div>
+                        </div>
                         <button onClick={handleNext} className="p-3 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm">
                             <ChevronRight size={20} />
                         </button>
@@ -170,7 +244,12 @@ const CalendarView = ({ onNavigate }) => {
     const handleSlotClick = (day, hour) => {
         const formattedDate = format(day, "yyyy-MM-dd");
         const formattedHour = format(hour, "HH:mm");
-        onNavigate('ordenes', { fechaCirugia: formattedDate, horaCirugia: formattedHour });
+
+        const dateDisplay = format(day, "dd/MM/yyyy");
+        if (!window.confirm(`¿Desea crear una nueva orden para el día ${dateDisplay}?`)) return;
+
+        setOrderDraft({ fechaCirugia: formattedDate, horaCirugia: formattedHour });
+        setShowOrderModal(true);
     };
 
     const renderMonthView = () => {
@@ -191,6 +270,8 @@ const CalendarView = ({ onNavigate }) => {
                 grid.push(
                     <div
                         key={day.toString()}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, cloneDay, null)}
                         onClick={() => { setView('day'); setCurrentDate(cloneDay); }}
                         className={`min-h-[140px] bg-white border border-slate-50 p-2 transition-all relative group
                         ${!isSameMonth(day, monthStart) ? 'bg-slate-50/50 opacity-30 shadow-inner' : ''}
@@ -210,12 +291,15 @@ const CalendarView = ({ onNavigate }) => {
                             {dayEvents.slice(0, 4).map((event, idx) => {
                                 const practices = getPracticesSummary(event);
                                 const initials = getInitials(event.profesional);
-                                // Format: [Initials] Name (Ins) - Proc | Note
-                                const content = `[${initials}] ${event.afiliado} (${event.obraSocial}) - ${practices} ${event.anotacionCalendario ? '| ' + event.anotacionCalendario : ''}`;
+                                const notation = event.anotacionCalendario ? `[${event.anotacionCalendario.trim()}] ` : '';
+                                const edadStr = event.edad ? ` (${event.edad} años)` : '';
+                                const content = `${notation}${event.afiliado}${edadStr}. ${event.obraSocial}. ${practices}. ${initials}`;
 
                                 return (
                                     <div
                                         key={idx}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, event)}
                                         title={content}
                                         className={`text-[9px] px-2 py-1 rounded-lg truncate font-bold border ${event.status === 'auditada'
                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
@@ -272,6 +356,64 @@ const CalendarView = ({ onNavigate }) => {
 
                 {/* Scrollable Body */}
                 <div className="flex-1 overflow-y-auto relative custom-scrollbar">
+                    {/* Eventos sin horario específico */}
+                    <div className="flex border-b-2 border-slate-100 bg-slate-50/50 min-h-[60px]">
+                        <div className="w-20 shrink-0 border-r border-slate-100 p-2 text-right flex items-center justify-end bg-slate-100/50">
+                            <span className="text-[10px] font-black text-slate-500 leading-tight">SIN<br />HORA</span>
+                        </div>
+                        {viewDays.map((d, dIdx) => {
+                            const dayEventsNoHour = events.filter(e =>
+                                e.fechaCirugia &&
+                                isSameDay(parseISO(e.fechaCirugia), d) &&
+                                (!e.horaCirugia || e.horaCirugia === '')
+                            );
+
+                            return (
+                                <div
+                                    key={dIdx}
+                                    onDragOver={handleDragOver}
+                                    onDrop={(e) => handleDrop(e, d, null)}
+                                    onClick={(e) => {
+                                        if (e.target === e.currentTarget) {
+                                            const dateDisplay = format(d, "dd/MM/yyyy");
+                                            if (window.confirm(`¿Desea crear una nueva orden para el día ${dateDisplay}?`)) {
+                                                setOrderDraft({ fechaCirugia: format(d, "yyyy-MM-dd") });
+                                                setShowOrderModal(true);
+                                            }
+                                        }
+                                    }}
+                                    className={`flex-1 border-r last:border-0 border-slate-100 relative p-1 transition-colors hover:bg-blue-50/20 ${isSameDay(d, new Date()) ? 'bg-blue-50/10' : ''} flex flex-wrap gap-1 content-start`}
+                                >
+                                    {dayEventsNoHour.map(event => {
+                                        const initials = getInitials(event.profesional);
+                                        const practices = getPracticesSummary(event);
+
+                                        return (
+                                            <div
+                                                key={event.id}
+                                                draggable
+                                                onDragStart={(e) => handleDragStart(e, event)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedEvent(event);
+                                                    setTempNote(event.anotacionCalendario || '');
+                                                }}
+                                                className="p-2 rounded-xl border-2 cursor-pointer transition-all hover:scale-[1.01] hover:shadow-lg shadow-sm bg-amber-50 text-amber-900 border-amber-200 min-w-[120px] flex-1 max-w-full"
+                                            >
+                                                <div className="flex items-center justify-between mb-1 text-[9px] font-black uppercase tracking-tighter">
+                                                    <span className="opacity-60">Pendiente</span>
+                                                </div>
+                                                <div className="text-[10px] font-bold leading-tight break-words line-clamp-3">
+                                                    {event.anotacionCalendario ? `[${event.anotacionCalendario.trim()}] ` : ''}
+                                                    {event.afiliado}{event.edad ? ` (${event.edad} años)` : ''}. {event.obraSocial}. {practices}. {initials}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })}
+                    </div>
                     {hours.map((hour, hIdx) => (
                         <div key={hIdx} className="flex border-b border-slate-50 group">
                             <div className="w-20 shrink-0 border-r border-slate-100 p-2 text-right">
@@ -280,59 +422,77 @@ const CalendarView = ({ onNavigate }) => {
                             {viewDays.map((d, dIdx) => {
                                 const dayEvents = events.filter(e =>
                                     e.fechaCirugia &&
-                                    isSameDay(parseISO(e.fechaCirugia), d) &&
-                                    e.horaCirugia?.startsWith(format(hour, "HH"))
+                                    isSameDay(parseISO(e.fechaCirugia), d)
                                 );
+
+                                const hourString = format(hour, "HH");
+                                const is16 = hourString === '16';
+
+                                const hourEvents = dayEvents.filter(e => {
+                                    if (e.suspendida) return is16;
+                                    return e.horaCirugia?.startsWith(hourString);
+                                });
+
+                                // Sort cancelled ones to the bottom of the 16:00 slot
+                                const sortedEvents = [...hourEvents].sort((a, b) => {
+                                    if (a.suspendida && !b.suspendida) return 1;
+                                    if (!a.suspendida && b.suspendida) return -1;
+                                    return 0;
+                                });
 
                                 return (
                                     <div
                                         key={dIdx}
+                                        onDragOver={handleDragOver}
+                                        onDrop={(e) => handleDrop(e, d, hour)}
                                         onClick={(e) => {
                                             if (e.target === e.currentTarget) handleSlotClick(d, hour);
                                         }}
                                         className={`flex-1 border-r last:border-0 border-slate-50 min-h-[80px] relative p-1 transition-colors hover:bg-blue-50/20 ${isSameDay(d, new Date()) ? 'bg-blue-50/10' : ''}`}
                                     >
-                                        {dayEvents.map(event => {
+                                        {sortedEvents.map(event => {
                                             const initials = getInitials(event.profesional);
                                             const practices = getPracticesSummary(event);
 
                                             return (
                                                 <div
                                                     key={event.id}
-                                                    onClick={() => {
+                                                    draggable={!event.suspendida}
+                                                    onDragStart={(e) => handleDragStart(e, event)}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
                                                         setSelectedEvent(event);
                                                         setTempNote(event.anotacionCalendario || '');
                                                     }}
-                                                    className={`mb-1 p-2 rounded-xl border-2 cursor-pointer transition-all hover:scale-[1.01] hover:shadow-lg shadow-sm
-                                                    ${event.status === 'auditada'
-                                                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                                            : 'bg-blue-50 text-blue-800 border-blue-200'}`}
+                                                    className={`mb-1 p-2 rounded-xl border-l-4 cursor-pointer transition-all hover:brightness-95 shadow-sm
+                                                    ${view === 'day' ? 'w-full' : 'max-w-full'}
+                                                    ${event.suspendida
+                                                            ? 'bg-slate-100 text-slate-400 border-slate-300 opacity-60'
+                                                            : event.status === 'auditada'
+                                                                ? 'bg-emerald-50 text-emerald-800 border-emerald-500'
+                                                                : 'bg-blue-50 text-blue-800 border-blue-500'
+                                                        }`}
                                                 >
                                                     <div className="flex items-center justify-between mb-1">
-                                                        <span className="text-[9px] font-black uppercase tracking-tighter opacity-60 flex items-center gap-1">
-                                                            <Clock size={10} /> {event.horaCirugia} hs
+                                                        <span className={`text-[9px] font-black uppercase tracking-tighter opacity-70 flex items-center gap-1 ${event.suspendida ? 'hidden' : ''}`}>
+                                                            <Clock size={10} /> {event.horaCirugia}
                                                         </span>
+                                                        {event.suspendida && (
+                                                            <span className="text-[9px] font-black uppercase tracking-tighter text-red-400 flex items-center gap-1">
+                                                                <Ban size={10} /> Cancelada
+                                                            </span>
+                                                        )}
                                                         <div className="flex gap-1">
-                                                            {event.salaCirugia && (
-                                                                <span className="text-[9px] font-black bg-white/50 px-1 rounded flex items-center gap-0.5">
+                                                            {event.salaCirugia && !event.suspendida && (
+                                                                <span className="text-[9px] font-black bg-white/60 px-1 rounded flex items-center gap-0.5">
                                                                     <MapPin size={8} /> {event.salaCirugia}
                                                                 </span>
                                                             )}
-                                                            <span className="text-[9px] font-black bg-amber-500 text-white px-1.5 rounded-md uppercase tracking-tighter shadow-sm">{initials}</span>
                                                         </div>
                                                     </div>
-                                                    <div className="space-y-0.5">
-                                                        <p className="text-xs font-black leading-tight">
-                                                            {event.afiliado} <span className="opacity-50 font-bold">({event.obraSocial})</span>
-                                                        </p>
-                                                        <p className="text-[10px] font-bold text-slate-600 truncate uppercase tracking-tight">
-                                                            {practices}
-                                                        </p>
-                                                        {event.anotacionCalendario && (
-                                                            <p className="text-[9px] font-black text-blue-600 bg-blue-100/50 px-1.5 py-0.5 rounded-lg flex items-center gap-1 mt-1 truncate">
-                                                                <StickyNote size={8} /> {event.anotacionCalendario}
-                                                            </p>
-                                                        )}
+                                                    <div className={`text-[10px] font-bold leading-tight ${event.suspendida ? 'line-through opacity-60' : ''} ${view === 'day' ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}>
+                                                        {event.anotacionCalendario && !event.suspendida ? `[${event.anotacionCalendario.trim()}] ` : ''}
+                                                        {event.afiliado}{event.edad ? ` (${event.edad} años)` : ''}. {event.obraSocial}. {practices}. {initials}
                                                     </div>
                                                 </div>
                                             );
@@ -353,58 +513,119 @@ const CalendarView = ({ onNavigate }) => {
 
             {view === 'month' ? renderMonthView() : renderTimeGrid()}
 
-            {/* Quick Event Info Sidebar/Modal */}
+            {/* Google Calendar Style Quick Info Popup */}
             {selectedEvent && (
-                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-end p-4 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white w-full max-w-md h-full md:h-auto md:max-h-[95vh] rounded-[2.5rem] shadow-2xl border border-slate-100 flex flex-col animate-in slide-in-from-right duration-500">
-                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                            <div className="flex justify-between items-start mb-8">
-                                <div className={`px-4 py-1.5 rounded-2xl text-xs font-black uppercase tracking-widest ${selectedEvent.status === 'auditada' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-                                    {selectedEvent.status || 'pendiente'}
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setSelectedEvent(null)} />
+
+                    <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-100">
+                        {/* Header with color indicator */}
+                        <div className={`h-2 ${selectedEvent.status === 'auditada' ? 'bg-emerald-500' : 'bg-blue-600'}`} />
+
+                        <div className="p-6">
+                            <div className="flex justify-between items-start mb-6">
+                                <div className="space-y-1">
+                                    <h3 className="text-xl font-black text-slate-800 leading-tight">
+                                        {selectedEvent.afiliado}
+                                        {selectedEvent.edad && <span className="text-sm font-medium text-slate-500 ml-2">({selectedEvent.edad} años)</span>}
+                                    </h3>
+                                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                        <Clock size={12} />
+                                        <span>{selectedEvent.horaCirugia || 'Sin hora'} • {format(parseISO(selectedEvent.fechaCirugia), "d 'de' MMM", { locale: es })}</span>
+                                    </div>
                                 </div>
-                                <button
-                                    onClick={() => setSelectedEvent(null)}
-                                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-                                >
-                                    <Plus className="rotate-45" size={24} />
-                                </button>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => onNavigate('ordenes', selectedEvent)}
+                                        className="p-2.5 bg-slate-100 text-slate-600 rounded-full hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                        title="Editar orden"
+                                    >
+                                        <Pencil size={18} />
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedEvent(null)}
+                                        className="p-2.5 bg-slate-100 text-slate-400 rounded-full hover:bg-slate-200 transition-all"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
                             </div>
 
-                            <div className="space-y-6">
-                                <div>
-                                    <h3 className="text-3xl font-black text-slate-800 leading-tight mb-2">{selectedEvent.afiliado}</h3>
-                                    <div className="flex flex-wrap items-center gap-4 text-slate-500 font-medium">
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-blue-600 shadow-sm">
+                                        <User size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Profesional a cargo</p>
+                                        <p className="text-sm font-bold text-slate-700">{selectedEvent.profesional}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Obra Social</p>
+                                        <p className="text-xs font-bold text-slate-700">{selectedEvent.obraSocial}</p>
+                                    </div>
+                                    <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 flex flex-col justify-center">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                            <MapPin size={12} /> Quirófano / Sala
+                                        </p>
                                         <div className="flex items-center gap-2">
-                                            <CalendarIcon size={16} />
-                                            <span>{format(parseISO(selectedEvent.fechaCirugia), "eeee d 'de' MMMM", { locale: es })}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Clock size={16} />
-                                            <span>{selectedEvent.horaCirugia} hs</span>
+                                            {['A', 'B', 'C'].map(s => (
+                                                <button
+                                                    key={s}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleUpdateSala(s);
+                                                    }}
+                                                    className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all border-2 shadow-sm
+                                                        ${selectedEvent.salaCirugia === s
+                                                            ? 'bg-blue-600 text-white border-blue-600 scale-105'
+                                                            : 'bg-white text-slate-400 border-slate-200 hover:border-blue-200 hover:text-blue-500'
+                                                        }`}
+                                                >
+                                                    {s}
+                                                </button>
+                                            ))}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleUpdateSala('');
+                                                }}
+                                                className={`p-2.5 rounded-xl text-slate-300 border-2 border-slate-100 hover:bg-red-50 hover:text-red-500 hover:border-red-100 transition-all ${!selectedEvent.salaCirugia ? 'opacity-0 pointer-events-none' : ''}`}
+                                                title="Limpiar sala"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Obra Social</p>
-                                        <p className="font-bold text-slate-700">{selectedEvent.obraSocial}</p>
-                                    </div>
-                                    <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quirófano / Sala</p>
-                                        <p className="font-bold text-slate-700">{selectedEvent.salaCirugia || '-'}</p>
-                                    </div>
+                                <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                                    <p className="text-[9px] font-black text-blue-500 uppercase tracking-tighter mb-2 flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5"><StickyNote size={10} /> Prácticas y Diagnóstico</span>
+                                    </p>
+                                    <p className="text-xs font-bold text-slate-600 leading-relaxed mb-1">
+                                        {getPracticesSummary(selectedEvent)}
+                                    </p>
+                                    <p className="text-[10px] font-medium text-slate-400 italic">
+                                        "{selectedEvent.diagnostico || 'Sin diagnóstico'}"
+                                    </p>
                                 </div>
 
-                                <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 group relative">
-                                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-3 flex items-center justify-between">
-                                        <span className="flex items-center gap-1.5"><StickyNote size={12} /> Anotación Especial</span>
+                                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 group relative">
+                                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-tighter mb-2 flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5 uppercase select-none">Nota para Calendario (Citación)</span>
                                         {!isEditingNote && (
                                             <button
-                                                onClick={() => setIsEditingNote(true)}
-                                                className="text-[9px] hover:underline"
+                                                onClick={() => {
+                                                    setTempNote(selectedEvent.anotacionCalendario || '');
+                                                    setIsEditingNote(true);
+                                                }}
+                                                className="text-[9px] hover:underline flex items-center gap-1"
                                             >
-                                                Editar
+                                                <Pencil size={10} /> Editar
                                             </button>
                                         )}
                                     </p>
@@ -414,63 +635,67 @@ const CalendarView = ({ onNavigate }) => {
                                             <textarea
                                                 value={tempNote}
                                                 onChange={(e) => setTempNote(e.target.value)}
-                                                className="w-full bg-white border-2 border-amber-200 rounded-xl p-3 text-sm font-medium focus:ring-4 focus:ring-amber-100 outline-none"
-                                                rows={3}
+                                                placeholder="Ej: Citar 7:30 hs..."
+                                                className="w-full bg-white border-2 border-amber-200 rounded-xl p-3 text-xs font-bold text-slate-700 focus:ring-4 focus:ring-amber-100 outline-none"
+                                                rows={2}
                                                 autoFocus
                                             />
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={handleSaveNote}
-                                                    className="px-4 py-2 bg-amber-500 text-white rounded-lg text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-amber-200"
+                                                    className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-amber-200"
                                                 >
-                                                    <Save size={14} /> Guardar
+                                                    <Save size={12} /> Guardar Nota
                                                 </button>
                                                 <button
                                                     onClick={() => setIsEditingNote(false)}
-                                                    className="px-4 py-2 text-slate-500 text-xs font-bold"
+                                                    className="px-3 py-1.5 text-slate-500 text-[10px] font-black uppercase"
                                                 >
                                                     Cancelar
                                                 </button>
                                             </div>
                                         </div>
                                     ) : (
-                                        <p className="text-sm font-bold text-slate-700 leading-relaxed">
-                                            {selectedEvent.anotacionCalendario || <span className="opacity-40 italic font-medium">Sin anotaciones adicionales.</span>}
+                                        <p className="text-xs font-bold text-amber-900 leading-relaxed">
+                                            {selectedEvent.anotacionCalendario || <span className="opacity-40 italic font-medium">Sin indicaciones de citación.</span>}
                                         </p>
                                     )}
                                 </div>
-
-                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
-                                            <User size={24} />
-                                        </div>
+                                {selectedEvent.ultimaModificacion && (
+                                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-start gap-2">
+                                        <Clock size={12} className="text-slate-400 mt-0.5 shrink-0" />
                                         <div>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Profesional</p>
-                                            <p className="text-lg font-black text-slate-800">{selectedEvent.profesional}</p>
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{selectedEvent.ultimaModificacion.accion}</p>
+                                            <p className="text-xs font-bold text-slate-600">
+                                                {selectedEvent.ultimaModificacion.por} <span className="font-normal text-[10px] text-slate-400">• {selectedEvent.ultimaModificacion.fecha ? format(parseISO(selectedEvent.ultimaModificacion.fecha), "dd/MM/yyyy HH:mm") : ''}</span>
+                                            </p>
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Diagnóstico / Práctica</p>
-                                        <p className="text-sm font-bold text-slate-600 truncate">
-                                            {getPracticesSummary(selectedEvent)}
-                                        </p>
-                                        <p className="text-xs font-medium text-slate-500 italic mt-2">"{selectedEvent.diagnostico || 'Sin diagnóstico especificado'}"</p>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         </div>
 
-                        <div className="p-8 bg-slate-50 rounded-b-[2.5rem] border-t border-slate-100 flex gap-4">
-                            <button
-                                onClick={() => {
-                                    onNavigate('ordenes', selectedEvent);
-                                }}
-                                className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-slate-200 hover:bg-black transition-all flex items-center justify-center gap-2"
-                            >
-                                Editar Orden Completa <ArrowRight size={16} />
-                            </button>
-                        </div>
+                        <button
+                            onClick={() => onNavigate('ordenes', selectedEvent)}
+                            className="w-full py-4 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest border-t border-slate-800 hover:bg-black transition-all flex items-center justify-center gap-2"
+                        >
+                            Ver Detalles Médicos <ArrowRight size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
+            {/* NEW ORDER MODAL INLINE */}
+            {showOrderModal && (
+                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="w-full max-w-4xl max-h-[95vh] overflow-hidden relative">
+                        <OrdenesView
+                            modalMode
+                            draftData={orderDraft}
+                            onClose={() => {
+                                setShowOrderModal(false);
+                                setOrderDraft(null);
+                            }}
+                        />
                     </div>
                 </div>
             )}

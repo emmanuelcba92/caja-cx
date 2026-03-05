@@ -14,8 +14,8 @@ const MONTH_NAMES = [
 ];
 
 const HistorialCaja = () => {
-    const { currentUser: user, viewingUid, permission } = useAuth();
-    const isReadOnly = permission === 'viewer';
+    const { currentUser: user, viewingUid, catalogOwnerUid, permission, permissions } = useAuth();
+    const isReadOnly = permission === 'viewer' || permissions?.readonly_caja;
     // Force Landscape for this view
     const printStyle = `
       @media print {
@@ -37,6 +37,9 @@ const HistorialCaja = () => {
     const [selectedYear, setSelectedYear] = useState(null);
     const [selectedMonth, setSelectedMonth] = useState(null);
     const [selectedDate, setSelectedDate] = useState(null);
+    const [rangeStart, setRangeStart] = useState('');
+    const [rangeEnd, setRangeEnd] = useState('');
+    const [isExportingRange, setIsExportingRange] = useState(false);
 
     // Edit/Table State
     const [editId, setEditId] = useState(null);
@@ -65,7 +68,7 @@ const HistorialCaja = () => {
         const entryData = {
             ...newEntry,
             fecha: selectedDate,
-            userId: viewingUid,
+            userId: catalogOwnerUid || viewingUid,
             createdAt: new Date().toISOString(),
             // Defaults
             pesos: parseFloat(newEntry.pesos) || 0,
@@ -111,9 +114,10 @@ const HistorialCaja = () => {
     };
 
     const fetchHistory = async () => {
-        if (!viewingUid) return;
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return;
         try {
-            const q = query(collection(db, "caja"), where("userId", "==", viewingUid));
+            const q = query(collection(db, "caja"), where("userId", "==", ownerToUse));
             const querySnapshot = await getDocs(q);
             const data = querySnapshot.docs.map(doc => ({
                 id: doc.id,
@@ -139,9 +143,10 @@ const HistorialCaja = () => {
     };
 
     const fetchProfs = async () => {
-        if (!viewingUid) return;
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return;
         try {
-            const q = query(collection(db, "profesionales"), where("userId", "==", viewingUid));
+            const q = query(collection(db, "profesionales"), where("userId", "==", ownerToUse));
             const querySnapshot = await getDocs(q);
             const profs = querySnapshot.docs.map(doc => ({
                 id: doc.id,
@@ -157,14 +162,15 @@ const HistorialCaja = () => {
     useEffect(() => {
         fetchHistory();
         fetchProfs();
-    }, [viewingUid]);
+    }, [viewingUid, catalogOwnerUid]);
 
     // Fetch daily comment when a date is selected
     useEffect(() => {
-        if (selectedDate && viewingUid) {
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (selectedDate && ownerToUse) {
             const fetchComment = async () => {
                 const q = query(collection(db, "daily_comments"),
-                    where("userId", "==", viewingUid),
+                    where("userId", "==", ownerToUse),
                     where("date", "==", selectedDate)
                 );
                 const snapshot = await getDocs(q);
@@ -176,7 +182,7 @@ const HistorialCaja = () => {
             };
             fetchComment();
         }
-    }, [selectedDate, user]);
+    }, [selectedDate, user, catalogOwnerUid, viewingUid]);
 
     // --- Data Processing for Hierarchy ---
     const getYears = () => {
@@ -239,10 +245,11 @@ const HistorialCaja = () => {
         if (!window.confirm("¿Descargar copia de seguridad completa (JSON) de todas las cajas históricas?")) return;
 
         try {
-            // Fetch ALL boxes for current user
+            // Fetch ALL boxes for current user/catalog
+            const ownerToUse = catalogOwnerUid || viewingUid;
             const q = query(
                 collection(db, "caja"),
-                where("userId", "==", viewingUid)
+                where("userId", "==", ownerToUse)
             );
             const snapshot = await getDocs(q);
             const allData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -272,11 +279,12 @@ const HistorialCaja = () => {
     // --- Security & Config ---
     const handleUnlock = async () => {
         try {
-            if (!viewingUid) {
+            const ownerToUse = catalogOwnerUid || viewingUid;
+            if (!ownerToUse) {
                 alert("Error de sesión. Recargue la página.");
                 return;
             }
-            const settingsRef = doc(db, "user_settings", viewingUid);
+            const settingsRef = doc(db, "user_settings", ownerToUse);
             const settingsSnap = await getDoc(settingsRef);
 
             if (settingsSnap.exists() && settingsSnap.data().adminPin) {
@@ -685,7 +693,73 @@ const HistorialCaja = () => {
 
         // Save
         const buffer = await workbook.xlsx.writeBuffer();
-        saveAs(new Blob([buffer]), `Caja_${selectedDate}_Completa.xlsx`);
+        const [y, m, d] = selectedDate.split('-');
+        saveAs(new Blob([buffer]), `CAJA CX ${d}-${m}-${y}.xlsx`);
+    };
+
+    const handleExportRange = async () => {
+        if (!rangeStart || !rangeEnd) return alert("Seleccione el rango de fechas.");
+        if (rangeStart > rangeEnd) return alert("La fecha de inicio debe ser anterior a la de fin.");
+
+        const datesInRange = [];
+        let current = new Date(rangeStart + 'T00:00:00');
+        const end = new Date(rangeEnd + 'T00:00:00');
+
+        while (current <= end) {
+            datesInRange.push(current.toISOString().split('T')[0]);
+            current.setDate(current.getDate() + 1);
+        }
+
+        setIsExportingRange(true);
+        try {
+            for (const date of datesInRange) {
+                const dataForDate = history.filter(item => item.fecha === date);
+                if (dataForDate.length > 0) {
+                    await exportExcelDirect(dataForDate, date);
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
+            alert("Exportación de rango finalizada.");
+        } catch (error) {
+            console.error(error);
+            alert("Error al exportar rango.");
+        } finally {
+            setIsExportingRange(false);
+        }
+    };
+
+    const exportExcelDirect = async (dataToExport, date) => {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Caja', { pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 } });
+        const headerStyle = { font: { bold: true }, alignment: { horizontal: 'center' }, border: { bottom: { style: 'thin' } } };
+
+        worksheet.getRow(1).values = ['Paciente', 'DNI', 'Obra social', 'Prof. 1', 'Prof. 2', 'Prof. 3', 'Pesos', 'Dolares', 'Liq. P1', 'Liq. P2', 'Liq. P3', 'Anest.', 'Liq. Anest.', 'Coat $', 'Coat USD'];
+        worksheet.getRow(1).eachCell(cell => { cell.font = headerStyle.font; cell.alignment = headerStyle.alignment; cell.border = headerStyle.border; });
+
+        dataToExport.forEach((item, idx) => {
+            const row = worksheet.getRow(idx + 2);
+            row.values = [
+                item.paciente, item.dni, item.obra_social, item.prof_1 || '', item.prof_2 || '', item.prof_3 || '',
+                parseFloat(item.pesos) || 0, parseFloat(item.dolares) || 0,
+                `${item.liq_prof_1_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_prof_1)}${item.liq_prof_1_secondary > 0 ? ' / ' + (item.liq_prof_1_currency_secondary === 'USD' ? 'USD ' : '$') + formatMoney(item.liq_prof_1_secondary) : ''}`,
+                `${item.liq_prof_2_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_prof_2)}${item.liq_prof_2_secondary > 0 ? ' / ' + (item.liq_prof_2_currency_secondary === 'USD' ? 'USD ' : '$') + formatMoney(item.liq_prof_2_secondary) : ''}`,
+                `${item.liq_prof_3_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_prof_3)}${item.liq_prof_3_secondary > 0 ? ' / ' + (item.liq_prof_3_currency_secondary === 'USD' ? 'USD ' : '$') + formatMoney(item.liq_prof_3_secondary) : ''}`,
+                item.anestesista || '',
+                item.liq_anestesista > 0 ? `${item.liq_anestesista_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_anestesista)}` : '-',
+                parseFloat(item.coat_pesos) || 0, parseFloat(item.coat_dolares) || 0
+            ];
+            [7, 8, 14, 15].forEach(col => row.getCell(col).numFmt = '#,##0.00');
+        });
+
+        worksheet.columns = [{ width: 30 }, { width: 15 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }];
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const [yy, mm, dd] = date.split('-');
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `CAJA CX ${dd}-${mm}-${yy}.xlsx`;
+        link.click();
     };
 
     const anestesistas = profesionales.filter(p => p.categoria === 'Anestesista');
@@ -701,10 +775,11 @@ const HistorialCaja = () => {
         // Double confirmation for safety
         if (!window.confirm("¿De verdad? Se borrará toda la caja de ese día.")) return;
 
+        const ownerToUse = catalogOwnerUid || viewingUid;
         try {
             const batch = writeBatch(db);
             const q = query(collection(db, "caja"),
-                where("userId", "==", viewingUid),
+                where("userId", "==", ownerToUse),
                 where("fecha", "==", selectedDate)
             );
             const snapshot = await getDocs(q);
@@ -877,7 +952,7 @@ const HistorialCaja = () => {
                         </div>
                     </div>
 
-                    {view === 'table' && (
+                    {view === 'table' ? (
                         <div className="flex items-center gap-4">
                             <div className="flex gap-2 mr-4 border-r border-slate-200 pr-4">
                                 <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-bold shadow-lg shadow-slate-200">
@@ -887,7 +962,6 @@ const HistorialCaja = () => {
                                     <DollarSign size={16} /> Excel COAT
                                 </button>
                             </div>
-
                             {isAdmin ? (
                                 <div className="flex items-center gap-3">
                                     <button onClick={handleBackup} className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-indigo-200 text-sm">
@@ -902,7 +976,6 @@ const HistorialCaja = () => {
                                     <button onClick={() => isAdmin ? setIsAdmin(false) : setShowPinModal(true)} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-xl transition-all ${isAdmin ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                                         {isAdmin ? <><Lock size={16} /> Bloquear Edición</> : <><Lock size={16} /> Admin</>}
                                     </button>
-
                                 </div>
                             ) : (
                                 !isReadOnly && (
@@ -911,9 +984,36 @@ const HistorialCaja = () => {
                                     </button>
                                 )
                             )}
-
                             <button onClick={navigateUp} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700 transition-colors">
                                 <ArrowLeft size={20} />
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200 no-print">
+                            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Desde</label>
+                                <input
+                                    type="date"
+                                    className="bg-transparent border-none text-xs font-bold text-slate-700 outline-none"
+                                    value={rangeStart}
+                                    onChange={(e) => setRangeStart(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Hasta</label>
+                                <input
+                                    type="date"
+                                    className="bg-transparent border-none text-xs font-bold text-slate-700 outline-none"
+                                    value={rangeEnd}
+                                    onChange={(e) => setRangeEnd(e.target.value)}
+                                />
+                            </div>
+                            <button
+                                onClick={handleExportRange}
+                                disabled={isExportingRange}
+                                className={`flex items-center gap-2 px-4 py-2 ${isExportingRange ? 'bg-slate-200 text-slate-400' : 'bg-teal-600 text-white hover:bg-teal-700'} rounded-xl font-bold shadow-lg transition-all text-xs`}
+                            >
+                                <FileText size={16} /> {isExportingRange ? 'Exportando...' : 'Descargar Rango (Excel)'}
                             </button>
                         </div>
                     )}

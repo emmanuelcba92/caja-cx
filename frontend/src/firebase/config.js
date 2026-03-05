@@ -14,8 +14,5 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-
-// Exponer db para scripts de consola (temporal)
-if (typeof window !== 'undefined') {
-    window.__FIREBASE_DB__ = db;
-}
+export const USE_LOCAL_DB = false;
+export const LOCAL_API_URL = '';

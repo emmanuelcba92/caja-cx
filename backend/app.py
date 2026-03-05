@@ -3,6 +3,9 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -407,6 +410,69 @@ def save_daily_comment():
     
     db.session.commit()
     return jsonify({'message': 'Comentario guardado'}), 200
+
+# --- EMAIL NOTIFICATIONS (GMAIL SMTP) ---
+
+@app.route('/send-email-gmail', methods=['POST'])
+def send_email_gmail():
+    data = request.json
+    try:
+        # Credentials
+        gmail_user = 'emmanuel.ag92@gmail.com'
+        gmail_password = 'ppap echk dsvr nzia'  # App Password provided by user
+        
+        # Get recipients from DB or use default
+        config_emails = AppConfig.query.get('notification_emails')
+        if config_emails and config_emails.value:
+            recipients_str = config_emails.value
+        else:
+            recipients_str = data.get('to', 'emmanuel.ag92@gmail.com')
+            
+        # Split by comma and clean
+        recipients = [r.strip() for r in recipients_str.split(',') if r.strip()]
+        
+        subject = data.get('subject', 'Nueva Internación Registrada')
+        body = data.get('body', 'Se ha registrado una nueva orden de internación.')
+
+        # Connect and send
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(gmail_user, gmail_password)
+
+        for recipient in recipients:
+            # Create message for each recipient (or one with multiple To)
+            msg = MIMEMultipart()
+            msg['From'] = f"Sistema Caja de Cirugía <{gmail_user}>"
+            msg['To'] = recipient
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
+            
+            text = msg.as_string()
+            server.sendmail(gmail_user, recipient, text)
+            
+        server.quit()
+
+        return jsonify({"status": "success", "message": f"Email enviado a {len(recipients)} destinatarios"}), 200
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/config/notifications', methods=['GET', 'POST'])
+def handle_notification_config():
+    if request.method == 'POST':
+        data = request.json
+        emails = data.get('emails', '')
+        config = AppConfig.query.get('notification_emails')
+        if not config:
+            config = AppConfig(key='notification_emails', value=emails)
+            db.session.add(config)
+        else:
+            config.value = emails
+        db.session.commit()
+        return jsonify({'message': 'Configuración actualizada'}), 200
+    else:
+        config = AppConfig.query.get('notification_emails')
+        return jsonify({'emails': config.value if config else 'emmanuel.ag92@gmail.com'}), 200
 
 def init_defaults():
     with app.app_context():

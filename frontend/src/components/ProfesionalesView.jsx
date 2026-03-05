@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Trash2, Tag, Lock, Download, Printer, X, FileText, Edit3 } from 'lucide-react';
-import { db } from '../firebase/config';
+import { UserPlus, Trash2, Tag, Lock, Download, Printer, X, FileText, Edit3, Database, Cloud } from 'lucide-react';
+import { db, USE_LOCAL_DB } from '../firebase/config';
 import { collection, getDocs, getDoc, addDoc, deleteDoc, doc, query, where, orderBy, updateDoc } from 'firebase/firestore';
+import { apiService } from '../services/apiService';
 import { createPortal } from 'react-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -22,7 +23,7 @@ const ProfesionalesView = () => {
     useEffect(() => {
         if (categoria === 'Fonoaudiologa') {
             setPrefijo('Lic.');
-        } else if (['ORL', 'Anestesista', 'Estetica'].includes(categoria)) {
+        } else if (['ORL', 'Anestesista', 'Estetica', 'Residente'].includes(categoria)) {
             if (prefijo === 'Lic.' || !prefijo) setPrefijo('Dr.');
         } else if (categoria === 'Tutoras') {
             setPrefijo('');
@@ -84,6 +85,14 @@ const ProfesionalesView = () => {
     `;
 
     const handleUnlock = async () => {
+        if (USE_LOCAL_DB) {
+            // Local mode: allow everything
+            setIsAdmin(true);
+            setShowPinModal(false);
+            setPinInput('');
+            return;
+        }
+
         try {
             if (!viewingUid) {
                 alert("Error de sesión.");
@@ -112,16 +121,17 @@ const ProfesionalesView = () => {
         }
     };
 
+    const toggleDBMode = () => {
+        const currentMode = localStorage.getItem('USE_LOCAL_DB') === 'true';
+        localStorage.setItem('USE_LOCAL_DB', (!currentMode).toString());
+        window.location.reload();
+    };
+
     const fetchProfs = async () => {
         const ownerToUse = catalogOwnerUid || viewingUid;
         if (!ownerToUse) return;
         try {
-            const q = query(collection(db, "profesionales"), where("userId", "==", ownerToUse));
-            const querySnapshot = await getDocs(q);
-            const profs = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            const profs = await apiService.getCollection("profesionales", { userId: ownerToUse });
             profs.sort((a, b) => a.nombre.localeCompare(b.nombre));
             setProfesionales(profs);
         } catch (error) {
@@ -138,7 +148,7 @@ const ProfesionalesView = () => {
         const fullName = prefijo ? `${prefijo.trim()} ${nombre.trim()}` : nombre.trim();
 
         try {
-            await addDoc(collection(db, "profesionales"), {
+            await apiService.addDocument("profesionales", {
                 nombre: fullName,
                 categoria,
                 userId: ownerToUse
@@ -162,7 +172,7 @@ const ProfesionalesView = () => {
             for (const p of DEFAULT_PROFESIONALES) {
                 const exists = profesionales.some(existing => existing.nombre.toLowerCase().includes(p.nombre.toLowerCase()));
                 if (!exists) {
-                    await addDoc(collection(db, "profesionales"), {
+                    await apiService.addDocument("profesionales", {
                         ...p,
                         userId: ownerToUse
                     });
@@ -194,7 +204,7 @@ const ProfesionalesView = () => {
     const handleSaveEdit = async () => {
         if (!editingProf || !editForm.nombre) return;
         try {
-            await updateDoc(doc(db, "profesionales", editingProf.id), {
+            await apiService.updateDocument("profesionales", editingProf.id, {
                 nombre: editForm.nombre.trim(),
                 categoria: editForm.categoria,
                 especialidad: editForm.especialidad.trim(),
@@ -218,7 +228,7 @@ const ProfesionalesView = () => {
     const handleDelete = async (id, nombre) => {
         if (!window.confirm(`¿Estás seguro de eliminar a ${nombre}?`)) return;
         try {
-            await deleteDoc(doc(db, "profesionales", id));
+            await apiService.deleteDocument("profesionales", id);
             fetchProfs();
             alert("Profesional eliminado");
         } catch (error) {
@@ -238,14 +248,7 @@ const ProfesionalesView = () => {
         const endDateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${lastDay}`;
 
         try {
-            // Fetch by userId and filter dates client-side to avoid Index requirements
-            const q = query(
-                collection(db, "caja"),
-                where("userId", "==", viewingUid)
-            );
-
-            const querySnapshot = await getDocs(q);
-            const allEntries = querySnapshot.docs.map(doc => doc.data());
+            const allEntries = await apiService.getCollection("caja", { userId: viewingUid });
 
             // Filter by date range locally
             const entries = allEntries.filter(e => e.fecha >= startDateStr && e.fecha <= endDateStr);
@@ -285,16 +288,11 @@ const ProfesionalesView = () => {
             });
 
             // 2. Fetch and Process Deductions
-            const qDeductions = query(
-                collection(db, "deducciones"),
-                where("userId", "==", viewingUid)
-            );
-            const deductionSnapshot = await getDocs(qDeductions);
-            const monthlyDeductions = deductionSnapshot.docs
-                .map(d => d.data())
-                .filter(d => d.date >= startDateStr && d.date <= endDateStr);
+            const monthlyDeductions = await apiService.getCollection("deducciones", { userId: viewingUid });
 
-            monthlyDeductions.forEach(d => {
+            const filteredDeductions = monthlyDeductions.filter(d => d.date >= startDateStr && d.date <= endDateStr);
+
+            filteredDeductions.forEach(d => {
                 const date = d.date;
                 const prof = d.profesional;
                 const amount = Math.abs(Number(d.amount || 0));
@@ -494,9 +492,6 @@ const ProfesionalesView = () => {
 
                         <div className="w-px h-8 bg-slate-200 mx-2"></div>
 
-                        <button onClick={handleGeneralExcel} className="flex items-center gap-2 px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-teal-50">
-                            <Download size={18} /> Excel
-                        </button>
                         <button onClick={handlePrintMatrix} className="flex items-center gap-2 px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-teal-50">
                             <Printer size={18} /> Imprimir
                         </button>
@@ -558,6 +553,7 @@ const ProfesionalesView = () => {
                                 <option value="Anestesista">Anestesista</option>
                                 <option value="Estetica">Estética</option>
                                 <option value="Fonoaudiologa">Fonoaudiologa</option>
+                                <option value="Residente">Residente</option>
                                 <option value="Tutoras">Tutoras</option>
                             </select>
                         </div>
@@ -598,7 +594,7 @@ const ProfesionalesView = () => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-1">
-                                {isSuperAdmin && (
+                                {(isSuperAdmin || isAdmin) && !isReadOnly && (
                                     <button
                                         onClick={() => handleEditClick(prof)}
                                         className="p-2 text-teal-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
@@ -769,6 +765,7 @@ const ProfesionalesView = () => {
                                     <option value="Anestesista">Anestesista</option>
                                     <option value="Estetica">Estética</option>
                                     <option value="Fonoaudiologa">Fonoaudiologa</option>
+                                    <option value="Residente">Residente</option>
                                     <option value="Tutoras">Tutoras</option>
                                 </select>
                             </div>

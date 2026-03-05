@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/config';
-import { collection, query, where, getDocs, updateDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, onSnapshot, getDoc, writeBatch } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { Search, Filter, CheckCircle2, Clock, XCircle, User, Calendar, ExternalLink, ShieldCheck, ClipboardList, FileHeart, Edit3 } from 'lucide-react';
+import { Search, Filter, CheckCircle2, Clock, XCircle, User, Calendar, ExternalLink, ShieldCheck, ClipboardList, FileHeart, Edit3, ArrowLeft } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import OrdenesView from './OrdenesView';
 
 const AuditView = ({ onNavigate }) => {
     const { viewingUid, catalogOwnerUid, isSuperAdmin } = useAuth();
     const [orders, setOrders] = useState([]);
-    const [pedidos, setPedidos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all'); // all | pendiente | auditada
-    const [activeTab, setActiveTab] = useState('internacion'); // internacion | pedidos
+    const [editingItem, setEditingItem] = useState(null);
 
     useEffect(() => {
         const ownerToUse = catalogOwnerUid || viewingUid;
@@ -23,58 +23,112 @@ const AuditView = ({ onNavigate }) => {
         const q1 = query(collection(db, "ordenes_internacion"), where("userId", "==", ownerToUse));
         const unsub1 = onSnapshot(q1, (snapshot) => {
             setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'internacion' })));
-        });
-
-        // Listen for Pedidos Medicos
-        const q2 = query(collection(db, "pedidos_medicos"), where("userId", "==", ownerToUse));
-        const unsub2 = onSnapshot(q2, (snapshot) => {
-            setPedidos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'pedido' })));
             setLoading(false);
         });
 
         return () => {
             unsub1();
-            unsub2();
         };
     }, [viewingUid, catalogOwnerUid]);
 
-    const handleAudit = async (orderId, type) => {
-        if (!window.confirm("¿Confirmar auditoría de esta orden?")) return;
+    const handleAudit = async (orderId) => {
+        const orderToAudit = orders.find(o => o.id === orderId);
+        if (!orderToAudit) return;
+
+        if (!window.confirm(`¿Confirmar auditoría de la orden de ${orderToAudit.afiliado}?`)) return;
 
         try {
-            const collectionName = type === 'internacion' ? "ordenes_internacion" : "pedidos_medicos";
-            await updateDoc(doc(db, collectionName, orderId), {
+            await updateDoc(doc(db, "ordenes_internacion", orderId), {
                 status: 'auditada',
                 auditedAt: new Date().toISOString(),
-                // auditedBy: currentUser.email (could add this)
             });
+
+            // Trigger internal notification
+            try {
+                const configDoc = await getDoc(doc(db, "settings", "notifications"));
+                if (configDoc.exists()) {
+                    const { appNotificationUids } = configDoc.data();
+                    if (appNotificationUids && appNotificationUids.length > 0) {
+                        const batch = writeBatch(db);
+                        appNotificationUids.forEach(uid => {
+                            const notifRef = doc(collection(db, "notifications"));
+                            batch.set(notifRef, {
+                                userId: uid,
+                                title: "Cirugía Auditada",
+                                message: `La cirugía de ${orderToAudit.afiliado} ha sido auditada y está lista para autorizar.`,
+                                type: 'auditoria',
+                                read: false,
+                                orderId: orderId,
+                                createdAt: new Date().toISOString()
+                            });
+                        });
+                        await batch.commit();
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to trigger app notification:", e);
+            }
+
         } catch (error) {
             console.error("Error auditing order:", error);
             alert("Error al auditar");
         }
     };
 
-    const handleEdit = (item) => {
-        const destination = item.type === 'internacion' ? 'ordenes' : 'pedidos';
-        // We pass the item as payload. OrdenesView expects it in its draftData useEffect
-        onNavigate(destination, item);
+    const handleRevertAudit = async (orderId) => {
+        if (!window.confirm("¿Deseas volver esta orden al estado PENDIENTE?\n\nLa marca de auditoría será eliminada.")) return;
+
+        try {
+            await updateDoc(doc(db, "ordenes_internacion", orderId), {
+                status: 'pendiente',
+                auditedAt: null
+            });
+        } catch (error) {
+            console.error("Error reverting audit:", error);
+            alert("Error al revertir la auditoría");
+        }
     };
 
-    const allItems = [...orders, ...pedidos].filter(item => {
+    const handleEdit = (item) => {
+        setEditingItem(item);
+    };
+
+    const allItems = orders.filter(item => {
         const matchesSearch = item.afiliado?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             item.dni?.includes(searchTerm) ||
             item.profesional?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = filterStatus === 'all' || (item.status === filterStatus || (filterStatus === 'pendiente' && !item.status));
-        const matchesType = activeTab === 'all' || item.type === activeTab;
 
-        return matchesSearch && matchesStatus && matchesType;
+        return matchesSearch && matchesStatus;
     }).sort((a, b) => new Date(b.createdAt || b.updatedAt) - new Date(a.createdAt || a.updatedAt));
 
     const stats = {
-        total: orders.length + pedidos.length,
-        pendientes: [...orders, ...pedidos].filter(o => !o.status || o.status === 'pendiente').length,
-        auditadas: [...orders, ...pedidos].filter(o => o.status === 'auditada').length
+        total: orders.length,
+        pendientes: orders.filter(o => !o.status || o.status === 'pendiente').length,
+        auditadas: orders.filter(o => o.status === 'auditada').length
     };
+
+    if (editingItem) {
+        return (
+            <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                <button
+                    onClick={() => setEditingItem(null)}
+                    className="flex items-center gap-2 text-slate-500 hover:text-slate-700 font-bold px-4 py-2 bg-white border border-slate-200 shadow-sm rounded-xl transition-colors"
+                >
+                    <ArrowLeft size={20} /> Volver a Auditoría
+                </button>
+                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <OrdenesView
+                        initialTab="internacion"
+                        draftData={editingItem}
+                        modalMode={true}
+                        onClose={() => setEditingItem(null)}
+                        isAuditoria={true}
+                    />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -115,27 +169,6 @@ const AuditView = ({ onNavigate }) => {
 
                 <div className="flex bg-slate-100 p-1.5 rounded-2xl">
                     <button
-                        onClick={() => setActiveTab('internacion')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'internacion' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <ClipboardList size={16} /> Internación
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('pedidos')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'pedidos' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <FileHeart size={16} /> Pedidos
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('all')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Todos
-                    </button>
-                </div>
-
-                <div className="flex bg-slate-100 p-1.5 rounded-2xl">
-                    <button
                         onClick={() => setFilterStatus('pendiente')}
                         className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${filterStatus === 'pendiente' ? 'bg-amber-100 text-amber-700 shadow-sm' : 'text-slate-500'}`}
                     >
@@ -165,14 +198,21 @@ const AuditView = ({ onNavigate }) => {
                         ${item.status === 'auditada' ? 'border-emerald-100' : 'border-slate-100'}`}
                     >
                         <div className="flex justify-between items-start mb-4">
-                            <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest
-                                ${item.type === 'internacion' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}
-                            >
-                                {item.type === 'internacion' ? 'Orden de Internación' : 'Pedido de Prácticas'}
+                            <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                Orden de Internación
                             </div>
                             {item.status === 'auditada' ? (
-                                <div className="flex items-center gap-1.5 text-emerald-600 font-black text-[10px] uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded-lg">
-                                    <CheckCircle2 size={14} /> Auditada
+                                <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5 text-emerald-600 font-black text-[10px] uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded-lg">
+                                        <CheckCircle2 size={14} /> Auditada
+                                    </div>
+                                    <button
+                                        onClick={() => handleRevertAudit(item.id)}
+                                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all"
+                                        title="Revertir Auditoría"
+                                    >
+                                        <XCircle size={14} />
+                                    </button>
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-1.5 text-amber-600 font-black text-[10px] uppercase tracking-widest bg-amber-50 px-2 py-1 rounded-lg">
@@ -203,26 +243,18 @@ const AuditView = ({ onNavigate }) => {
                             <div className="space-y-2">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prácticas / Códigos</p>
                                 <div className="flex flex-wrap gap-2">
-                                    {item.type === 'internacion' ? (
-                                        item.codigosCirugia?.map((c, i) => c.codigo && (
-                                            <span key={i} className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black border border-blue-100">
-                                                {c.codigo}
-                                            </span>
-                                        ))
-                                    ) : (
-                                        item.practicas?.map((p, i) => p && (
-                                            <span key={i} className="px-2 py-1 bg-purple-50 text-purple-600 rounded-lg text-[10px] font-black border border-purple-100">
-                                                {p}
-                                            </span>
-                                        ))
-                                    )}
+                                    {item.codigosCirugia?.map((c, i) => c.codigo && (
+                                        <span key={i} className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black border border-blue-100">
+                                            {c.codigo}
+                                        </span>
+                                    ))}
                                 </div>
                             </div>
 
                             <div className="pt-4 flex gap-3">
                                 {item.status !== 'auditada' && (
                                     <button
-                                        onClick={() => handleAudit(item.id, item.type)}
+                                        onClick={() => handleAudit(item.id)}
                                         className="flex-1 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
                                     >
                                         <CheckCircle2 size={18} /> Aprobar

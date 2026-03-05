@@ -8,6 +8,7 @@ import HistorialCaja from './components/HistorialCaja';
 import AccessManager from './components/AccessManager';
 import NotesView from './components/NotesView';
 import OrdenesView from './components/OrdenesView';
+import NotificationBell from './components/NotificationBell';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginView from './components/LoginView';
 import AdminView from './components/AdminView';
@@ -43,58 +44,76 @@ function AuthenticatedApp() {
       const count = snapshot.docs.length;
       setPendingCount(count);
       if (count > 0) {
-        document.title = `(${count}) Caja de Cirugía`;
+        document.title = `(${count}) Cirugías COAT`;
       } else {
-        document.title = `Caja de Cirugía`;
+        document.title = `Cirugías COAT`;
       }
     });
 
     return () => {
       unsubscribe();
-      document.title = `Caja de Cirugía`;
+      document.title = `Cirugías COAT`;
     };
   }, [viewingUid, catalogOwnerUid]);
 
   // Tabs Definition
-  const allTabs = [
-    { id: 'caja', icon: LayoutDashboard, label: 'Caja Diaria' },
-    { id: 'calendario', icon: CalendarIcon, label: 'Calendario' },
-    { id: 'auditoria', icon: ShieldCheck, label: 'Auditoría' },
-    { id: 'notas', icon: StickyNote, label: 'Notas' },
-    { id: 'historial', icon: History, label: 'Cajas' },
-    { id: 'liquidaciones', icon: FileText, label: 'Liquidaciones' },
-    { id: 'profesionales', icon: Users, label: 'Profesionales' },
-    { id: 'ordenes', icon: ClipboardList, label: 'Órdenes' },
-    { id: 'pedidos', icon: FileHeart, label: 'Pedidos (PM)' },
-    { id: 'compartir', icon: Share2, label: 'Compartir' },
-    { id: 'admin', icon: ShieldAlert, label: 'Administración' }
+  // Grouped Sidebar Configuration
+  const sidebarConfig = [
+    {
+      section: 'GESTIÓN DE CAJA',
+      tabs: [
+        { id: 'caja', icon: LayoutDashboard, label: 'Caja Diaria' },
+        { id: 'historial', icon: History, label: 'Cajas' },
+        { id: 'liquidaciones', icon: FileText, label: 'Liquidaciones' },
+        { id: 'profesionales', icon: Users, label: 'Profesionales' }
+      ]
+    },
+    {
+      section: 'CIRUGÍAS',
+      tabs: [
+        { id: 'ordenes', icon: ClipboardList, label: 'Órdenes' },
+        { id: 'pedidos', icon: FileHeart, label: 'Pedidos (PM)' }
+      ]
+    },
+    {
+      section: 'OTROS',
+      tabs: [
+        { id: 'notas', icon: StickyNote, label: 'Notas' },
+        { id: 'compartir', icon: Share2, label: 'Compartir' },
+        { id: 'admin', icon: ShieldAlert, label: 'Administración' }
+      ]
+    }
   ];
 
-  // Filter tabs logic
-  const visibleTabs = allTabs.filter(tab => {
-    // 1. Admin Tab Security
-    if (tab.id === 'admin') {
-      return isSuperAdmin;
-    }
+  // Logic to filter visible tabs within sections
+  const sections = sidebarConfig.map(sec => ({
+    ...sec,
+    tabs: sec.tabs.filter(tab => {
+      // 1. Admin Tab Security
+      if (tab.id === 'admin') {
+        return isSuperAdmin;
+      }
 
-    // 1.5. Ordenes Tab - for Super Admin or users with ordenes permissions
-    if (tab.id === 'ordenes' || tab.id === 'pedidos') {
-      return isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes;
-    }
+      // Medico restricted tabs
+      if (userRole === 'medico') {
+        return ['notas', 'ordenes', 'pedidos'].includes(tab.id);
+      }
 
-    // 1.7. Calendario & Auditoria security (DESACTIVADOS TEMPORALMENTE)
-    if (tab.id === 'auditoria' || tab.id === 'calendario') {
-      return false; // Oculto hasta que se habilite oficialmente
-    }
+      // 1.5. Ordenes Tab - for Super Admin or users with ordenes permissions
+      if (tab.id === 'ordenes' || tab.id === 'pedidos') {
+        return isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes;
+      }
 
-    // 2. Shared Catalog Viewers (COAT behavior)
-    // Users with 'can_view_shared_catalog' are restricted to essential tabs
-    if (permissions?.can_view_shared_catalog) {
-      return ['caja', 'calendario', 'liquidaciones', 'profesionales', 'historial', 'notas'].includes(tab.id);
-    }
+      // 2. Shared Catalog Viewers (COAT behavior and Directora)
+      if (permissions?.can_view_shared_catalog) {
+        const allowed = ['caja', 'liquidaciones', 'profesionales', 'historial', 'notas'];
+        if (permissions?.can_view_ordenes) allowed.push('ordenes', 'pedidos');
+        return allowed.includes(tab.id);
+      }
 
-    return true;
-  });
+      return true;
+    })
+  })).filter(sec => sec.tabs.length > 0);
 
   const [activeTab, setActiveTab] = useState(userRole === 'coat' ? 'profesionales' : 'caja'); // Default tab logic
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
@@ -163,46 +182,48 @@ function AuthenticatedApp() {
           {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
 
-        <div className="p-4 md:p-6">
+        <div className="p-4 md:p-6 flex-1 overflow-y-auto">
           <div className={`flex items-center gap-3 mb-8 overflow-hidden whitespace-nowrap ${!sidebarOpen && 'justify-center'}`}>
             <img src="/c_logo.svg" alt="Logo" className="w-8 h-8 rounded-lg flex-shrink-0" />
             <div className={`transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>
-              <h1 className="font-bold text-lg leading-tight uppercase tracking-tight text-blue-600">Caja de cirugía</h1>
+              <h1 className="font-bold text-lg leading-tight uppercase tracking-tight text-blue-600">Cirugías COAT</h1>
               <p className="text-[10px] text-slate-400 font-medium truncate">{currentUser?.email}</p>
             </div>
           </div>
 
-          <nav className="space-y-1">
-            {visibleTabs.map(item => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  if (window.innerWidth < 768) setSidebarOpen(false); // Close on mobile select
-                }}
-                className={`w-full flex items-center px-4 py-3 rounded-xl transition-all font-medium whitespace-nowrap overflow-hidden ${activeTab === item.id
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-                  } ${!sidebarOpen ? 'justify-center px-0' : 'gap-3'}`}
-                title={!sidebarOpen ? item.label : ''}
-              >
-                <item.icon size={sidebarOpen ? 20 : 28} className={`flex-shrink-0 transition-all ${!sidebarOpen && 'hover:scale-110'}`} />
-                <span className={`transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>{item.label}</span>
-              </button>
+          <nav className="space-y-6">
+            {sections.map((sec, sIdx) => (
+              <div key={sIdx} className="space-y-2">
+                {sidebarOpen && (
+                  <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 opacity-70">
+                    {sec.section}
+                  </h3>
+                )}
+                <div className="space-y-1">
+                  {sec.tabs.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        if (window.innerWidth < 768) setSidebarOpen(false); // Close on mobile select
+                      }}
+                      className={`w-full flex items-center px-4 py-3 rounded-xl transition-all font-medium whitespace-nowrap overflow-hidden ${activeTab === item.id
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                        } ${!sidebarOpen ? 'justify-center px-0' : 'gap-3'}`}
+                      title={!sidebarOpen ? item.label : ''}
+                    >
+                      <item.icon size={sidebarOpen ? 20 : 28} className={`flex-shrink-0 transition-all ${!sidebarOpen && 'hover:scale-110'}`} />
+                      <span className={`transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 w-0 text-xs'}`}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </nav>
         </div>
 
 
-        <div className={`mt-auto p-6 transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>
-          <div
-            onClick={() => setShowNextFeatures(true)}
-            className="text-[10px] text-slate-400 font-mono cursor-pointer hover:text-blue-500 transition-colors flex flex-col gap-0.5"
-          >
-            <span>v1.3.2</span>
-            <span>Actualizado: 19/02/2026 - 20:05</span>
-          </div>
-        </div>
       </aside>
 
       {/* Main Content */}
@@ -218,6 +239,7 @@ function AuthenticatedApp() {
             <span className="hidden sm:inline">Principal /</span> {activeTab}
           </div>
           <div className="flex items-center gap-4">
+            <NotificationBell />
             <UserMenu />
           </div>
         </header>

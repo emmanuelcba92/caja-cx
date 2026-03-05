@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Save, Plus, Trash2, MessageSquare, Calendar, X, Bell, CheckCircle2, Circle, LayoutDashboard, User, Edit2, Shield, Clock } from 'lucide-react';
-import { db } from '../firebase/config';
+import { db, USE_LOCAL_DB } from '../firebase/config';
 import { collection, addDoc, getDoc, getDocs, query, where, deleteDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { apiService } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import MoneyInput from './MoneyInput';
 
 const CajaForm = () => {
-    const { viewingUid, permission, currentUser, catalogOwnerUid } = useAuth(); // Get permission ('owner', 'editor', 'viewer')
-    const isReadOnly = permission === 'viewer';
+    const { viewingUid, permission, currentUser, catalogOwnerUid, permissions } = useAuth(); // Get permission ('owner', 'editor', 'viewer')
+    const isReadOnly = permission === 'viewer' || permissions?.readonly_caja;
     // Global Date State
     const [globalDate, setGlobalDate] = useState(new Date().toISOString().split('T')[0]);
     const [dailyComment, setDailyComment] = useState('');
@@ -61,12 +62,7 @@ const CajaForm = () => {
         const ownerToUse = catalogOwnerUid || viewingUid;
         if (!ownerToUse) return;
         try {
-            const q = query(collection(db, "profesionales"), where("userId", "==", ownerToUse));
-            const querySnapshot = await getDocs(q);
-            const profs = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            const profs = await apiService.getCollection("profesionales", { userId: ownerToUse });
             profs.sort((a, b) => a.nombre.localeCompare(b.nombre));
             setProfesionales(profs);
         } catch (error) {
@@ -79,16 +75,10 @@ const CajaForm = () => {
         if (!ownerToUse || !globalDate) return;
         setLoadingHistory(true);
         try {
-            const q = query(
-                collection(db, "caja"),
-                where("userId", "==", ownerToUse),
-                where("fecha", "==", globalDate)
-            );
-            const querySnapshot = await getDocs(q);
-            const entriesList = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            const entriesList = await apiService.getCollection("caja", {
+                userId: ownerToUse,
+                fecha: globalDate
+            });
             entriesList.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
             setHistory(entriesList);
         } catch (error) {
@@ -98,18 +88,12 @@ const CajaForm = () => {
         }
     };
 
-    const fetchReminders = () => {
-        if (!currentUser?.uid) return () => { };
+    const fetchReminders = async () => {
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return;
 
-        const q = query(collection(db, "reminders"), where("userId", "==", currentUser.uid));
-
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const rems = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-
-            // Sort by completed (pending first) then by date
+        try {
+            const rems = await apiService.getCollection("reminders", { userId: ownerToUse });
             rems.sort((a, b) => {
                 if (a.completed === b.completed) {
                     return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
@@ -117,27 +101,26 @@ const CajaForm = () => {
                 return a.completed ? 1 : -1;
             });
             setReminders(rems);
-        }, (error) => {
-            console.error("Error syncing reminders:", error);
-        });
-
-        return unsubscribe;
+        } catch (error) {
+            console.error("Error fetching reminders:", error);
+        }
     };
 
     const handleAddReminder = async () => {
-        if (!newReminder.trim() || !currentUser?.uid) return;
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!newReminder.trim() || !ownerToUse) return;
 
         try {
-            await addDoc(collection(db, "reminders"), {
+            await apiService.addDocument("reminders", {
                 text: newReminder,
-                userId: currentUser.uid,
+                userId: ownerToUse,
                 completed: false,
-                createdAt: new Date(),
+                createdAt: new Date().toISOString(),
                 createdBy: currentUser?.email || 'unknown'
             });
             setNewReminder('');
             setIsAddingReminder(false);
-            // State will be updated via onSnapshot
+            fetchReminders();
         } catch (error) {
             console.error("Error adding reminder:", error);
         }
@@ -145,9 +128,9 @@ const CajaForm = () => {
 
     const toggleReminderStatus = async (id, currentStatus) => {
         try {
-            await updateDoc(doc(db, "reminders", id), {
+            await apiService.updateDocument("reminders", id, {
                 completed: !currentStatus,
-                updatedAt: new Date()
+                updatedAt: new Date().toISOString()
             });
             setReminders(reminders.map(r => r.id === id ? { ...r, completed: !currentStatus } : r));
         } catch (error) {
@@ -158,7 +141,7 @@ const CajaForm = () => {
     const handleDeleteReminder = async (id) => {
         if (!window.confirm("¿Eliminar este recordatorio?")) return;
         try {
-            await deleteDoc(doc(db, "reminders", id));
+            await apiService.deleteDocument("reminders", id);
             setReminders(reminders.filter(r => r.id !== id));
         } catch (error) {
             console.error("Error deleting reminder:", error);
@@ -167,8 +150,7 @@ const CajaForm = () => {
 
     React.useEffect(() => {
         fetchProfs();
-        const unsubscribe = fetchReminders();
-        return () => unsubscribe();
+        fetchReminders();
     }, [viewingUid, catalogOwnerUid]);
 
     // Save to LocalStorage on change
@@ -311,11 +293,11 @@ const CajaForm = () => {
         if (isSaving) return;
         if (!window.confirm("¿Estás seguro de cerrar la caja? Esto guardará los datos en el historial y limpiará el formulario.")) return;
 
-        setIsSaving(true);
+        const ownerToUse = catalogOwnerUid || viewingUid;
         const entriesWithDate = entries.map((e, index) => ({
             ...e,
             fecha: globalDate,
-            userId: viewingUid,
+            userId: ownerToUse,
             createdBy: currentUser?.email || 'unknown',
             createdAt: e.createdAt || new Date(Date.now() + index).toISOString(),
             updatedAt: new Date().toISOString()
@@ -325,20 +307,20 @@ const CajaForm = () => {
             const promises = entriesWithDate.map(entry => {
                 const { id, ...dataToSave } = entry;
                 if (typeof id === 'string') {
-                    return updateDoc(doc(db, "caja", id), dataToSave);
+                    return apiService.updateDocument("caja", id, dataToSave);
                 } else {
-                    return addDoc(collection(db, "caja"), dataToSave);
+                    return apiService.addDocument("caja", dataToSave);
                 }
             });
 
             await Promise.all(promises);
 
             if (dailyComment.trim()) {
-                await addDoc(collection(db, "daily_comments"), {
+                await apiService.addDocument("daily_comments", {
                     date: globalDate,
                     comment: dailyComment,
-                    userId: viewingUid,
-                    timestamp: new Date()
+                    userId: ownerToUse,
+                    timestamp: new Date().toISOString()
                 });
             }
 
@@ -520,7 +502,7 @@ const CajaForm = () => {
     const handleDeleteHistory = async (id) => {
         if (!window.confirm("¿Seguro que deseas eliminar este registro?")) return;
         try {
-            await deleteDoc(doc(db, "caja", id));
+            await apiService.deleteDocument("caja", id);
             fetchHistory();
             alert("Registro eliminado.");
         } catch (error) {
