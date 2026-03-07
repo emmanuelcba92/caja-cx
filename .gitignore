@@ -7,8 +7,8 @@ __pycache__/
 *.db
 *.sqlite3
 
-# Env
-.env
+# Env (all env files with secrets)
+.env*
 
 # IDE
 .vscode/
