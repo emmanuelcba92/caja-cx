@@ -4,12 +4,13 @@ import {
     Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search,
     CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle,
     FileHeart, AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban,
-    TableProperties
+    TableProperties, Sparkles, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, USE_LOCAL_DB } from '../firebase/config';
 import { collection, addDoc, updateDoc, doc, getDocs, deleteDoc, query, where, getDoc, writeBatch } from 'firebase/firestore';
 import apiService from '../services/apiService';
+import { parseEmailToOrder } from '../services/aiService';
 import { useAuth } from '../context/AuthContext';
 import { createPortal } from 'react-dom';
 import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos';
@@ -48,6 +49,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const [editingId, setEditingId] = useState(null);
     const [whatsappModal, setWhatsappModal] = useState(null); // { orden: ordenData } when open
     const [copiedToast, setCopiedToast] = useState(false); // Show toast when message is copied
+    const [showAIInput, setShowAIInput] = useState(false); // Toggle AI paste area
+    const [aiInputText, setAiInputText] = useState(''); // Raw email text
+    const [aiLoading, setAiLoading] = useState(false); // AI processing spinner
+    const [aiError, setAiError] = useState(''); // AI error message
     const [activeTab, setActiveTab] = useState(initialTab); // 'internacion' | 'pedidos'
     const [pedidos, setPedidos] = useState([]); // List of medical orders (pedidos)
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
@@ -435,15 +440,118 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             <div className="space-y-6 max-w-4xl mx-auto">
                 {/* Main Form Card */}
                 <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
-                    {/* Header with Title */}
-                    <div className="flex items-center gap-3 pb-4 border-b border-slate-50">
-                        <div className={`p-2 bg-${accentColor}-50 rounded-xl text-${accentColor}-600`}>
-                            {editingId ? <Edit3 size={20} /> : <Plus size={20} />}
+                    {/* Header with Title + AI Button */}
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-50">
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 bg-${accentColor}-50 rounded-xl text-${accentColor}-600`}>
+                                {editingId ? <Edit3 size={20} /> : <Plus size={20} />}
+                            </div>
+                            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">
+                                {editingId ? 'Editar Documento' : `Nueva ${isPedido ? 'Pedido' : 'Orden'}`}
+                            </h3>
                         </div>
-                        <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">
-                            {editingId ? 'Editar Documento' : `Nueva ${isPedido ? 'Pedido' : 'Orden'}`}
-                        </h3>
+                        {!editingId && !isPedido && (
+                            <button
+                                type="button"
+                                onClick={() => { setShowAIInput(!showAIInput); setAiError(''); }}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${showAIInput
+                                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-200'
+                                    : 'bg-gradient-to-r from-violet-50 to-purple-50 text-violet-700 border border-violet-200 hover:shadow-md hover:shadow-violet-100'
+                                    }`}
+                            >
+                                <Sparkles size={16} />
+                                Auto-completar con IA
+                            </button>
+                        )}
                     </div>
+
+                    {/* AI Paste Area */}
+                    {showAIInput && !isPedido && (
+                        <div className="bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50 p-6 rounded-2xl border border-violet-200 space-y-4 animate-in slide-in-from-top-2 fade-in duration-300">
+                            <div className="flex items-center gap-2 text-sm font-bold text-violet-700">
+                                <Sparkles size={16} className="text-violet-500" />
+                                Pegá el contenido del email y la IA completará el formulario
+                            </div>
+                            <textarea
+                                value={aiInputText}
+                                onChange={(e) => setAiInputText(e.target.value)}
+                                placeholder={'Pegá acá el texto del email...\n\nEjemplo:\nNombre y Apellido del Profesional: Dr. Pérez\nFecha de la Cirugia: Abr 10, 2026\nNombre y Apellido del Paciente: GONZALEZ JUAN\nObra Social: OSDE\nDNI: 12345678\n...'}
+                                className="w-full px-5 py-4 bg-white border border-violet-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-violet-100 focus:border-violet-400 transition-all min-h-[160px] text-sm font-mono text-slate-700 placeholder:text-slate-400 resize-y"
+                                disabled={aiLoading}
+                            />
+                            {aiError && (
+                                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">
+                                    <AlertCircle size={14} />
+                                    {aiError}
+                                </div>
+                            )}
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    disabled={!aiInputText.trim() || aiLoading}
+                                    onClick={async () => {
+                                        setAiLoading(true);
+                                        setAiError('');
+                                        try {
+                                            const result = await parseEmailToOrder(aiInputText, profesionales);
+                                            // Merge AI result into form, respecting the data structure
+                                            setFormData(prev => {
+                                                const merged = { ...prev };
+                                                if (result.profesional) merged.profesional = result.profesional;
+                                                if (result.afiliado) merged.afiliado = result.afiliado.toUpperCase();
+                                                if (result.obraSocial) merged.obraSocial = result.obraSocial;
+                                                if (result.numeroAfiliado) merged.numeroAfiliado = result.numeroAfiliado;
+                                                if (result.dni) merged.dni = result.dni;
+                                                if (result.edad) merged.edad = String(result.edad);
+                                                if (result.telefono) merged.telefono = result.telefono;
+                                                if (result.diagnostico) merged.diagnostico = result.diagnostico;
+                                                if (result.habitacion) merged.habitacion = result.habitacion;
+                                                if (result.tipoAnestesia) merged.tipoAnestesia = result.tipoAnestesia;
+                                                if (result.fechaCirugia) merged.fechaCirugia = result.fechaCirugia;
+                                                if (result.codigosCirugia && result.codigosCirugia.length > 0) {
+                                                    const codes = result.codigosCirugia.map(c => ({
+                                                        codigo: c.codigo || '',
+                                                        nombre: c.nombre || ''
+                                                    }));
+                                                    while (codes.length < 2) codes.push({ codigo: '', nombre: '' });
+                                                    merged.codigosCirugia = codes;
+                                                }
+                                                if (result.incluyeMaterial) {
+                                                    merged.incluyeMaterial = true;
+                                                    merged.descripcionMaterial = result.descripcionMaterial || '';
+                                                }
+                                                return merged;
+                                            });
+                                            setShowAIInput(false);
+                                            setAiInputText('');
+                                        } catch (err) {
+                                            console.error('AI parse error:', err);
+                                            setAiError(err.message || 'Error al procesar con IA');
+                                        } finally {
+                                            setAiLoading(false);
+                                        }
+                                    }}
+                                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${!aiInputText.trim() || aiLoading
+                                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300'
+                                        }`}
+                                >
+                                    {aiLoading ? (
+                                        <><Loader2 size={16} className="animate-spin" /> Procesando...</>
+                                    ) : (
+                                        <><Sparkles size={16} /> Procesar con IA</>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowAIInput(false); setAiInputText(''); setAiError(''); }}
+                                    className="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Professional Selection */}
                     <div className="space-y-2">

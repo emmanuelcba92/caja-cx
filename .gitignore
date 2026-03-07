@@ -20,3 +20,7 @@ build/
 
 # Logs
 *.log
+
+# Archives
+*.rar
+*.zip
