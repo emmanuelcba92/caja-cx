@@ -1265,12 +1265,15 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 obraSocial: orden.obraSocial || '',
                 numeroAfiliado: orden.numeroAfiliado || '',
                 dni: orden.dni || '',
-                edad: orden.edad || '', // Load age
+                edad: orden.edad || '',
+                telefono: orden.telefono || '',
                 habitacion: orden.habitacion || '',
                 tutor: orden.tutor || '',
-                practicas, // Only for Pedidos
-                codigosCirugia: emptyForm.codigosCirugia, // Reset surgery codes
+                practicas,
+                codigosCirugia: emptyForm.codigosCirugia,
                 diagnostico: orden.diagnostico || '',
+                observaciones: orden.observaciones || '',
+                anotacionCalendario: orden.anotacionCalendario || '',
                 suspendida: orden.suspendida || false,
                 fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
             });
@@ -1293,13 +1296,17 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 obraSocial: orden.obraSocial || '',
                 numeroAfiliado: orden.numeroAfiliado || '',
                 dni: orden.dni || '',
-                edad: orden.edad || '', // Load age
+                edad: orden.edad || '',
+                telefono: orden.telefono || '',
                 habitacion: orden.habitacion || '',
                 tutor: orden.tutor || '',
                 codigosCirugia,
-                practicas: emptyForm.practicas, // Reset practices
+                practicas: emptyForm.practicas,
                 tipoAnestesia: orden.tipoAnestesia || 'general',
                 fechaCirugia: orden.fechaCirugia || '',
+                horaCirugia: orden.horaCirugia || '',
+                salaCirugia: orden.salaCirugia || '',
+                anotacionCalendario: orden.anotacionCalendario || '',
                 incluyeMaterial: orden.incluyeMaterial || false,
                 descripcionMaterial: orden.descripcionMaterial || '',
                 diagnostico: orden.diagnostico || '',
