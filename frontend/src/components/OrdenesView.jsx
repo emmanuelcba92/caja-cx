@@ -504,16 +504,21 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 if (result.dni) merged.dni = result.dni;
                                                 if (result.edad) merged.edad = String(result.edad);
                                                 if (result.telefono) merged.telefono = result.telefono;
+                                                if (result.tutor) merged.tutor = result.tutor;
                                                 if (result.diagnostico) merged.diagnostico = result.diagnostico;
                                                 if (result.habitacion) merged.habitacion = result.habitacion;
                                                 if (result.tipoAnestesia) merged.tipoAnestesia = result.tipoAnestesia;
                                                 if (result.fechaCirugia) merged.fechaCirugia = result.fechaCirugia;
+                                                if (result.horaCirugia) merged.horaCirugia = result.horaCirugia;
+                                                if (result.salaCirugia) merged.salaCirugia = result.salaCirugia;
+                                                if (result.anotacionCalendario) merged.anotacionCalendario = result.anotacionCalendario;
+
                                                 if (result.codigosCirugia && result.codigosCirugia.length > 0) {
                                                     const codes = result.codigosCirugia.map(c => ({
                                                         codigo: c.codigo || '',
                                                         nombre: c.nombre || ''
                                                     }));
-                                                    while (codes.length < 2) codes.push({ codigo: '', nombre: '' });
+                                                    while (codes.length < 3) codes.push({ codigo: '', nombre: '' });
                                                     merged.codigosCirugia = codes;
                                                 }
                                                 if (result.incluyeMaterial) {
@@ -524,6 +529,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                             });
                                             setShowAIInput(false);
                                             setAiInputText('');
+                                            alert("¡Formulario auto-completado con éxito!");
                                         } catch (err) {
                                             console.error('AI parse error:', err);
                                             setAiError(err.message || 'Error al procesar con IA');

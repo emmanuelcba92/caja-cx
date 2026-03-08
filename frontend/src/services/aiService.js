@@ -32,12 +32,16 @@ REGLAS:
 - "dni": DNI del paciente como string.
 - "edad": Edad del paciente como string.
 - "telefono": Número de teléfono/celular. Eliminá el 0 y el 15 del inicio si los tiene (ej: "03541200806" → "3541200806").
+- "tutor": Nombre del tutor si el paciente es menor de edad o se menciona uno.
 - "codigosCirugia": Array de objetos {codigo: "XXXXXX", nombre: "descripción"}. Si el código viene con descripción entre paréntesis, separá código y nombre. Si solo hay descripción sin código, dejá el código vacío.
 - "tipoAnestesia": Debe ser exactamente uno de: "general", "local", "regional", "sedación". Convertí a minúsculas.
 - "fechaCirugia": Fecha en formato YYYY-MM-DD. Convertí cualquier formato de fecha al correcto.
+- "horaCirugia": Hora en formato HH:mm si está disponible (ej: "08:30").
+- "salaCirugia": Nombre de la sala o quirófano si se menciona (ej: "Quirófano 1").
 - "incluyeMaterial": true si hay materiales a solicitar (que no sean "." o vacío o "no"), false si no.
 - "descripcionMaterial": Descripción del material si aplica, sino cadena vacía.
 - "diagnostico": Diagnóstico o justificación de la cirugía. Si dice "." o está vacío, dejá cadena vacía.
+- "anotacionCalendario": "Auto-completado por IA" + cualquier dato extra relevante que no entre en otros campos.
 - "habitacion": Cadena vacía (no suele venir en el email).
 
 EJEMPLO DE RESPUESTA:
@@ -45,16 +49,20 @@ EJEMPLO DE RESPUESTA:
   "profesional": "Dr Pablo Jasin",
   "afiliado": "GARCIA MARIA",
   "obraSocial": "OSDE",
-  "numeroAfiliado": "",
+  "numeroAfiliado": "12345/0",
   "dni": "12345678",
   "edad": "45",
   "telefono": "3512345678",
+  "tutor": "",
   "codigosCirugia": [{"codigo": "030608", "nombre": "MICROCIRUGIA DE LARINGE"}],
   "tipoAnestesia": "general",
   "fechaCirugia": "2026-03-18",
+  "horaCirugia": "09:00",
+  "salaCirugia": "Quirófano 2",
   "incluyeMaterial": false,
   "descripcionMaterial": "",
   "diagnostico": "Disfonía",
+  "anotacionCalendario": "Auto-completado por IA. Duración estimada 1h.",
   "habitacion": ""
 }
 
