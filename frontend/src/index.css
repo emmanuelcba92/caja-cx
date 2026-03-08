@@ -111,45 +111,78 @@ input[type="number"]::-webkit-outer-spin-button {
 /* --- LEGACY BROWSER FIXES (Chrome < 111 / Windows 7) --- */
 @supports not (color: oklch(0% 0 0)) {
     :root {
-        --fallback-blue: #008c95;
-        --fallback-amber: #f39200;
-        --fallback-emerald: #10b981;
+        --fallback-blue-600: #008c95;
+        --fallback-blue-700: #00796b;
+        --fallback-amber-500: #f39200;
+        --fallback-amber-600: #e65100;
+        --fallback-emerald-500: #10b981;
+        --fallback-emerald-600: #059669;
+        --fallback-slate-50: #f8fafc;
+        --fallback-slate-100: #f1f5f9;
+        --fallback-slate-800: #1e293b;
     }
 
-    button,
-    .bg-blue-600,
+    /* Forzar colores sólidos si el navegador no entiende el sistema moderno */
+    .bg-blue-600 {
+        background-color: var(--fallback-blue-600) !important;
+    }
+
+    .bg-blue-700 {
+        background-color: var(--fallback-blue-700) !important;
+    }
+
     .text-blue-600 {
-        background-color: var(--fallback-blue) !important;
-        color: white;
+        color: var(--fallback-blue-600) !important;
     }
 
-    .bg-amber-500,
-    .text-amber-500 {
-        background-color: var(--fallback-amber) !important;
+    .bg-amber-500 {
+        background-color: var(--fallback-amber-500) !important;
     }
 
-    .bg-emerald-600,
-    .text-emerald-600 {
-        background-color: var(--fallback-emerald) !important;
+    .bg-amber-600 {
+        background-color: var(--fallback-amber-600) !important;
+    }
+
+    .bg-emerald-500 {
+        background-color: var(--fallback-emerald-500) !important;
+    }
+
+    .bg-emerald-600 {
+        background-color: var(--fallback-emerald-600) !important;
+    }
+
+    .bg-slate-50 {
+        background-color: var(--fallback-slate-50) !important;
+    }
+
+    .bg-slate-100 {
+        background-color: var(--fallback-slate-100) !important;
     }
 }
 
-/* Fix for buttons that use backdrop-blur or modern filters */
+/* Fix for backdrop-filter which isn't fully supported in Chrome 109 */
 .backdrop-blur-sm,
 .backdrop-blur-md,
+.backdrop-blur-lg,
 .backdrop-blur-xl {
-    -webkit-backdrop-filter: blur(4px);
-    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    /* Fallback para cuando el desenfoque no funciona: fondo con un poco más de opacidad */
+    background-color: rgba(255, 255, 255, 0.9) !important;
 }
 
-/* Ensure buttons are always visible even if filters fail */
-button {
-    min-height: 36px;
-    min-width: 36px;
-    opacity: 1 !important;
+/* Evitar problemas con gradientes complejos */
+.bg-gradient-to-br {
+    background-image: linear-gradient(to bottom right, var(--tw-gradient-from), var(--tw-gradient-to)) !important;
 }
 
-/* Fix for truncated sidebar text in old Chrome */
+/* Fix for sidebar text and icons */
 aside span {
     white-space: nowrap;
+}
+
+/* Botones más robustos */
+button {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
 }
