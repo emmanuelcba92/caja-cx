@@ -1450,9 +1450,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
         const prefixes = ['dr', 'dra', 'lic'];
         if (parts.length >= 2 && prefixes.includes(parts[0])) {
-            // Check if we have a match in map for "dr_surname" or "dra_surname"
             const shorthand = `${parts[0]}_${parts[1]}`;
-            // Search in filenames we know
+            // Search in filenames we know exist in public/firmas
             const knownFiles = [
                 'dr_bruera', 'dr_curet', 'dr_hernandorena', 'dr_hoyos', 'dr_jasin',
                 'dr_paredes', 'dr_romero_orellano', 'dr_zernotti',
@@ -1634,24 +1633,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     {/* Footer: Diagnosis and Signature */}
                     <div className="absolute bottom-32 left-16 right-16">
                         <div className="flex justify-end items-end">
-                            <div className="text-center min-w-[200px]">
-                                <div className="h-24 flex items-end justify-center mb-2">
-                                    <img
-                                        src={getSignatureUrl(previewData.tutor || previewData.profesional)}
-                                        alt={`Firma ${previewData.tutor || previewData.profesional} `}
-                                        className="h-24 object-contain mx-auto"
-                                        onError={(e) => { e.target.style.display = 'none'; }}
-                                    />
-                                </div>
-                                <div className="border-t border-black pt-1">
-                                    <p className="font-bold text-xs uppercase">{(previewData.tutor || previewData.profesional)}</p>
-                                    {(() => {
-                                        const pData = getProfesionalData(previewData.tutor || previewData.profesional);
-                                        return pData.mp ? (
-                                            <p className="text-[10px]">M.P. {pData.mp} {pData.me ? `- M.E. ${pData.me}` : ''}</p>
-                                        ) : null;
-                                    })()}
-                                </div>
+                            <div className="text-center">
+                                <img
+                                    src={getSignatureUrl(previewData.profesional)}
+                                    alt={`Firma ${previewData.profesional} `}
+                                    className="h-32 object-contain mx-auto"
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                />
                             </div>
                         </div>
                     </div>
@@ -1709,24 +1697,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 </div>
 
                 <div className="mt-16 flex justify-end">
-                    <div className="text-center min-w-[200px]">
-                        <div className="h-24 flex items-end justify-center mb-2">
-                            <img
-                                src={getSignatureUrl(previewData.tutor || previewData.profesional)}
-                                alt={`Firma ${previewData.tutor || previewData.profesional} `}
-                                className="h-24 object-contain mx-auto"
-                                onError={(e) => { e.target.style.display = 'none'; }}
-                            />
-                        </div>
-                        <div className="border-t border-black pt-1">
-                            <p className="font-bold text-xs uppercase">{(previewData.tutor || previewData.profesional)}</p>
-                            {(() => {
-                                const pData = getProfesionalData(previewData.tutor || previewData.profesional);
-                                return pData.mp ? (
-                                    <p className="text-[10px]">M.P. {pData.mp} {pData.me ? `- M.E. ${pData.me}` : ''}</p>
-                                ) : null;
-                            })()}
-                        </div>
+                    <div className="text-center">
+                        <img
+                            src={getSignatureUrl(previewData.profesional)}
+                            alt={`Firma ${previewData.profesional} `}
+                            className="h-32 object-contain mx-auto"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
                     </div>
                 </div>
             </div>
