@@ -9,7 +9,7 @@ export const DEFAULT_PROFESIONALES = [
     { nombre: 'Dr. Sanchez', categoria: 'Anestesista', especialidad: 'Anestesiología', mp: '', me: '' },
     { nombre: 'Dr. Sapag', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '27213', me: '14573' },
     { nombre: 'Dr. Vaccari', categoria: 'Anestesista', especialidad: 'Anestesiología', mp: '', me: '' },
-    { nombre: 'Dr. Zemotti', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '46903', me: '' },
+    { nombre: 'Dr. Zernotti', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '46903', me: '' },
     { nombre: 'Dra. Carranza', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '41671', me: '22476' },
     { nombre: 'Dra. Ojeda', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '44518', me: '' },
     { nombre: 'Dra. Romani', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '21911', me: '8310' },
@@ -19,6 +19,8 @@ export const DEFAULT_PROFESIONALES = [
     { nombre: 'Dra. Valeriani', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '25054', me: '9996' },
     { nombre: 'Dra. Venier', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '39500', me: '20651' },
     { nombre: 'Dra. Zalazar', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '43805', me: '' },
+    { nombre: 'Dr. Hernandorena', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '', me: '' },
+    { nombre: 'Dr. Romero Orellano', categoria: 'ORL', especialidad: 'Otorrinolaringología', mp: '', me: '' },
     { nombre: 'Lic. Schafer', categoria: 'Fonoaudiologa', especialidad: 'Fonoaudiología', mp: '', me: '' },
     { nombre: 'Tutoras', categoria: 'Tutoras', especialidad: 'Tutorías', mp: '', me: '' }
 ];

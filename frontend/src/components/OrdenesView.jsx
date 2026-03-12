@@ -19,7 +19,21 @@ import html2pdf from 'html2pdf.js';
 
 // Map professional names to their signature image files
 const FIRMAS_MAP = {
-    // 'Dra. Valenzuela': 'valenzuela.png',
+    'Dr. Jasin': 'dr_jasin.png',
+    'Dr. Bruera': 'dr_bruera.png',
+    'Dr. Curet': 'dr_curet.png',
+    'Dr. Hoyos': 'dr_hoyos.png',
+    'Dr. Paredes': 'dr_paredes.png',
+    'Dr. Zernotti': 'dr_zernotti.png',
+    'Dr. Zemotti': 'dr_zernotti.png',
+    'Dr. Romero Orellano': 'dr_romero_orellano.png',
+    'Dr. Hernandorena': 'dr_hernandorena.png',
+    'Dra. Carranza': 'dra_carranza.png',
+    'Dra. Romani': 'dra_romani.png',
+    'Dra. Valeriani': 'dra_valeriani.png',
+    'Dra. Venier': 'dra_venier.png',
+    'Dra. Zalazar': 'dra_zalazar.png',
+    'Dr. Pablo Jasin': 'dr_jasin.png',
 };
 
 // Helper to abbreviate name to "Prefix Surname"
@@ -1420,24 +1434,35 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
     const getSignatureUrl = (profesionalName) => {
         if (!profesionalName) return '';
-        if (FIRMAS_MAP[profesionalName]) {
-            return `/firmas/${FIRMAS_MAP[profesionalName]}`;
-        }
+
+        // Try direct map match first
+        if (FIRMAS_MAP[profesionalName]) return `/firmas/${FIRMAS_MAP[profesionalName]}`;
 
         // Handle names like "Dr Paredes Ariel" -> "dr_paredes.png"
         const cleanName = profesionalName
             .toLowerCase()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9 ]/g, '') // Keep spaces for splitting
+            .replace(/[^a-z0-9 ]/g, '')
             .trim();
 
         const parts = cleanName.split(/\s+/);
-        let filename = cleanName.replace(/\s+/g, '_'); // Fallback
+        let filename = cleanName.replace(/\s+/g, '_');
 
         const prefixes = ['dr', 'dra', 'lic'];
         if (parts.length >= 2 && prefixes.includes(parts[0])) {
-            // "dr paredes ariel" -> "dr_paredes"
-            filename = `${parts[0]}_${parts[1]}`;
+            // Check if we have a match in map for "dr_surname" or "dra_surname"
+            const shorthand = `${parts[0]}_${parts[1]}`;
+            // Search in filenames we know
+            const knownFiles = [
+                'dr_bruera', 'dr_curet', 'dr_hernandorena', 'dr_hoyos', 'dr_jasin',
+                'dr_paredes', 'dr_romero_orellano', 'dr_zernotti',
+                'dra_carranza', 'dra_romani', 'dra_valeriani', 'dra_venier', 'dra_zalazar'
+            ];
+            if (knownFiles.includes(shorthand)) {
+                filename = shorthand;
+            } else if (shorthand.includes('romero') && knownFiles.includes('dr_romero_orellano')) {
+                filename = 'dr_romero_orellano';
+            }
         }
 
         return `/firmas/${filename}.png`;
@@ -1609,14 +1634,24 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     {/* Footer: Diagnosis and Signature */}
                     <div className="absolute bottom-32 left-16 right-16">
                         <div className="flex justify-end items-end">
-
-                            <div className="text-center">
-                                <img
-                                    src={getSignatureUrl(previewData.tutor || previewData.profesional)}
-                                    alt={`Firma ${previewData.tutor || previewData.profesional} `}
-                                    className="h-32 object-contain mx-auto"
-                                    onError={(e) => { e.target.style.display = 'none'; }}
-                                />
+                            <div className="text-center min-w-[200px]">
+                                <div className="h-24 flex items-end justify-center mb-2">
+                                    <img
+                                        src={getSignatureUrl(previewData.tutor || previewData.profesional)}
+                                        alt={`Firma ${previewData.tutor || previewData.profesional} `}
+                                        className="h-24 object-contain mx-auto"
+                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                    />
+                                </div>
+                                <div className="border-t border-black pt-1">
+                                    <p className="font-bold text-xs uppercase">{(previewData.tutor || previewData.profesional)}</p>
+                                    {(() => {
+                                        const pData = getProfesionalData(previewData.tutor || previewData.profesional);
+                                        return pData.mp ? (
+                                            <p className="text-[10px]">M.P. {pData.mp} {pData.me ? `- M.E. ${pData.me}` : ''}</p>
+                                        ) : null;
+                                    })()}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1673,14 +1708,25 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     <p className="pt-4"><span className="font-semibold">Diagnóstico:</span> {previewData.diagnostico}</p>
                 </div>
 
-                <div className="mt-24 flex justify-end">
-                    <div className="text-center">
-                        <img
-                            src={getSignatureUrl(previewData.tutor || previewData.profesional)}
-                            alt={`Firma ${previewData.tutor || previewData.profesional} `}
-                            className="h-32 object-contain mx-auto"
-                            onError={(e) => { e.target.style.display = 'none'; }}
-                        />
+                <div className="mt-16 flex justify-end">
+                    <div className="text-center min-w-[200px]">
+                        <div className="h-24 flex items-end justify-center mb-2">
+                            <img
+                                src={getSignatureUrl(previewData.tutor || previewData.profesional)}
+                                alt={`Firma ${previewData.tutor || previewData.profesional} `}
+                                className="h-24 object-contain mx-auto"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                        </div>
+                        <div className="border-t border-black pt-1">
+                            <p className="font-bold text-xs uppercase">{(previewData.tutor || previewData.profesional)}</p>
+                            {(() => {
+                                const pData = getProfesionalData(previewData.tutor || previewData.profesional);
+                                return pData.mp ? (
+                                    <p className="text-[10px]">M.P. {pData.mp} {pData.me ? `- M.E. ${pData.me}` : ''}</p>
+                                ) : null;
+                            })()}
+                        </div>
                     </div>
                 </div>
             </div>
