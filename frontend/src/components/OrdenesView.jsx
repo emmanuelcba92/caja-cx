@@ -70,6 +70,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const [activeTab, setActiveTab] = useState(initialTab); // 'internacion' | 'pedidos'
     const [pedidos, setPedidos] = useState([]); // List of medical orders (pedidos)
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
+    const [rangeStart, setRangeStart] = useState('');
+    const [rangeEnd, setRangeEnd] = useState('');
 
     // Filter State
     const [filterProfesional, setFilterProfesional] = useState('');
@@ -284,8 +286,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             const { startOfWeek, endOfWeek, isWithinInterval, parseISO, format } = await import('date-fns');
 
             const now = new Date();
-            const start = startOfWeek(now, { weekStartsOn: 1 }); // Monday
-            const end = endOfWeek(now, { weekStartsOn: 1 }); // Sunday
+            const start = rangeStart ? parseISO(rangeStart) : startOfWeek(now, { weekStartsOn: 1 }); // Monday
+            const end = rangeEnd ? parseISO(rangeEnd) : endOfWeek(now, { weekStartsOn: 1 }); // Sunday
 
             const weekOrdenes = ordenes.filter(o => {
                 if (o.suspendida) return false;
@@ -366,8 +368,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             const { startOfWeek, endOfWeek, isWithinInterval, parseISO, format } = await import('date-fns');
 
             const now = new Date();
-            const start = startOfWeek(now, { weekStartsOn: 1 }); // Monday
-            const end = endOfWeek(now, { weekStartsOn: 1 }); // Sunday
+            const start = rangeStart ? parseISO(rangeStart) : startOfWeek(now, { weekStartsOn: 1 }); // Monday
+            const end = rangeEnd ? parseISO(rangeEnd) : endOfWeek(now, { weekStartsOn: 1 }); // Sunday
 
             const weekOrdenes = ordenes.filter(o => {
                 if (o.suspendida) return false;
@@ -381,7 +383,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             }).sort((a, b) => new Date(a.fechaCirugia) - new Date(b.fechaCirugia));
 
             if (weekOrdenes.length === 0) {
-                alert("No hay cirugías registradas (no suspendidas) para esta semana.");
+                alert("No hay cirugías registradas (no suspendidas) en el rango seleccionado.");
                 return;
             }
 
@@ -839,7 +841,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
                     {/* Surgery Details: Anesthesia | Date | Time */}
                     {!isPedido && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 border-t border-slate-50">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-6 border-t border-slate-50">
                             <div className="space-y-2">
                                 <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                                     <Stethoscope size={12} className={`text-${accentColor}-500`} /> Tipo de Anestesia
@@ -857,7 +859,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             </div>
                             <div className="space-y-2">
                                 <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <Calendar size={12} className={`text-${accentColor}-500`} /> Fecha
+                                    <Calendar size={12} className={`text-${accentColor}-500`} /> Fecha Cirugía
                                 </label>
                                 <input
                                     type="date"
@@ -875,6 +877,17 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     value={formData.horaCirugia}
                                     onChange={(e) => handleInputChange('horaCirugia', e.target.value)}
                                     className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all font-black ${ringClass}`}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    <Calendar size={12} className={`text-${accentColor}-500`} /> Fecha Documento
+                                </label>
+                                <input
+                                    type="date"
+                                    value={formData.fechaDocumento}
+                                    onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
+                                    className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold ${ringClass}`}
                                 />
                             </div>
                         </div>
@@ -1429,7 +1442,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const formatDate = (dateStr) => {
         if (!dateStr) return '';
         const [y, m, d] = dateStr.split('-');
-        return `${d} /${m}/${y} `;
+        return `${d}/${m}/${y}`;
     };
 
     const getSignatureUrl = (profesionalName) => {
@@ -1839,10 +1852,31 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         <div className="flex items-center gap-3">
                             {activeTab === 'internacion' && canShareOrdenes && (
                                 <>
+                                    <div className="flex items-center gap-1.5 bg-teal-800/40 p-1.5 rounded-xl border border-teal-600/30">
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] font-black text-teal-300 uppercase px-1">Inicio</span>
+                                            <input
+                                                type="date"
+                                                value={rangeStart}
+                                                onChange={(e) => setRangeStart(e.target.value)}
+                                                className="bg-transparent text-white text-[10px] border-0 focus:ring-0 p-0 px-1 w-20 cursor-pointer"
+                                            />
+                                        </div>
+                                        <div className="w-px h-4 bg-teal-600/30"></div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] font-black text-teal-300 uppercase px-1">Fin</span>
+                                            <input
+                                                type="date"
+                                                value={rangeEnd}
+                                                onChange={(e) => setRangeEnd(e.target.value)}
+                                                className="bg-transparent text-white text-[10px] border-0 focus:ring-0 p-0 px-1 w-20 cursor-pointer"
+                                            />
+                                        </div>
+                                    </div>
                                     <button
                                         onClick={handleExportWeeklyExcel}
                                         className="flex items-center justify-center gap-2 px-4 py-3 bg-teal-800 text-teal-100 rounded-xl font-bold hover:bg-teal-900 transition-all shadow-lg shadow-teal-950/20 border border-teal-600"
-                                        title="Descargar Excel Semanal"
+                                        title="Descargar Excel con Rango"
                                     >
                                         <TableProperties size={20} />
                                         <span className="hidden sm:inline">Excel</span>
@@ -1850,7 +1884,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     <button
                                         onClick={handlePrintWeeklyReport}
                                         className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all shadow-lg shadow-slate-950/20 border border-slate-700"
-                                        title="Imprimir Control Semanal"
+                                        title="Imprimir Control con Rango"
                                     >
                                         <Printer size={20} />
                                         <span className="hidden sm:inline">Imprimir Control</span>
