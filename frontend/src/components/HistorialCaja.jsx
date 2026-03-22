@@ -3,7 +3,7 @@ import { Search, Edit, Edit2, Trash2, Check, X, Calendar, DollarSign, User, Fold
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import ExcelJS from 'exceljs';
+// Dynamic import used for exceljs
 // Helper function to wait for Firestore writes to propagate
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -450,6 +450,7 @@ const HistorialCaja = () => {
         const dataToExport = history.filter(item => item.fecha === selectedDate);
         if (dataToExport.length === 0) return alert("No hay datos para exportar");
 
+        const ExcelJS = (await import('exceljs')).default || await import('exceljs');
         const workbook = new ExcelJS.Workbook();
 
         // Helper to load image
@@ -729,6 +730,7 @@ const HistorialCaja = () => {
     };
 
     const exportExcelDirect = async (dataToExport, date) => {
+        const ExcelJS = (await import('exceljs')).default || await import('exceljs');
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Caja', { pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 } });
         const headerStyle = { font: { bold: true }, alignment: { horizontal: 'center' }, border: { bottom: { style: 'thin' } } };

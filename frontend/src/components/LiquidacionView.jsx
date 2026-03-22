@@ -4,7 +4,7 @@ import { db } from '../firebase/config';
 import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
-import ExcelJS from 'exceljs';
+// Dynamic import used for exceljs
 import { saveAs } from 'file-saver';
 
 const LiquidacionView = () => {
@@ -838,6 +838,7 @@ const LiquidacionView = () => {
             const sortedDates = Array.from(dates).sort();
 
             // 3. Create Excel
+            const ExcelJS = (await import('exceljs')).default || await import('exceljs');
             const wb = new ExcelJS.Workbook();
             const ws = wb.addWorksheet('Honorarios');
 

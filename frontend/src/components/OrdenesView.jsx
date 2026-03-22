@@ -15,7 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { createPortal } from 'react-dom';
 import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
-import html2pdf from 'html2pdf.js';
+// Dynamic import used for html2pdf
 
 // Map professional names to their signature image files
 const FIRMAS_MAP = {
@@ -404,7 +404,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleDownloadPDF = () => {
+    const handleDownloadPDF = async () => {
         const element = document.getElementById('preview-content');
         if (!element) return;
 
@@ -417,6 +417,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
         };
 
+        const html2pdf = (await import('html2pdf.js')).default || await import('html2pdf.js');
         html2pdf().from(element).set(opt).save();
     };
 

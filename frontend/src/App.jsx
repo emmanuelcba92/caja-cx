@@ -1,23 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { db } from './firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import CajaForm from './components/CajaForm';
-import LiquidacionView from './components/LiquidacionView';
-import ProfesionalesView from './components/ProfesionalesView';
-import HistorialCaja from './components/HistorialCaja';
-import AccessManager from './components/AccessManager';
-import NotesView from './components/NotesView';
-import OrdenesView from './components/OrdenesView';
-import NotificationBell from './components/NotificationBell';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import LoginView from './components/LoginView';
-import AdminView from './components/AdminView';
 import { ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
-
-import UserMenu from './components/UserMenu';
 import { Users, LayoutDashboard, FileText, History, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, FileHeart, Calendar as CalendarIcon, ShieldCheck } from 'lucide-react';
-import CalendarView from './components/CalendarView';
-import AuditView from './components/AuditView';
+
+// Static immediately-needed components
+import NotificationBell from './components/NotificationBell';
+import UserMenu from './components/UserMenu';
+import LoginView from './components/LoginView';
+
+// Lazy-loaded views
+const CajaForm = lazy(() => import('./components/CajaForm'));
+const LiquidacionView = lazy(() => import('./components/LiquidacionView'));
+const ProfesionalesView = lazy(() => import('./components/ProfesionalesView'));
+const HistorialCaja = lazy(() => import('./components/HistorialCaja'));
+const AccessManager = lazy(() => import('./components/AccessManager'));
+const NotesView = lazy(() => import('./components/NotesView'));
+const OrdenesView = lazy(() => import('./components/OrdenesView'));
+const CalendarView = lazy(() => import('./components/CalendarView'));
+const AuditView = lazy(() => import('./components/AuditView'));
+const AdminView = lazy(() => import('./components/AdminView'));
 
 
 function AuthenticatedApp() {
@@ -246,29 +249,36 @@ function AuthenticatedApp() {
 
         <section className="flex-1 overflow-y-auto p-8 bg-slate-50 transition-colors duration-300">
           <div className={`mx-auto space-y-6 transition-all duration-300 ${sidebarOpen ? 'max-w-7xl' : 'max-w-[1600px]'}`}>
-            {activeTab === 'caja' && <CajaForm />}
-            {activeTab === 'calendario' && <CalendarView onNavigate={handleNavigate} />}
-            {activeTab === 'auditoria' && <AuditView onNavigate={handleNavigate} />}
-            {activeTab === 'notas' && <NotesView />}
-            {activeTab === 'historial' && <HistorialCaja />}
-            {activeTab === 'liquidaciones' && <LiquidacionView />}
-            {activeTab === 'profesionales' && <ProfesionalesView />}
-            {activeTab === 'compartir' && <AccessManager />}
-            {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
-              <OrdenesView
-                initialTab="internacion"
-                draftData={draftSurgery}
-                onDraftConsumed={() => setDraftSurgery(null)}
-              />
-            )}
-            {activeTab === 'pedidos' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
-              <OrdenesView
-                initialTab="pedidos"
-                draftData={draftSurgery}
-                onDraftConsumed={() => setDraftSurgery(null)}
-              />
-            )}
-            {activeTab === 'admin' && (isSuperAdmin || permissions?.can_view_admin) && <AdminView />}
+            <Suspense fallback={
+              <div className="flex flex-col items-center justify-center p-20 gap-4 text-slate-400">
+                <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                <p className="animate-pulse font-medium">Cargando módulo...</p>
+              </div>
+            }>
+              {activeTab === 'caja' && <CajaForm />}
+              {activeTab === 'calendario' && <CalendarView onNavigate={handleNavigate} />}
+              {activeTab === 'auditoria' && <AuditView onNavigate={handleNavigate} />}
+              {activeTab === 'notas' && <NotesView />}
+              {activeTab === 'historial' && <HistorialCaja />}
+              {activeTab === 'liquidaciones' && <LiquidacionView />}
+              {activeTab === 'profesionales' && <ProfesionalesView />}
+              {activeTab === 'compartir' && <AccessManager />}
+              {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
+                <OrdenesView
+                  initialTab="internacion"
+                  draftData={draftSurgery}
+                  onDraftConsumed={() => setDraftSurgery(null)}
+                />
+              )}
+              {activeTab === 'pedidos' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
+                <OrdenesView
+                  initialTab="pedidos"
+                  draftData={draftSurgery}
+                  onDraftConsumed={() => setDraftSurgery(null)}
+                />
+              )}
+              {activeTab === 'admin' && (isSuperAdmin || permissions?.can_view_admin) && <AdminView />}
+            </Suspense>
           </div>
         </section>
 

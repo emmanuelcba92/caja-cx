@@ -4,7 +4,7 @@ import { db, USE_LOCAL_DB } from '../firebase/config';
 import { collection, getDocs, getDoc, addDoc, deleteDoc, doc, query, where, orderBy, updateDoc } from 'firebase/firestore';
 import { apiService } from '../services/apiService';
 import { createPortal } from 'react-dom';
-import ExcelJS from 'exceljs';
+// Dynamic import used for exceljs
 import { saveAs } from 'file-saver';
 import { useAuth } from '../context/AuthContext';
 import { DEFAULT_PROFESIONALES } from '../data/seedProfs';
@@ -354,6 +354,7 @@ const ProfesionalesView = () => {
             const { dates, profs, matrix, totals } = data;
 
             // Create Excel
+            const ExcelJS = (await import('exceljs')).default || await import('exceljs');
             const wb = new ExcelJS.Workbook();
             const ws = wb.addWorksheet('Honorarios', {
                 pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
