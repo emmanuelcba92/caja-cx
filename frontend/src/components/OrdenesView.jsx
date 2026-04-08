@@ -1446,6 +1446,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         return `${d}/${m}/${y}`;
     };
 
+    const formatLongDate = (dateStr) => {
+        if (!dateStr) return '';
+        const [y, m, d] = dateStr.split('-');
+        const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        return `${parseInt(d, 10)} de ${months[parseInt(m, 10) - 1]} de ${y}`;
+    };
+
     const getSignatureUrl = (profesionalName) => {
         if (!profesionalName) return '';
 
@@ -1622,7 +1629,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
                         <p className="text-sm text-right absolute right-0 top-20" style={{ color: '#000' }}>
-                            Córdoba, {new Date(previewData.fechaDocumento).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            Córdoba, {formatLongDate(previewData.fechaDocumento)}
                         </p>
                     </div>
 
@@ -1675,7 +1682,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         onError={(e) => { e.target.style.display = 'none'; }}
                     />
                     <p className="text-sm text-right -mt-4" style={{ color: '#333' }}>
-                        Córdoba, {formatDate(previewData.fechaDocumento)}
+                        Córdoba, {formatLongDate(previewData.fechaDocumento)}
                     </p>
                 </div>
 

@@ -184,6 +184,36 @@ const HistorialCaja = () => {
         }
     }, [selectedDate, user, catalogOwnerUid, viewingUid]);
 
+    const saveDailyComment = async () => {
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return;
+        try {
+            const q = query(collection(db, "daily_comments"),
+                where("userId", "==", ownerToUse),
+                where("date", "==", selectedDate)
+            );
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+                await apiService.updateDocument("daily_comments", snapshot.docs[0].id, {
+                    comment: dailyComment,
+                    timestamp: new Date().toISOString()
+                });
+            } else if (dailyComment.trim()) {
+                await apiService.addDocument("daily_comments", {
+                    date: selectedDate,
+                    comment: dailyComment,
+                    userId: ownerToUse,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            setIsEditingComment(false);
+            alert("Comentario general actualizado.");
+        } catch (error) {
+             console.error("Error saving daily comment", error);
+             alert("Error guardando comentario: " + error.message);
+        }
+    };
+
     // --- Data Processing for Hierarchy ---
     const getYears = () => {
         if (!history) return [];
@@ -446,74 +476,51 @@ const HistorialCaja = () => {
     };
 
     // --- EXCEL EXPORT ---
-    const handleExportExcel = async () => {
-        const dataToExport = history.filter(item => item.fecha === selectedDate);
-        if (dataToExport.length === 0) return alert("No hay datos para exportar");
-
+    const generateDailyExcelWorkbookBuffer = async (dataToExport, dateStr, commentStr) => {
         const ExcelJS = (await import('exceljs')).default || await import('exceljs');
         const workbook = new ExcelJS.Workbook();
-
-        // Helper to load image
+        
         const loadImage = async (url) => {
             const response = await fetch(url);
             const blob = await response.blob();
             return blob.arrayBuffer();
         };
 
-        // Styles
-        const titleStyle = { font: { name: 'Arial', size: 14, bold: true }, alignment: { vertical: 'middle', horizontal: 'left' } };
         const headerStyle = { font: { name: 'Arial', size: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'middle' }, border: { bottom: { style: 'thin' } } };
         const borderStyle = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
-        // --- 1. MAIN SHEET (CAJA) ---
-        const worksheet = workbook.addWorksheet('Caja', {
-            pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
-        });
+        const worksheet = workbook.addWorksheet('Caja', { pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 } });
 
-        // Logo & Title Logic (Reusable)
         const addHeaderToSheet = async (ws, titlePrefix) => {
             try {
                 const logoBuffer = await loadImage('/coat_logo.png');
-                const logoId = workbook.addImage({
-                    buffer: logoBuffer,
-                    extension: 'png',
-                });
-                ws.addImage(logoId, {
-                    tl: { col: 0, row: 0 },
-                    ext: { width: 180, height: 60 }
-                });
+                const logoId = workbook.addImage({ buffer: logoBuffer, extension: 'png' });
+                ws.addImage(logoId, { tl: { col: 0, row: 0 }, ext: { width: 180, height: 60 } });
             } catch (e) {
-                console.error("Could not load logo", e);
                 ws.mergeCells('A1:C3');
                 const logoCell = ws.getCell('A1');
                 logoCell.value = 'COAT\nCENTRO OTORRINOLARINGOLÓGICO';
                 logoCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'center' };
             }
-
             ws.getCell('A5').value = titlePrefix;
             ws.getCell('A5').font = { bold: true };
-            ws.getCell('B5').value = selectedDate.split('-').reverse().join('/');
+            ws.getCell('B5').value = dateStr.split('-').reverse().join('/');
         };
 
         await addHeaderToSheet(worksheet, 'Caja de cirugía');
 
-        // Headers
         worksheet.getRow(7).values = ['Paciente', 'DNI', 'Obra social', 'Prof. 1', 'Prof. 2', 'Prof. 3', 'Pesos', 'Dolares', 'Liq. P1', 'Liq. P2', 'Liq. P3', 'Anest.', 'Liq. Anest.', 'Coat $', 'Coat USD'];
-
-        // Merge Headers for Monto COAT
         worksheet.mergeCells('N6:O6');
         worksheet.getCell('N6').value = 'Monto COAT';
         worksheet.getCell('N6').alignment = { horizontal: 'center' };
         worksheet.getCell('N6').font = { bold: true };
 
-        // Apply styles
         worksheet.getRow(7).eachCell((cell) => {
             cell.font = headerStyle.font;
             cell.alignment = headerStyle.alignment;
             cell.border = headerStyle.border;
         });
 
-        // Data Rows
         let rowIndex = 8;
         let totalCoatPesos = 0;
         let totalCoatDolares = 0;
@@ -521,63 +528,39 @@ const HistorialCaja = () => {
         dataToExport.forEach(item => {
             const row = worksheet.getRow(rowIndex);
             row.values = [
-                item.paciente,
-                item.dni,
-                item.obra_social,
-                item.prof_1 || '',
-                item.prof_2 || '',
-                item.prof_3 || '',
-                item.pesos,
-                item.dolares,
-                // Liq P1
+                item.paciente, item.dni, item.obra_social, item.prof_1 || '', item.prof_2 || '', item.prof_3 || '',
+                item.pesos, item.dolares,
                 `${item.liq_prof_1_currency === 'USD' ? 'USD' : '$'} ${formatMoney(item.liq_prof_1)}${item.liq_prof_1_secondary ? ' / ' + (item.liq_prof_1_currency_secondary === 'USD' ? 'USD' : '$') + ' ' + formatMoney(item.liq_prof_1_secondary) : ''}`,
-                // Liq P2
                 `${item.liq_prof_2_currency === 'USD' ? 'USD' : '$'} ${formatMoney(item.liq_prof_2)}${item.liq_prof_2_secondary ? ' / ' + (item.liq_prof_2_currency_secondary === 'USD' ? 'USD' : '$') + ' ' + formatMoney(item.liq_prof_2_secondary) : ''}`,
-                // Liq P3
                 `${item.liq_prof_3_currency === 'USD' ? 'USD' : '$'} ${formatMoney(item.liq_prof_3)}${item.liq_prof_3_secondary ? ' / ' + (item.liq_prof_3_currency_secondary === 'USD' ? 'USD' : '$') + ' ' + formatMoney(item.liq_prof_3_secondary) : ''}`,
                 item.anestesista || '',
                 item.liq_anestesista > 0 ? `${item.liq_anestesista_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_anestesista)}` : '-',
-                item.coat_pesos,
-                item.coat_dolares
+                item.coat_pesos, item.coat_dolares
             ];
-
-            // Formatting
             [7, 8, 10, 11, 12, 14, 15].forEach(col => row.getCell(col).numFmt = '#,##0.00');
-
             totalCoatPesos += item.coat_pesos || 0;
             totalCoatDolares += item.coat_dolares || 0;
             rowIndex++;
         });
 
-        // Totals
         const totalRow = worksheet.getRow(rowIndex + 2);
         totalRow.getCell(13).value = 'Total';
         totalRow.getCell(13).font = { bold: true };
         totalRow.getCell(14).value = totalCoatPesos;
-        totalRow.getCell(14).numFmt = '#,##0.00'; // Format money default
+        totalRow.getCell(14).numFmt = '#,##0.00';
         totalRow.getCell(14).font = { bold: true, underline: true };
         totalRow.getCell(15).value = totalCoatDolares;
         totalRow.getCell(15).numFmt = '#,##0.00';
         totalRow.getCell(15).font = { bold: true, underline: true };
 
-        // Global Comment
         const commentRowIndex = Math.max(18, rowIndex + 5);
         worksheet.mergeCells(`A${commentRowIndex}:E${commentRowIndex}`);
         const commentCell = worksheet.getCell(`A${commentRowIndex}`);
-        commentCell.value = dailyComment || '';
+        commentCell.value = commentStr || '';
         commentCell.font = { italic: true, color: { argb: 'FF666666' } };
 
-        // Widths
-        worksheet.columns = [
-            { width: 25 }, { width: 15 }, { width: 20 },
-            { width: 20 }, { width: 20 }, { width: 20 },
-            { width: 15 }, { width: 15 },
-            { width: 15 }, { width: 15 }, { width: 15 },
-            { width: 20 }, { width: 20 },
-            { width: 15 }, { width: 15 }
-        ];
+        worksheet.columns = [{ width: 25 }, { width: 15 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 20 }, { width: 20 }, { width: 15 }, { width: 15 }];
 
-        // --- 2. INDIVIDUAL SHEETS (LIQUIDATIONS) ---
         const profs = new Set();
         dataToExport.forEach(item => {
             if (item.prof_1) profs.add(item.prof_1);
@@ -587,15 +570,11 @@ const HistorialCaja = () => {
         });
 
         for (const prof of profs) {
-            const sheetName = `Liq ${prof}`.substring(0, 31).replace(/[\\/?*[\]]/g, ''); // Sanitize
-            const ps = workbook.addWorksheet(sheetName, {
-                pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
-            });
+            const sheetName = `Liq ${prof}`.substring(0, 31).replace(/[\\/?*[\]]/g, '');
+            const ps = workbook.addWorksheet(sheetName, { pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 } });
             await addHeaderToSheet(ps, `Liquidación: ${prof}`);
 
-            // Headers
             ps.getRow(7).values = ['Paciente', 'DNI', 'Obra Social', 'Cobro Pesos', 'Cobro USD', 'Liquidación'];
-
             ps.getRow(7).eachCell((cell) => {
                 cell.font = headerStyle.font;
                 cell.alignment = headerStyle.alignment;
@@ -606,20 +585,15 @@ const HistorialCaja = () => {
             let totalLiqPesos = 0;
             let totalLiqDolares = 0;
 
-            // Filter rows for this prof
-            const profRows = dataToExport.filter(item =>
-                item.prof_1 === prof || item.prof_2 === prof || item.prof_3 === prof || item.anestesista === prof
-            );
+            const profRows = dataToExport.filter(item => item.prof_1 === prof || item.prof_2 === prof || item.prof_3 === prof || item.anestesista === prof);
 
             profRows.forEach(item => {
-                // Determine Liq Amount & Currency
                 let liqAmount = 0;
-                let liqCurrency = 'ARS'; // Default or assumption
+                let liqCurrency = 'ARS';
 
                 if (item.prof_1 === prof) {
                     liqAmount = item.liq_prof_1;
                     liqCurrency = item.liq_prof_1_currency || 'ARS';
-                    // Check secondary
                     if (item.liq_prof_1_secondary > 0) {
                         if (item.liq_prof_1_currency_secondary === 'USD') totalLiqDolares += (parseFloat(item.liq_prof_1_secondary) || 0);
                         else totalLiqPesos += (parseFloat(item.liq_prof_1_secondary) || 0);
@@ -647,32 +621,19 @@ const HistorialCaja = () => {
                 else totalLiqPesos += (parseFloat(liqAmount) || 0);
 
                 const prow = ps.getRow(pRowIdx);
-                // Detail liquidation column with potential secondary
                 let liqDetail = `${liqCurrency === 'USD' ? 'USD' : '$'} ${formatMoney(liqAmount)}`;
                 if (prof === item.prof_1 && item.liq_prof_1_secondary > 0) liqDetail += ` / ${item.liq_prof_1_currency_secondary === 'USD' ? 'USD' : '$'} ${formatMoney(item.liq_prof_1_secondary)}`;
                 else if (prof === item.prof_2 && item.liq_prof_2_secondary > 0) liqDetail += ` / ${item.liq_prof_2_currency_secondary === 'USD' ? 'USD' : '$'} ${formatMoney(item.liq_prof_2_secondary)}`;
                 else if (prof === item.prof_3 && item.liq_prof_3_secondary > 0) liqDetail += ` / ${item.liq_prof_3_currency_secondary === 'USD' ? 'USD' : '$'} ${formatMoney(item.liq_prof_3_secondary)}`;
 
-                prow.values = [
-                    item.paciente,
-                    item.dni,
-                    item.obra_social,
-                    item.pesos,
-                    item.dolares,
-                    liqDetail
-                ];
-
+                prow.values = [item.paciente, item.dni, item.obra_social, item.pesos, item.dolares, liqDetail];
                 prow.getCell(4).numFmt = '#,##0.00';
                 prow.getCell(5).numFmt = '#,##0.00';
                 prow.getCell(6).font = { bold: true };
-
-                // Borders
                 for (let i = 1; i <= 6; i++) prow.getCell(i).border = borderStyle;
-
                 pRowIdx++;
             });
 
-            // Totals
             const pTotalRow = ps.getRow(pRowIdx + 1);
             pTotalRow.getCell(5).value = 'Total Liquidación:';
             pTotalRow.getCell(5).font = { bold: true };
@@ -685,17 +646,48 @@ const HistorialCaja = () => {
             pTotalRow.getCell(6).value = totalText.join(' + ');
             pTotalRow.getCell(6).font = { bold: true, size: 12 };
             pTotalRow.getCell(6).alignment = { horizontal: 'right' };
-
-            // Widths
-            ps.columns = [
-                { width: 25 }, { width: 15 }, { width: 25 }, { width: 15 }, { width: 15 }, { width: 25 }
-            ];
+            ps.columns = [{ width: 25 }, { width: 15 }, { width: 25 }, { width: 15 }, { width: 15 }, { width: 25 }];
         }
 
-        // Save
-        const buffer = await workbook.xlsx.writeBuffer();
-        const [y, m, d] = selectedDate.split('-');
-        saveAs(new Blob([buffer]), `CAJA CX ${d}-${m}-${y}.xlsx`);
+        return await workbook.xlsx.writeBuffer();
+    };
+
+    const triggerDownload = (buffer, dateStr) => {
+        const [y, m, d] = dateStr.split('-');
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `CAJA CX ${d}-${m}-${y}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    };
+
+    const handleExportExcel = async () => {
+        const dataToExport = history.filter(item => item.fecha === selectedDate);
+        if (dataToExport.length === 0) return alert("No hay datos para exportar");
+        try {
+            const buffer = await generateDailyExcelWorkbookBuffer(dataToExport, selectedDate, dailyComment);
+            triggerDownload(buffer, selectedDate);
+        } catch (error) {
+            console.error(error);
+            alert("Error al exportar");
+        }
+    };
+
+    const fetchCommentForDate = async (dateStr) => {
+        const ownerToUse = catalogOwnerUid || viewingUid;
+        if (!ownerToUse) return '';
+        try {
+            const q = query(collection(db, "daily_comments"),
+                where("userId", "==", ownerToUse),
+                where("date", "==", dateStr)
+            );
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) return snapshot.docs[0].data().comment;
+        } catch (e) {
+            console.error(e);
+        }
+        return '';
     };
 
     const handleExportRange = async () => {
@@ -713,10 +705,12 @@ const HistorialCaja = () => {
 
         setIsExportingRange(true);
         try {
-            for (const date of datesInRange) {
-                const dataForDate = history.filter(item => item.fecha === date);
+            for (const dateStr of datesInRange) {
+                const dataForDate = history.filter(item => item.fecha === dateStr);
                 if (dataForDate.length > 0) {
-                    await exportExcelDirect(dataForDate, date);
+                    const comment = await fetchCommentForDate(dateStr);
+                    const buffer = await generateDailyExcelWorkbookBuffer(dataForDate, dateStr, comment);
+                    triggerDownload(buffer, dateStr);
                     await new Promise(r => setTimeout(r, 500));
                 }
             }
@@ -727,41 +721,6 @@ const HistorialCaja = () => {
         } finally {
             setIsExportingRange(false);
         }
-    };
-
-    const exportExcelDirect = async (dataToExport, date) => {
-        const ExcelJS = (await import('exceljs')).default || await import('exceljs');
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Caja', { pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 } });
-        const headerStyle = { font: { bold: true }, alignment: { horizontal: 'center' }, border: { bottom: { style: 'thin' } } };
-
-        worksheet.getRow(1).values = ['Paciente', 'DNI', 'Obra social', 'Prof. 1', 'Prof. 2', 'Prof. 3', 'Pesos', 'Dolares', 'Liq. P1', 'Liq. P2', 'Liq. P3', 'Anest.', 'Liq. Anest.', 'Coat $', 'Coat USD'];
-        worksheet.getRow(1).eachCell(cell => { cell.font = headerStyle.font; cell.alignment = headerStyle.alignment; cell.border = headerStyle.border; });
-
-        dataToExport.forEach((item, idx) => {
-            const row = worksheet.getRow(idx + 2);
-            row.values = [
-                item.paciente, item.dni, item.obra_social, item.prof_1 || '', item.prof_2 || '', item.prof_3 || '',
-                parseFloat(item.pesos) || 0, parseFloat(item.dolares) || 0,
-                `${item.liq_prof_1_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_prof_1)}${item.liq_prof_1_secondary > 0 ? ' / ' + (item.liq_prof_1_currency_secondary === 'USD' ? 'USD ' : '$') + formatMoney(item.liq_prof_1_secondary) : ''}`,
-                `${item.liq_prof_2_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_prof_2)}${item.liq_prof_2_secondary > 0 ? ' / ' + (item.liq_prof_2_currency_secondary === 'USD' ? 'USD ' : '$') + formatMoney(item.liq_prof_2_secondary) : ''}`,
-                `${item.liq_prof_3_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_prof_3)}${item.liq_prof_3_secondary > 0 ? ' / ' + (item.liq_prof_3_currency_secondary === 'USD' ? 'USD ' : '$') + formatMoney(item.liq_prof_3_secondary) : ''}`,
-                item.anestesista || '',
-                item.liq_anestesista > 0 ? `${item.liq_anestesista_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_anestesista)}` : '-',
-                parseFloat(item.coat_pesos) || 0, parseFloat(item.coat_dolares) || 0
-            ];
-            [7, 8, 14, 15].forEach(col => row.getCell(col).numFmt = '#,##0.00');
-        });
-
-        worksheet.columns = [{ width: 30 }, { width: 15 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }];
-
-        const buffer = await workbook.xlsx.writeBuffer();
-        const [yy, mm, dd] = date.split('-');
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `CAJA CX ${dd}-${mm}-${yy}.xlsx`;
-        link.click();
     };
 
     const anestesistas = profesionales.filter(p => p.categoria === 'Anestesista');

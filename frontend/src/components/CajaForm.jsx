@@ -316,12 +316,24 @@ const CajaForm = () => {
             await Promise.all(promises);
 
             if (dailyComment.trim()) {
-                await apiService.addDocument("daily_comments", {
-                    date: globalDate,
-                    comment: dailyComment,
-                    userId: ownerToUse,
-                    timestamp: new Date().toISOString()
-                });
+                const q = query(collection(db, "daily_comments"),
+                    where("userId", "==", ownerToUse),
+                    where("date", "==", globalDate)
+                );
+                const snapshot = await getDocs(q);
+                if (!snapshot.empty) {
+                    await apiService.updateDocument("daily_comments", snapshot.docs[0].id, {
+                        comment: dailyComment,
+                        timestamp: new Date().toISOString()
+                    });
+                } else {
+                    await apiService.addDocument("daily_comments", {
+                        date: globalDate,
+                        comment: dailyComment,
+                        userId: ownerToUse,
+                        timestamp: new Date().toISOString()
+                    });
+                }
             }
 
             alert("Caja cerrada correctamente.");
@@ -580,7 +592,34 @@ const CajaForm = () => {
                             onChange={(e) => setDailyComment(e.target.value)}
                         />
                         <div className="flex justify-end mt-6">
-                            <button onClick={() => setShowDailyCommentModal(false)} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg">Cerrar y Guardar</button>
+                            <button onClick={async () => {
+                                setShowDailyCommentModal(false);
+                                const ownerToUse = catalogOwnerUid || viewingUid;
+                                if (!ownerToUse) return;
+                                try {
+                                    const q = query(collection(db, "daily_comments"),
+                                        where("userId", "==", ownerToUse),
+                                        where("date", "==", globalDate)
+                                    );
+                                    const snapshot = await getDocs(q);
+                                    if (!snapshot.empty) {
+                                        await apiService.updateDocument("daily_comments", snapshot.docs[0].id, {
+                                            comment: dailyComment,
+                                            timestamp: new Date().toISOString()
+                                        });
+                                    } else if (dailyComment.trim()) {
+                                        await apiService.addDocument("daily_comments", {
+                                            date: globalDate,
+                                            comment: dailyComment,
+                                            userId: ownerToUse,
+                                            timestamp: new Date().toISOString()
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.error("Error saving daily comment", e);
+                                    alert("Error al guardar comentario.");
+                                }
+                            }} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg">Cerrar y Guardar</button>
                         </div>
                     </div>
                 </div>
