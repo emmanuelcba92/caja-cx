@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Lock, Mail, AlertCircle, LogIn, UserPlus } from 'lucide-react';
+import { Lock as LockIcon, Mail, AlertCircle, LogIn, UserPlus } from 'lucide-react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase/config';
 
@@ -61,7 +61,7 @@ const LoginView = () => {
         <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
             <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
                 <div className="text-center mb-8">
-                    <h1 className="text-2xl font-bold text-slate-900 mb-2">Caja de Cirugía</h1>
+                    <h1 className="text-2xl font-bold text-slate-900 mb-2">CIRUGIAS COAT</h1>
                     <p className="text-slate-500">{isRegistering ? "Crea una cuenta nueva" : "Inicia sesión para continuar"}</p>
                     <p className="text-[10px] text-amber-600 font-bold uppercase mt-2 tracking-widest bg-amber-50 py-1 rounded-full px-4 inline-block border border-amber-100 italic">Acceso restringido por autorización</p>
                 </div>
@@ -108,7 +108,7 @@ const LoginView = () => {
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Confirmar Contraseña</label>
                             <div className="relative">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                   <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                 <input
                                     type="password"
                                     required

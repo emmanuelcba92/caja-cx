@@ -4,10 +4,10 @@ import {
     Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search,
     CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle,
     FileHeart, AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban,
-    TableProperties, Sparkles, Loader2
+    TableProperties, Sparkles, Loader2, Lock as LockIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { db, USE_LOCAL_DB } from '../firebase/config';
+import { db, USE_LOCAL_DB, isTestEnv } from '../firebase/config';
 import { collection, addDoc, updateDoc, doc, getDocs, deleteDoc, query, where, getDoc, writeBatch } from 'firebase/firestore';
 import apiService from '../services/apiService';
 import { parseEmailToOrder } from '../services/aiService';
@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { createPortal } from 'react-dom';
 import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
+import { toast } from 'react-hot-toast';
 // Dynamic import used for html2pdf
 
 // Map professional names to their signature image files
@@ -119,6 +120,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         fechaDocumento: new Date().toISOString().split('T')[0],
         suspendida: false, // New field for "not performed" status
         practicas: ['', '', '', '', ''], // Array of strings (practice names)
+        estudioBajoAnestesia: false, // New field
     };
 
     const [formData, setFormData] = useState(emptyForm);
@@ -127,20 +129,18 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 @media print {
     @page { size: A4; margin: 0; }
     .no-print { display: none !important; }
-    #root { display: none !important; }
     .print-orden {
         display: block !important;
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
+        position: relative !important;
+        width: 100% !important;
         height: auto !important;
-        background: white;
-        color: black;
+        background: white !important;
+        color: black !important;
         overflow: visible !important;
         z-index: 9999;
     }
     body { background: white !important; overflow: visible !important; }
+    #root { height: 0 !important; overflow: hidden !important; }
     .page-break {
         display: block !important;
         page-break-after: always !important;
@@ -430,6 +430,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         }));
     };
 
+    const addPracticaAnestesia = () => {
+        setFormData(prev => ({
+            ...prev,
+            codigosCirugia: [...prev.codigosCirugia, { codigo: '', nombre: '' }]
+        }));
+    };
+
     const removeCodigo = (index) => {
         if (formData.codigosCirugia.length === 1) return;
         setFormData(prev => ({
@@ -689,7 +696,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             <input
                                 type="text"
                                 value={formData.dni}
-                                onChange={(e) => handleInputChange('dni', e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    handleInputChange('dni', val);
+                                }}
                                 className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass}`}
                                 placeholder="45836670"
                             />
@@ -708,86 +718,47 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         </div>
                     </div>
 
-                    {/* WhatsApp */}
-                    <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                            <Phone size={12} className={`text-${accentColor}-500`} /> Teléfono (WhatsApp)
-                        </label>
-                        <input
-                            type="tel"
-                            value={formData.telefono}
-                            onChange={(e) => handleInputChange('telefono', e.target.value)}
-                            className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass}`}
-                            placeholder="3512345678 (sin 0 ni 15)"
-                        />
-                    </div>
+                    {/* Estudio bajo anestesia toggle */}
+                    {!isPedido && (
+                        <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.estudioBajoAnestesia ? 'border-amber-200 bg-amber-50/50' : 'border-slate-100 bg-slate-50/30'}`}>
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.estudioBajoAnestesia ? 'bg-amber-600 text-white shadow-lg shadow-amber-200' : 'bg-white border border-slate-200 text-slate-300'}`}>
+                                    <Stethoscope size={18} />
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.estudioBajoAnestesia}
+                                    onChange={(e) => handleInputChange('estudioBajoAnestesia', e.target.checked)}
+                                    className="hidden"
+                                />
+                                <div className="flex flex-col">
+                                    <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.estudioBajoAnestesia ? 'text-amber-700' : 'text-slate-400 group-hover:text-slate-600'}`}>
+                                        Estudio bajo anestesia
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-medium">Cambia el título y omite códigos obligatorios</span>
+                                </div>
+                            </label>
+                        </div>
+                    )}
 
                     {/* Codes Section */}
-                    <div className="space-y-4 pt-6 border-t border-slate-50">
-                        <div className="flex items-center justify-between">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <Hash size={12} className={`text-${accentColor}-500`} /> {isPedido ? 'Prácticas (Rp/)' : 'Códigos de Cirugía'}
-                            </label>
-                            <button
-                                type="button"
-                                onClick={isPedido ? () => setFormData(prev => ({ ...prev, practicas: [...prev.practicas, ''] })) : addCodigo}
-                                className={`flex items-center gap-1.5 px-4 py-1.5 bg-${accentColor}-50 text-${accentColor}-700 rounded-xl text-xs font-bold hover:bg-${accentColor}-100 transition-all border border-${accentColor}-100`}
-                            >
-                                <Plus size={14} /> Agregar
-                            </button>
-                        </div>
+                    {!isPedido && !formData.estudioBajoAnestesia && (
+                        <div className="space-y-4 pt-6 border-t border-slate-50">
+                            <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    <Hash size={12} className={`text-${accentColor}-500`} /> Códigos de Cirugía
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={addCodigo}
+                                    className={`flex items-center gap-1.5 px-4 py-1.5 bg-${accentColor}-50 text-${accentColor}-700 rounded-xl text-xs font-bold hover:bg-${accentColor}-100 transition-all border border-${accentColor}-100`}
+                                >
+                                    <Plus size={14} /> Agregar
+                                </button>
+                            </div>
 
-                        <div className="space-y-3">
-                            {isPedido ? (
-                                formData.practicas && formData.practicas.map((practica, index) => (
-                                    <div key={index} className="flex gap-3 items-center group">
-                                        <div className="flex-1 relative">
-                                            <input
-                                                type="text"
-                                                value={practica}
-                                                onChange={(e) => {
-                                                    const newVal = e.target.value;
-                                                    setFormData(prev => {
-                                                        const newPracticas = [...prev.practicas];
-                                                        newPracticas[index] = newVal;
-                                                        return { ...prev, practicas: newPracticas };
-                                                    });
-                                                    setActiveRow({ index, field: 'practica' });
-                                                    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-                                                    searchTimeoutRef.current = setTimeout(() => {
-                                                        handleSearch(newVal, 'nombre', formData.obraSocial);
-                                                    }, 300);
-                                                }}
-                                                onKeyDown={(e) => handleKeyDown(e, index)}
-                                                className={`w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-bold uppercase`}
-                                                placeholder="Ingrese práctica..."
-                                            />
-                                            {activeRow?.index === index && activeRow?.field === 'practica' && suggestions.length > 0 && (
-                                                <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
-                                                    {suggestions.map((s, i) => (
-                                                        <div
-                                                            key={i}
-                                                            onClick={() => selectPedidoSuggestion(s, index)}
-                                                            className={`px-5 py-3.5 cursor-pointer border-b border-slate-100 last:border-0 hover:bg-pink-50 transition-colors`}
-                                                        >
-                                                            <p className="text-sm font-bold text-slate-800">{s.nombre}</p>
-                                                            {s.codigo && <p className="text-xs text-slate-400">Código: {s.codigo}</p>}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setFormData(prev => ({ ...prev, practicas: prev.practicas.filter((_, i) => i !== index) }))}
-                                            className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
-                                        >
-                                            <X size={18} />
-                                        </button>
-                                    </div>
-                                ))
-                            ) : (
-                                formData.codigosCirugia.map((cod, index) => (
+                            <div className="space-y-3">
+                                {formData.codigosCirugia.map((cod, index) => (
                                     <div key={index} className="flex gap-3 items-center group">
                                         <div className="w-32">
                                             <input
@@ -835,10 +806,142 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                             <X size={18} />
                                         </button>
                                     </div>
-                                ))
-                            )}
+                                ))}
+                            </div>
                         </div>
+                    )}
+
+                    {/* Practice Names section if "Estudio bajo anestesia" is active */}
+                    {!isPedido && formData.estudioBajoAnestesia && (
+                        <div className="space-y-4 pt-6 border-t border-slate-50">
+                            <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    <Hash size={12} className="text-amber-500" /> Prácticas a realizar
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={addPracticaAnestesia}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all border border-amber-100"
+                                >
+                                    <Plus size={14} /> Agregar estudio
+                                </button>
+                            </div>
+
+                            <div className="space-y-3">
+                                {formData.codigosCirugia.map((cod, index) => (
+                                    <div key={index} className="flex gap-3 items-center group">
+                                        <div className="flex-1 relative">
+                                            <input
+                                                type="text"
+                                                value={cod.nombre}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setFormData(prev => {
+                                                        const newCodigos = [...prev.codigosCirugia];
+                                                        newCodigos[index] = { ...newCodigos[index], nombre: val.toUpperCase() };
+                                                        return { ...prev, codigosCirugia: newCodigos };
+                                                    });
+                                                }}
+                                                className={`w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-bold uppercase`}
+                                                placeholder="Ej: VIDEOFIBROLARINGOSCOPIA..."
+                                            />
+                                        </div>
+                                        {formData.codigosCirugia.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => removeCodigo(index)}
+                                                className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* WhatsApp */}
+                    <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                            <Phone size={12} className={`text-${accentColor}-500`} /> Teléfono (WhatsApp)
+                        </label>
+                        <input
+                            type="tel"
+                            value={formData.telefono}
+                            onChange={(e) => handleInputChange('telefono', e.target.value)}
+                            className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass}`}
+                            placeholder="3512345678 (sin 0 ni 15)"
+                        />
                     </div>
+
+                    {/* Codes Section (Only for Pedidos) */}
+                    {isPedido && (
+                        <div className="space-y-4 pt-6 border-t border-slate-50">
+                            <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    <Hash size={12} className={`text-${accentColor}-500`} /> Prácticas (Rp/)
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, practicas: [...prev.practicas, ''] }))}
+                                    className={`flex items-center gap-1.5 px-4 py-1.5 bg-${accentColor}-50 text-${accentColor}-700 rounded-xl text-xs font-bold hover:bg-${accentColor}-100 transition-all border border-${accentColor}-100`}
+                                >
+                                    <Plus size={14} /> Agregar
+                                </button>
+                            </div>
+
+                            <div className="space-y-3">
+                                {formData.practicas && formData.practicas.map((practica, index) => (
+                                    <div key={index} className="flex gap-3 items-center group">
+                                        <div className="flex-1 relative">
+                                            <input
+                                                type="text"
+                                                value={practica}
+                                                onChange={(e) => {
+                                                    const newVal = e.target.value;
+                                                    setFormData(prev => {
+                                                        const newPracticas = [...prev.practicas];
+                                                        newPracticas[index] = newVal;
+                                                        return { ...prev, practicas: newPracticas };
+                                                    });
+                                                    setActiveRow({ index, field: 'practica' });
+                                                    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                                                    searchTimeoutRef.current = setTimeout(() => {
+                                                        handleSearch(newVal, 'nombre', formData.obraSocial);
+                                                    }, 300);
+                                                }}
+                                                onKeyDown={(e) => handleKeyDown(e, index)}
+                                                className={`w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-bold uppercase`}
+                                                placeholder="Ingrese práctica..."
+                                            />
+                                            {activeRow?.index === index && activeRow?.field === 'practica' && suggestions.length > 0 && (
+                                                <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                                                    {suggestions.map((s, i) => (
+                                                        <div
+                                                            key={i}
+                                                            onClick={() => selectPedidoSuggestion(s, index)}
+                                                            className={`px-5 py-3.5 cursor-pointer border-b border-slate-100 last:border-0 hover:bg-pink-50 transition-colors`}
+                                                        >
+                                                            <p className="text-sm font-bold text-slate-800">{s.nombre}</p>
+                                                            {s.codigo && <p className="text-xs text-slate-400">Código: {s.codigo}</p>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, practicas: prev.practicas.filter((_, i) => i !== index) }))}
+                                            className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Surgery Details: Anesthesia | Date | Time */}
                     {!isPedido && (
@@ -977,6 +1080,29 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 </>
                             )}
                         </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const Caratula = ({ previewData, profInfo }) => {
+        return (
+            <div className="hidden print:flex max-w-[210mm] mx-auto bg-white p-20 flex-col items-center justify-center text-center overflow-hidden" style={{ height: '297mm', fontFamily: 'Arial, sans-serif' }}>
+                <div className="space-y-8 uppercase">
+                    <h2 className="text-[16pt] font-black leading-tight tracking-tighter" style={{ color: '#000' }}>
+                        {previewData.afiliado}
+                    </h2>
+
+                    <div className="space-y-4 text-[12pt] font-bold" style={{ color: '#000' }}>
+                        <p>DNI {previewData.dni}</p>
+                        <p>{previewData.obraSocial}</p>
+                        <p>{profInfo ? profInfo.nombre : previewData.profesional}</p>
+                        <p>{formatDate(previewData.fechaCirugia)}</p>
+                    </div>
+
+                    <div className="mt-12 text-[11pt] font-medium" style={{ color: '#000' }}>
+                        ALERGIA ({previewData.alergias || '-'})
                     </div>
                 </div>
             </div>
@@ -1220,9 +1346,21 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 updatedAt: new Date().toISOString()
             };
 
+            if (isTestEnv && !editingId) {
+                orderData.isTest = true;
+            }
+
             const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
 
             if (editingId) {
+                if (isTestEnv) {
+                    const original = activeTab === 'pedidos' ? pedidos.find(p => p.id === editingId) : ordenes.find(o => o.id === editingId);
+                    if (original && !original.isTest) {
+                        toast.error('No puedes editar registros de producción desde el entorno de pruebas.');
+                        setLoading(false);
+                        return;
+                    }
+                }
                 await apiService.updateDocument(collectionName, editingId, orderData);
             } else {
                 orderData.createdAt = new Date().toISOString();
@@ -1366,6 +1504,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     const handleToggleStatus = async (orden) => {
+        if (isTestEnv && !orden.isTest) {
+            toast.error('No puedes modificar registros de producción desde el entorno de pruebas.');
+            return;
+        }
         const newStatus = !orden.enviada;
         const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
 
@@ -1391,6 +1533,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     const handleToggleField = async (orden, field) => {
+        if (isTestEnv && !orden.isTest) {
+            toast.error('No puedes modificar registros de producción desde el entorno de pruebas.');
+            return;
+        }
         const newValue = !orden[field];
         const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
 
@@ -1416,6 +1562,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     const handleDelete = async (id) => {
+        if (isTestEnv) {
+            const item = activeTab === 'pedidos' ? pedidos.find(p => p.id === id) : ordenes.find(o => o.id === id);
+            if (item && !item.isTest) {
+                toast.error('No puedes eliminar registros de producción desde el entorno de pruebas.');
+                return;
+            }
+        }
         if (!window.confirm("¿Confirmar eliminación definitiva de este documento? No se podrá deshacer.")) return;
 
         setLoading(true);
@@ -1599,18 +1752,30 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         // Handle Carátula
         if (type === 'caratula') {
             return (
-                <div className="max-w-[210mm] mx-auto bg-white print:max-w-none flex flex-col items-center text-center" style={{ minHeight: '297mm', fontFamily: 'Arial, sans-serif', paddingTop: '4cm', lineHeight: '1.0', position: 'relative' }}>
+                <div className="max-w-[210mm] mx-auto bg-white flex flex-col items-center justify-start text-center overflow-hidden" 
+                     style={{ 
+                        height: '297mm', 
+                        width: '210mm',
+                        fontFamily: 'Arial, sans-serif', 
+                        boxSizing: 'border-box',
+                        position: 'relative',
+                        color: '#000',
+                        lineHeight: '1.2',
+                        paddingTop: '4.5cm'
+                     }}>
                     {previewData.habitacion && (
                         <div style={{ position: 'absolute', top: '1cm', right: '2cm', fontSize: '18pt' }}>
                             {previewData.habitacion}
                         </div>
                     )}
-                    <span style={{ fontSize: '24pt' }}>{(previewData.afiliado || '').toUpperCase()}</span><br />
-                    <span style={{ fontSize: '24pt' }}>DNI {previewData.dni || '-'}</span><br />
-                    <span style={{ fontSize: '24pt' }}>{(previewData.obraSocial || '').toUpperCase()}</span><br />
-                    <span style={{ fontSize: '24pt' }}>{(shortProfName(previewData.tutor || previewData.profesional) || '').toUpperCase()}</span><br />
-                    <span style={{ fontSize: '24pt' }}>{formatDate(previewData.fechaCirugia || previewData.fechaDocumento)}</span><br />
-                    <span style={{ fontSize: '24pt' }}>ALERGIA (-)</span>
+                    <div className="space-y-1">
+                        <span style={{ fontSize: '24pt', display: 'block' }}>{(previewData.afiliado || '').toUpperCase()}</span>
+                        <span style={{ fontSize: '24pt', display: 'block' }}>DNI {previewData.dni || '-'}</span>
+                        <span style={{ fontSize: '24pt', display: 'block' }}>{(previewData.obraSocial || '').toUpperCase()}</span>
+                        <span style={{ fontSize: '24pt', display: 'block' }}>{(shortProfName(previewData.profesional) || '').toUpperCase()}</span>
+                        <span style={{ fontSize: '24pt', display: 'block' }}>{formatDate(previewData.fechaCirugia || previewData.fechaDocumento)}</span>
+                        <span style={{ fontSize: '24pt', display: 'block' }}>ALERGIA ({previewData.alergias?.toUpperCase() || '-'})</span>
+                    </div>
                 </div>
             );
         }
@@ -1618,50 +1783,55 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         // Handle Pedido Médico
         if (type === 'pedido') {
             return (
-                <div className="max-w-[210mm] mx-auto bg-white px-16 py-12 print:max-w-none relative" style={{ minHeight: '297mm', fontFamily: 'Arial, sans-serif' }}>
+                <div className="max-w-[210mm] mx-auto bg-white px-16 py-12 overflow-hidden" 
+                     style={{ 
+                        height: '297mm', 
+                        width: '210mm',
+                        boxSizing: 'border-box', 
+                        fontFamily: 'Arial, sans-serif',
+                        position: 'relative'
+                     }}>
 
                     {/* Header: Logo and Date */}
-                    <div className="mb-12 text-center relative">
+                    <div className="mb-12 text-center flex justify-between items-center px-4">
                         <img
                             src="/coat_logo.png"
                             alt="COAT"
-                            className="h-20 object-contain mx-auto mb-4"
+                            className="h-20 object-contain"
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
-                        <p className="text-sm text-right absolute right-0 top-20" style={{ color: '#000' }}>
+                        <p className="text-[11pt]" style={{ color: '#000' }}>
                             Córdoba, {formatLongDate(previewData.fechaDocumento)}
                         </p>
                     </div>
 
                     {/* Patient Info */}
-                    <div className="space-y-1 text-base mb-12" style={{ color: '#000', lineHeight: '1.6' }}>
-                        <p><span className="font-bold">Paciente:</span> {previewData.afiliado}</p>
-                        <p><span className="font-bold">Obra social:</span> {previewData.obraSocial}</p>
-                        <p><span className="font-bold">Nº de af:</span> {previewData.numeroAfiliado}</p>
-                        <p><span className="font-bold">Diagnóstico:</span> {previewData.diagnostico}</p>
+                    <div className="space-y-4 mb-16 px-4" style={{ color: '#000', fontSize: '11pt' }}>
+                        <p><span className="font-bold">PACIENTE:</span> {previewData.afiliado?.toUpperCase()}</p>
+                        <p><span className="font-bold">OBRA SOCIAL:</span> {previewData.obraSocial?.toUpperCase()}</p>
+                        <p><span className="font-bold">Nº DE AF:</span> {previewData.numeroAfiliado}</p>
+                        <p><span className="font-bold">DIAGNÓSTICO:</span> {previewData.diagnostico?.toUpperCase()}</p>
                     </div>
 
                     {/* Body: Practices */}
-                    <div className="mb-12">
-                        <h3 className="font-bold underline mb-4 text-lg">Rp/</h3>
-                        <div className="pl-8 space-y-2 uppercase text-lg">
+                    <div className="mb-12 px-4">
+                        <h3 className="text-[12pt] font-bold underline mb-6">Rp/</h3>
+                        <div className="space-y-3 uppercase" style={{ fontSize: '11pt' }}>
                             {previewData.practicas && previewData.practicas.map((p, idx) => (
-                                p && <p key={idx}>{p}</p>
+                                p && <p key={idx} className="font-bold tracking-tight">{p}</p>
                             ))}
                         </div>
                     </div>
 
-                    {/* Footer: Diagnosis and Signature */}
+                    {/* Footer: Signature */}
                     <div className="absolute bottom-32 left-16 right-16">
-                        <div className="flex justify-end items-end">
-                            <div className="text-center">
-                                <img
-                                    src={getSignatureUrl(previewData.profesional)}
-                                    alt={`Firma ${previewData.profesional} `}
-                                    className="h-32 object-contain mx-auto"
-                                    onError={(e) => { e.target.style.display = 'none'; }}
-                                />
-                            </div>
+                        <div className="flex justify-end pr-8">
+                            <img
+                                src={getSignatureUrl(previewData.profesional)}
+                                alt={`Firma`}
+                                className="h-32 object-contain"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                            />
                         </div>
                     </div>
                 </div>
@@ -1670,54 +1840,64 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
         // Handle Default (Internacion / Material)
         const isInternacion = type === 'internacion';
-        const title = isInternacion ? 'ORDEN DE INTERNACIÓN' : 'ORDEN DE PEDIDO DE MATERIAL';
+        const isEstudio = previewData.estudioBajoAnestesia;
+        const title = isInternacion
+            ? (isEstudio ? 'PEDIDO DE ESTUDIO BAJO ANESTESIA' : 'ORDEN DE INTERNACIÓN')
+            : 'ORDEN DE PEDIDO DE MATERIAL';
 
         return (
-            <div className="max-w-[210mm] mx-auto bg-white px-16 py-12 print:max-w-none" style={{ minHeight: '297mm', fontFamily: 'Times New Roman, serif' }}>
-                <div className="mb-8">
+            <div className="max-w-[210mm] mx-auto bg-white px-16 py-12 overflow-hidden" 
+                 style={{ 
+                    height: '297mm', 
+                    width: '210mm',
+                    boxSizing: 'border-box', 
+                    fontFamily: 'Arial, sans-serif',
+                    position: 'relative'
+                }}>
+                <div className="mb-4">
                     <img
                         src="/coat_logo.png"
                         alt="COAT"
                         className="h-16 object-contain"
                         onError={(e) => { e.target.style.display = 'none'; }}
                     />
-                    <p className="text-sm text-right -mt-4" style={{ color: '#333' }}>
+                    <p className="text-[11pt] text-right -mt-4" style={{ color: '#000' }}>
                         Córdoba, {formatLongDate(previewData.fechaDocumento)}
                     </p>
                 </div>
 
-                <h1 className="text-center text-base font-normal mb-10 tracking-wide" style={{ color: '#000' }}>
+                <h1 className="text-center text-[12pt] font-bold mb-10 tracking-wide" style={{ color: '#000' }}>
                     {title}
                 </h1>
 
-                <div className="space-y-2 text-sm leading-relaxed" style={{ color: '#333' }}>
-                    <p><span className="font-semibold">Afiliado:</span> {previewData.afiliado}</p>
-                    <p><span className="font-semibold">Obra social:</span> {previewData.obraSocial}</p>
-                    <p><span className="font-semibold">Número de afiliado:</span> {previewData.numeroAfiliado}</p>
-                    {previewData.dni && <p><span className="font-semibold">DNI:</span> {previewData.dni}</p>}
+                <div className="space-y-2 text-[11pt] leading-relaxed" style={{ color: '#000' }}>
+                    <p><span className="font-bold">Afiliado:</span> {previewData.afiliado}</p>
+                    <p><span className="font-bold">Obra social:</span> {previewData.obraSocial}</p>
+                    <p><span className="font-bold">Número de afiliado:</span> {previewData.numeroAfiliado}</p>
+                    {previewData.dni && <p><span className="font-bold">DNI:</span> {previewData.dni}</p>}
 
                     {isInternacion ? (
-                        <div className="pt-4">
-                            <span className="font-semibold">Códigos de cirugía:</span>
+                        <div className="pt-4 flex gap-2">
+                            <span className="font-bold shrink-0">{isEstudio ? 'Estudio a realizar:' : 'Códigos de cirugía:'}</span>
                             {previewData.codigosCirugia && previewData.codigosCirugia.length > 0 ? (
-                                <div className="ml-32 -mt-5">
+                                <div className="space-y-0.5">
                                     {previewData.codigosCirugia.map((cod, idx) => (
-                                        <p key={idx}>{cod.codigo}{cod.nombre ? ` ${cod.nombre} ` : ''}</p>
+                                        <p key={idx} className="leading-tight">{isEstudio ? '' : cod.codigo}{cod.nombre ? ` ${cod.nombre} ` : ''}</p>
                                     ))}
                                 </div>
-                            ) : <span className="ml-2">-</span>}
+                            ) : <span className="">-</span>}
                         </div>
                     ) : (
                         <p className="pt-4 whitespace-pre-wrap">{previewData.descripcionMaterial}</p>
                     )}
 
-                    <p className="pt-4"><span className="font-semibold">Tipo de anestesia:</span> {previewData.tipoAnestesia}</p>
-                    <p className="pt-4"><span className="font-semibold">Fecha de cirugía:</span> {formatDate(previewData.fechaCirugia)}</p>
-                    <p className="pt-4"><span className="font-semibold">Material:</span> {previewData.incluyeMaterial ? 'sí' : 'no'}</p>
-                    <p className="pt-4"><span className="font-semibold">Diagnóstico:</span> {previewData.diagnostico}</p>
+                    <p className="pt-4"><span className="font-bold">Tipo de anestesia:</span> {previewData.tipoAnestesia}</p>
+                    <p className="pt-4"><span className="font-bold">Fecha de cirugía:</span> {formatDate(previewData.fechaCirugia)}</p>
+                    <p className="pt-4"><span className="font-bold">Material:</span> {previewData.incluyeMaterial ? 'sí' : 'no'}</p>
+                    <p className="pt-4"><span className="font-bold">Diagnóstico:</span> {previewData.diagnostico}</p>
                 </div>
 
-                <div className="mt-16 flex justify-end">
+                <div className="absolute bottom-24 left-16 right-16 flex justify-end">
                     <div className="text-center">
                         <img
                             src={getSignatureUrl(previewData.profesional)}
@@ -1997,7 +2177,23 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 <input
                                     type="date"
                                     value={filterDate}
-                                    onChange={(e) => setFilterDate(e.target.value)}
+                                    onChange={(e) => {
+                                        const newDate = e.target.value;
+                                        setFilterDate(newDate);
+                                        if (newDate) {
+                                            const today = new Date();
+                                            today.setHours(0, 0, 0, 0);
+                                            const offset = today.getTimezoneOffset();
+                                            const todayLocal = new Date(today.getTime() - (offset * 60 * 1000));
+                                            const todayStr = todayLocal.toISOString().split('T')[0];
+                                            
+                                            // If selected date is in the past, or if any date is selected, 
+                                            // default to "Ver Todas" to avoid filter conflicts
+                                            if (newDate < todayStr) {
+                                                setFilterPeriodo('todas');
+                                            }
+                                        }
+                                    }}
                                     className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                                 />
                                 {/* Filter by Professional */}
@@ -2104,6 +2300,11 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                             ) : (
                                                                 <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
                                                                     Pendiente
+                                                                </span>
+                                                            )}
+                                                            {isTestEnv && !orden.isTest && (
+                                                                <span className="px-2 py-0.5 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wide rounded-full flex items-center gap-1">
+                                                                    <LockIcon size={10} /> Producción (L)
                                                                 </span>
                                                             )}
                                                         </div>
@@ -2268,6 +2469,11 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                             </span>
                                                         )}
                                                         {orden.status === 'auditada' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded uppercase shadow-sm border border-emerald-200">Auditada</span>}
+                                                        {isTestEnv && !orden.isTest && (
+                                                            <span className="px-2 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-lg flex items-center gap-1 mt-1 justify-center">
+                                                                <LockIcon size={10} /> Producción (Solo Lectura)
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
 
@@ -2420,7 +2626,41 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             {/* PRINT PREVIEW MODAL */}
             {showPreview && previewData && createPortal(
                 <div className="fixed inset-0 bg-white z-[100] overflow-auto print-orden">
-                    <style>{printStyle}</style>
+                    <style>{`
+                        @media print {
+                            @page {
+                                size: A4;
+                                margin: 0;
+                            }
+                            body {
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                overflow: hidden !important;
+                                -webkit-print-color-adjust: exact;
+                            }
+                            #root, header, .sidebar, .no-print {
+                                display: none !important;
+                            }
+                            .print-orden {
+                                position: absolute !important;
+                                top: 0 !important;
+                                left: 0 !important;
+                                width: 210mm !important;
+                                height: 297mm !important;
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                background: white !important;
+                                overflow: hidden !important;
+                                display: block !important;
+                                visibility: visible !important;
+                                z-index: 9999 !important;
+                            }
+                            * {
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                        }
+                    `}</style>
                     <div className="p-8 print:p-0">
                         {/* Header Controls */}
                         <div className="flex justify-between items-center mb-8 no-print border-b pb-4">

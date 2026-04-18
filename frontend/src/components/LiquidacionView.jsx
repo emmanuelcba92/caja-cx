@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { User, Printer, Download, Search, FileText, Plus, X, Pencil, Lock, Save, Trash2, CircleHelp, Trash } from 'lucide-react';
+import { User, Printer, Download, Search, FileText, Plus, X, Pencil, Lock as LockIcon, Save, Trash2, CircleHelp, Trash } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { createPortal } from 'react-dom';
@@ -1820,7 +1820,7 @@ const LiquidacionView = () => {
                     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm no-print">
                         <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-xs">
                             <div className="text-center mb-6">
-                                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-500"><Lock size={24} /></div>
+                                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-500"><LockIcon size={24} /></div>
                                 <h3 className="text-lg font-bold">Seguridad</h3>
                                 <p className="text-xs text-slate-500">{pendingAction === 'delete' ? "Ingrese PIN para ELIMINAR" : "Ingrese PIN para editar"}</p>
                             </div>

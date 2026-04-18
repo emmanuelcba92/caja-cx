@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Save, Plus, Trash2, MessageSquare, Calendar, X, Bell, CheckCircle2, Circle, LayoutDashboard, User, Edit2, Shield, Clock } from 'lucide-react';
-import { db, USE_LOCAL_DB } from '../firebase/config';
+import { Save, Plus, Trash2, MessageSquare, Calendar, X, Bell, CheckCircle2, Circle, LayoutDashboard, User, Edit2, Shield, Clock, Lock as LockIcon } from 'lucide-react';
+import { db, USE_LOCAL_DB, isTestEnv } from '../firebase/config';
 import { collection, addDoc, getDoc, getDocs, query, where, deleteDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { apiService } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
@@ -294,19 +294,29 @@ const CajaForm = () => {
         if (!window.confirm("¿Estás seguro de cerrar la caja? Esto guardará los datos en el historial y limpiará el formulario.")) return;
 
         const ownerToUse = catalogOwnerUid || viewingUid;
-        const entriesWithDate = entries.map((e, index) => ({
-            ...e,
-            fecha: globalDate,
-            userId: ownerToUse,
-            createdBy: currentUser?.email || 'unknown',
-            createdAt: e.createdAt || new Date(Date.now() + index).toISOString(),
-            updatedAt: new Date().toISOString()
-        }));
+        const entriesWithDate = entries.map((e, index) => {
+            const entryData = {
+                ...e,
+                fecha: globalDate,
+                userId: ownerToUse,
+                createdBy: currentUser?.email || 'unknown',
+                createdAt: e.createdAt || new Date(Date.now() + index).toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            if (isTestEnv) {
+                entryData.isTest = true;
+            }
+            return entryData;
+        });
 
         try {
             const promises = entriesWithDate.map(entry => {
                 const { id, ...dataToSave } = entry;
                 if (typeof id === 'string') {
+                    // Safety check for production items in test environment
+                    if (isTestEnv && !entry.isTest) {
+                        return Promise.reject(new Error("Cannot modify production data in test environment"));
+                    }
                     return apiService.updateDocument("caja", id, dataToSave);
                 } else {
                     return apiService.addDocument("caja", dataToSave);
@@ -388,8 +398,15 @@ const CajaForm = () => {
                     updatedAt: new Date().toISOString()
                 };
 
+                if (isTestEnv) {
+                    finalData.isTest = true;
+                }
+
                 // If ID is a string, it's a Firebase ID (existing record)
                 if (typeof id === 'string') {
+                    if (isTestEnv && !e.isTest) {
+                        throw new Error(`No puedes editar registros de producción (${e.paciente}) desde el entorno de pruebas.`);
+                    }
                     return updateDoc(doc(db, "caja", id), finalData);
                 } else {
                     // It's a temporary numeric ID (new record)
@@ -498,6 +515,10 @@ const CajaForm = () => {
     };
 
     const requestHistoryAction = (item, action) => {
+        if (isTestEnv && !item.isTest) {
+            alert("No puedes modificar registros de producción desde el entorno de pruebas.");
+            return;
+        }
         setHistoryToEdit(item);
         setHistoryAction(action);
         if (isPinVerified) {
@@ -512,6 +533,13 @@ const CajaForm = () => {
     };
 
     const handleDeleteHistory = async (id) => {
+        if (isTestEnv) {
+            const item = history.find(h => h.id === id);
+            if (item && !item.isTest) {
+                alert("No puedes eliminar registros de producción desde el entorno de pruebas.");
+                return;
+            }
+        }
         if (!window.confirm("¿Seguro que deseas eliminar este registro?")) return;
         try {
             await apiService.deleteDocument("caja", id);
@@ -543,8 +571,8 @@ const CajaForm = () => {
                             <LayoutDashboard size={24} />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Caja Diaria</h2>
-                            <p className="text-sm font-medium text-slate-400">Control de gestión de ingresos y honorarios</p>
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">CIRUGIAS COAT</h2>
+                            <p className="text-sm font-medium text-slate-400">Control de gestión de ingresos diarios</p>
                         </div>
                     </div>
 
@@ -674,7 +702,10 @@ const CajaForm = () => {
                                             <input
                                                 className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-blue-50/50 focus:border-blue-400 outline-none transition-all"
                                                 value={entry.dni}
-                                                onChange={(e) => updateEntry(entry.id, 'dni', e.target.value)}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(/\D/g, '');
+                                                    updateEntry(entry.id, 'dni', val);
+                                                }}
                                                 placeholder="Documento..."
                                             />
                                         </div>
@@ -1079,6 +1110,11 @@ const CajaForm = () => {
                                         <div className="flex items-center gap-2 mt-0.5">
                                             <span className="text-[10px] font-black uppercase text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded tracking-tighter">{item.obra_social}</span>
                                             {item.dni && <span className="text-[10px] text-slate-400 font-mono">DNI: {item.dni}</span>}
+                                            {isTestEnv && !item.isTest && (
+                                                <span className="text-[10px] font-black uppercase text-white bg-slate-800 px-1.5 py-0.5 rounded tracking-tighter flex items-center gap-1">
+                                                    <LockIcon size={8} /> Producción (L)
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

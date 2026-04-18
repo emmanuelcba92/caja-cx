@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Trash2, Save, X, StickyNote, Pencil, Search } from 'lucide-react';
+import { Plus, Trash2, Save, X, StickyNote, Pencil, Search, CheckCircle, Circle } from 'lucide-react';
 
 const NotesView = () => {
     const { currentUser } = useAuth();
@@ -75,6 +75,7 @@ const NotesView = () => {
                 // Create
                 await addDoc(collection(db, "notes"), {
                     ...noteData,
+                    isRead: false,
                     createdAt: new Date()
                 });
             }
@@ -90,8 +91,7 @@ const NotesView = () => {
         }
     };
 
-    const handleDelete = async (e, id) => {
-        e.stopPropagation();
+    const handleDelete = async (id) => {
         if (!window.confirm("¿Eliminar esta nota?")) return;
         try {
             await deleteDoc(doc(db, "notes", id));
@@ -105,6 +105,17 @@ const NotesView = () => {
         }
     };
 
+    const toggleRead = async (e, note) => {
+        e.stopPropagation();
+        try {
+            const newStatus = !note.isRead;
+            await updateDoc(doc(db, "notes", note.id), { isRead: newStatus });
+            setNotes(prev => prev.map(n => n.id === note.id ? { ...n, isRead: newStatus } : n));
+        } catch (error) {
+            console.error("Error toggling status:", error);
+        }
+    };
+
     const startNewNote = () => {
         setCurrentNote(null);
         setTitle('');
@@ -112,11 +123,21 @@ const NotesView = () => {
         setIsEditing(true);
     };
 
-    const openNote = (note) => {
+    const openNote = async (note) => {
         setCurrentNote(note);
         setTitle(note.title);
         setContent(note.content);
         setIsEditing(true);
+
+        // Mark as read if it wasn't already
+        if (note.isRead !== true) {
+            try {
+                await updateDoc(doc(db, "notes", note.id), { isRead: true });
+                setNotes(prev => prev.map(n => n.id === note.id ? { ...n, isRead: true } : n));
+            } catch (error) {
+                console.error("Error marking note as read:", error);
+            }
+        }
     };
 
     const filteredNotes = notes.filter(n =>
@@ -203,9 +224,31 @@ const NotesView = () => {
                     <div
                         key={note.id}
                         onClick={() => openNote(note)}
-                        className="bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-2xl p-5 cursor-pointer transition-all group relative h-64 flex flex-col shadow-sm hover:shadow-md"
+                        className={`${note.isRead !== true ? 'bg-yellow-50 hover:bg-yellow-100 border-yellow-200' : 'bg-white hover:bg-slate-50 border-slate-200'} border rounded-2xl p-5 cursor-pointer transition-all group relative h-64 flex flex-col shadow-sm hover:shadow-md`}
                     >
-                        <h3 className="font-bold text-lg text-slate-800 mb-2 line-clamp-1">{note.title}</h3>
+                        <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-bold text-lg text-slate-800 line-clamp-1">{note.title}</h3>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                    onClick={(e) => toggleRead(e, note)}
+                                    className={`p-2 rounded-full transition-colors ${note.isRead !== true 
+                                        ? 'text-blue-500 hover:bg-blue-50' 
+                                        : 'text-slate-400 hover:bg-slate-50'}`}
+                                    title={note.isRead !== true ? "Marcar como leída" : "Marcar como pendiente"}
+                                >
+                                    {note.isRead !== true ? <CheckCircle size={16} /> : <Circle size={16} />}
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(note.id);
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        </div>
                         <p className="text-slate-600 text-sm flex-1 whitespace-pre-wrap line-clamp-6 opacity-80">
                             {note.content}
                         </p>
@@ -215,12 +258,6 @@ const NotesView = () => {
                                     ? new Date(note.updatedAt.seconds * 1000).toLocaleDateString()
                                     : 'Reciente'}
                             </span>
-                            <button
-                                onClick={(e) => handleDelete(e, note.id)}
-                                className="p-2 bg-white/50 rounded-lg text-red-400 hover:text-red-600 hover:bg-white transition-colors opacity-0 group-hover:opacity-100"
-                            >
-                                <Trash2 size={16} />
-                            </button>
                         </div>
                     </div>
                 ))}

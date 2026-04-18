@@ -27,11 +27,22 @@ function AuthenticatedApp() {
   const { currentUser, logout, viewingUid, sharedAccounts, switchContext, catalogOwnerUid } = useAuth();
   const { isAuthorized, isSuperAdmin, userRole, permissions } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
+  const [notesCount, setNotesCount] = useState(0);
 
   // Ensure light mode is always active
   useEffect(() => {
     document.documentElement.classList.remove('dark');
   }, []);
+
+  // Sync Combined Counts for Browser Tab (Reminders + Notes)
+  useEffect(() => {
+    const totalCount = pendingCount + notesCount;
+    if (totalCount > 0) {
+      document.title = `(${totalCount}) Cirugías COAT`;
+    } else {
+      document.title = `Cirugías COAT`;
+    }
+  }, [pendingCount, notesCount]);
 
   // Sync Pending Reminders Count for Browser Tab (PER USER)
   useEffect(() => {
@@ -44,20 +55,27 @@ function AuthenticatedApp() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const count = snapshot.docs.length;
-      setPendingCount(count);
-      if (count > 0) {
-        document.title = `(${count}) Cirugías COAT`;
-      } else {
-        document.title = `Cirugías COAT`;
-      }
+      setPendingCount(snapshot.docs.length);
     });
 
-    return () => {
-      unsubscribe();
-      document.title = `Cirugías COAT`;
-    };
+    return () => unsubscribe();
   }, [viewingUid, catalogOwnerUid]);
+
+  // Sync Unread Notes Count
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    const q = query(
+      collection(db, "notes"),
+      where("userId", "==", currentUser.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setNotesCount(snapshot.docs.filter(d => d.data().isRead !== true).length);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.uid]);
 
   // Tabs Definition
   // Grouped Sidebar Configuration
@@ -180,7 +198,7 @@ function AuthenticatedApp() {
       <aside className={`${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-0 md:translate-x-0 md:w-20'} fixed md:relative min-h-screen bg-white border-r border-slate-200 flex flex-col shadow-xl md:shadow-none transition-all duration-300 z-30`}>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className={`absolute -right-3 top-8 bg-amber-500 text-white p-1 rounded-full shadow-md z-30 hover:bg-amber-600 transition-colors hidden md:flex`}
+          className={`absolute -right-3 top-24 bg-amber-500 text-white p-1 rounded-full shadow-md z-30 hover:bg-amber-600 transition-colors hidden md:flex`}
         >
           {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
@@ -217,7 +235,15 @@ function AuthenticatedApp() {
                       title={!sidebarOpen ? item.label : ''}
                     >
                       <item.icon size={sidebarOpen ? 20 : 28} className={`flex-shrink-0 transition-all ${!sidebarOpen && 'hover:scale-110'}`} />
-                      <span className={`transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 w-0 text-xs'}`}>{item.label}</span>
+                      <span className={`flex-1 transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 w-0 text-xs'}`}>{item.label}</span>
+                      {item.id === 'notas' && notesCount > 0 && sidebarOpen && (
+                        <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-sm animate-pulse">
+                          {notesCount}
+                        </span>
+                      )}
+                      {item.id === 'notas' && notesCount > 0 && !sidebarOpen && (
+                        <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full shadow-sm animate-pulse" />
+                      )}
                     </button>
                   ))}
                 </div>

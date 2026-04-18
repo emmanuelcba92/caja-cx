@@ -16,7 +16,6 @@ const NotificationBell = () => {
         const q = query(
             collection(db, "notifications"),
             where("userId", "==", currentUser.uid),
-            orderBy("createdAt", "desc"),
             limit(20)
         );
 
@@ -25,6 +24,12 @@ const NotificationBell = () => {
                 id: doc.id,
                 ...doc.data()
             }));
+            // Sort client-side to avoid compound index requirement
+            items.sort((a, b) => {
+                const dateA = a.createdAt ? new Date(a.createdAt) : 0;
+                const dateB = b.createdAt ? new Date(b.createdAt) : 0;
+                return dateB - dateA;
+            });
             setNotifications(items);
         });
 

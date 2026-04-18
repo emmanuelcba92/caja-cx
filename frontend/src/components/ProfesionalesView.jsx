@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Trash2, Tag, Lock, Download, Printer, X, FileText, Edit3, Database, Cloud } from 'lucide-react';
+import { UserPlus, Trash2, Tag, Lock as LockIcon, Download, Printer, X, FileText, Edit3, Database, Cloud } from 'lucide-react';
 import { db, USE_LOCAL_DB } from '../firebase/config';
 import { collection, getDocs, getDoc, addDoc, deleteDoc, doc, query, where, orderBy, updateDoc } from 'firebase/firestore';
 import { apiService } from '../services/apiService';
@@ -511,11 +511,11 @@ const ProfesionalesView = () => {
 
                         {isAdmin ? (
                             <button onClick={() => setIsAdmin(false)} className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition-all font-bold text-sm">
-                                <Lock size={16} /> Bloquear Admin
+                                <LockIcon size={16} /> Bloquear Admin
                             </button>
                         ) : (
                             <button onClick={() => setShowPinModal(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 font-bold text-sm hover:bg-slate-200 transition-colors">
-                                <Lock size={16} /> Modo Admin
+                                <LockIcon size={16} /> Modo Admin
                             </button>
                         )}
                     </h2>

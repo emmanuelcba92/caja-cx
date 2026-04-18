@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Edit, Edit2, Trash2, Check, X, Calendar, DollarSign, User, Folder, ChevronRight, Home, ArrowLeft, FileText, Printer, Settings, Lock, Database, ChevronLeft } from 'lucide-react';
+import { Search, Edit, Edit2, Trash2, Check, X, Calendar, DollarSign, User, Folder, ChevronRight, Home, ArrowLeft, FileText, Printer, Settings, Lock as LockIcon, Database, ChevronLeft } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -935,13 +935,13 @@ const HistorialCaja = () => {
                                         <Trash2 size={16} /> Eliminar Día
                                     </button>
                                     <button onClick={() => isAdmin ? setIsAdmin(false) : setShowPinModal(true)} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-xl transition-all ${isAdmin ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                                        {isAdmin ? <><Lock size={16} /> Bloquear Edición</> : <><Lock size={16} /> Admin</>}
+                                        {isAdmin ? <><LockIcon size={16} /> Bloquear Edición</> : <><LockIcon size={16} /> Admin</>}
                                     </button>
                                 </div>
                             ) : (
                                 !isReadOnly && (
                                     <button onClick={() => setShowPinModal(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 font-bold text-sm hover:bg-slate-200 transition-colors">
-                                        <Lock size={16} /> Modo Admin
+                                        <LockIcon size={16} /> Modo Admin
                                     </button>
                                 )
                             )}
@@ -1000,7 +1000,10 @@ const HistorialCaja = () => {
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs font-bold text-slate-500 uppercase">DNI</label>
-                                        <input className="w-full p-2 border rounded-lg" value={newEntry.dni || ''} onChange={(e) => setNewEntry({ ...newEntry, dni: e.target.value })} />
+                                        <input className="w-full p-2 border rounded-lg" value={newEntry.dni || ''} onChange={(e) => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            setNewEntry({ ...newEntry, dni: val });
+                                        }} />
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs font-bold text-slate-500 uppercase">Obra Social</label>
