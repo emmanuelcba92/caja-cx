@@ -223,6 +223,25 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         }
     }, [rangeStart, rangeEnd, ordenes, activeTab]);
 
+    // Update document title for printing
+    useEffect(() => {
+        if (showPreview && previewData) {
+            const originalTitle = document.title;
+            let newTitle = 'Documento';
+            if (previewType === 'reporte_semanal') {
+                newTitle = `Control_Facturacion_${previewData.fechaInicio}_al_${previewData.fechaFin}`.replace(/\//g, '-');
+            } else if (previewType === 'caratula') {
+                newTitle = `Caratula_${previewData.afiliado || 'Paciente'}`;
+            } else {
+                newTitle = `Orden_${previewData.afiliado || 'Paciente'}`;
+            }
+            document.title = newTitle;
+            return () => {
+                document.title = originalTitle;
+            };
+        }
+    }, [showPreview, previewData, previewType]);
+
     useEffect(() => {
         if (draftData) {
             const currentKey = `${draftData.id || 'new'} -${activeTab} `;
@@ -391,11 +410,23 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
     const handleDownloadPDF = async () => {
         const element = document.getElementById('preview-content');
-        if (!element) return;
+        if (!element) {
+            console.error('Element preview-content not found');
+            return;
+        }
+
+        let pdfFilename = 'documento.pdf';
+        if (previewType === 'reporte_semanal') {
+            pdfFilename = `Control_Facturacion_${previewData.fechaInicio}_al_${previewData.fechaFin}`.replace(/\//g, '-') + '.pdf';
+        } else if (previewType === 'caratula') {
+            pdfFilename = `Caratula_${previewData.afiliado || 'Paciente'}.pdf`;
+        } else {
+            pdfFilename = `Orden_${previewData.afiliado || 'Paciente'}_${previewData.fechaCirugia || previewData.fechaDocumento || ''}.pdf`;
+        }
 
         const opt = {
             margin: 0,
-            filename: `${previewData.afiliado || 'documento'}_${previewData.fechaDocumento}.pdf`,
+            filename: pdfFilename,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, windowHeight: element.scrollHeight },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -2636,15 +2667,17 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             </div>
                         </div>
 
-                        {previewType === 'ambas' ? (
-                            <>
-                                {renderPrintContent('internacion')}
-                                <div className="page-break" style={{ pageBreakAfter: 'always', breakAfter: 'page' }}></div>
-                                {renderPrintContent('material')}
-                            </>
-                        ) : (
-                            renderPrintContent(previewType)
-                        )}
+                        <div id="preview-content">
+                            {previewType === 'ambas' ? (
+                                <>
+                                    {renderPrintContent('internacion')}
+                                    <div className="page-break" style={{ pageBreakAfter: 'always', breakAfter: 'page' }}></div>
+                                    {renderPrintContent('material')}
+                                </>
+                            ) : (
+                                renderPrintContent(previewType)
+                            )}
+                        </div>
                     </div>
                 </div>,
                 document.body
