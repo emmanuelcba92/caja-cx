@@ -1,6 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, USE_LOCAL_DB } from '../firebase/config';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, signInWithPopup, GoogleAuthProvider, EmailAuthProvider, linkWithCredential } from 'firebase/auth';
+import { 
+    onAuthStateChanged, 
+    signInWithEmailAndPassword, 
+    signOut, 
+    sendPasswordResetEmail, 
+    signInWithPopup, 
+    GoogleAuthProvider, 
+    EmailAuthProvider, 
+    linkWithCredential,
+    setPersistence,
+    browserSessionPersistence
+} from 'firebase/auth';
 import { db } from '../firebase/config';
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { getRolePermissions, seedDefaultRoles } from '../services/roleService';
@@ -22,10 +33,18 @@ export const AuthProvider = ({ children }) => {
     const SUPER_ADMIN_EMAILS = ["emmanuel.ag92@gmail.com", "egomez@coat.com.ar"];
     const isSuperAdminEmail = (email) => SUPER_ADMIN_EMAILS.includes(email);
 
-    const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
-    const logout = () => signOut(auth);
+    const login = async (email, password) => {
+        // Force session persistence (erased when tab closes)
+        await setPersistence(auth, browserSessionPersistence);
+        return signInWithEmailAndPassword(auth, email, password);
+    };
+    const logout = () => {
+        sessionStorage.removeItem('session_start_time');
+        return signOut(auth);
+    };
     const resetPassword = (email) => sendPasswordResetEmail(auth, email);
-    const loginWithGoogle = () => {
+    const loginWithGoogle = async () => {
+        await setPersistence(auth, browserSessionPersistence);
         const provider = new GoogleAuthProvider();
         return signInWithPopup(auth, provider);
     };
@@ -50,6 +69,39 @@ export const AuthProvider = ({ children }) => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             try {
                 if (user) {
+                    // --- SECURITY: Absolute Max Session (5 hours) ---
+                    const startTime = sessionStorage.getItem('session_start_time');
+                    const now = Date.now();
+                    const FIVE_HOURS = 5 * 60 * 60 * 1000;
+                    
+                    if (startTime && (now - parseInt(startTime)) > FIVE_HOURS) {
+                        console.log("Sesión expirada (Límite 5hs)");
+                        logout();
+                        return;
+                    }
+                    if (!startTime) {
+                        sessionStorage.setItem('session_start_time', now.toString());
+                    }
+
+                    // --- SECURITY: Inactivity Timer (1 hour) ---
+                    let inactivityTimer;
+                    const ONE_HOUR = 1 * 60 * 60 * 1000;
+
+                    const resetInactivityTimer = () => {
+                        if (inactivityTimer) clearTimeout(inactivityTimer);
+                        inactivityTimer = setTimeout(() => {
+                            console.log("Cerrando sesión por inactividad (1h)");
+                            logout();
+                        }, ONE_HOUR);
+                    };
+
+                    // Events that reset the idle timer
+                    window.addEventListener('mousemove', resetInactivityTimer);
+                    window.addEventListener('keydown', resetInactivityTimer);
+                    window.addEventListener('click', resetInactivityTimer);
+                    
+                    resetInactivityTimer(); // Start the timer
+
                     // Determine Role & Authorization
                     let role = 'user';
                     let authorized = false;
