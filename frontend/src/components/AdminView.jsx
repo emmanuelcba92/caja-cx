@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, isLocalEnv } from '../firebase/config';
 import { collection, query, getDocs, addDoc, deleteDoc, doc, where, updateDoc, setDoc, getDoc } from 'firebase/firestore';
-import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, Download, Upload, Database, FileJson, AlertTriangle } from 'lucide-react';
+import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, Download, Upload, Database, FileJson, AlertTriangle, PieChart } from 'lucide-react';
 
 const AdminView = () => {
     const { switchContext, viewingUid, currentUser, isSuperAdmin } = useAuth();
@@ -22,6 +22,15 @@ const AdminView = () => {
     const [notificationEmails, setNotificationEmails] = useState('');
     const [scriptUrl, setScriptUrl] = useState('');
     const [appNotificationUids, setAppNotificationUids] = useState([]);
+    const [stats, setStats] = useState({ totalCirugias: 0, realizadas: 0, proximas: 0, canceladas: 0 });
+    const [allSurgeries, setAllSurgeries] = useState([]);
+    
+    // Statistics Filter State
+    const [statsFilterType, setStatsFilterType] = useState('all'); // 'all', 'month', 'year', 'range'
+    const [statsMonth, setStatsMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
+    const [statsYear, setStatsYear] = useState(new Date().getFullYear().toString());
+    const [statsDateStart, setStatsDateStart] = useState('');
+    const [statsDateEnd, setStatsDateEnd] = useState('');
 
     // Role Form State
     const [roleName, setRoleName] = useState('');
@@ -118,6 +127,12 @@ const AdminView = () => {
                 setNotificationEmails('emmanuel.ag92@gmail.com');
             }
 
+            // 7. Fetch Stats for Surgeries
+            const ordenesSnap = await getDocs(collection(db, "ordenes_internacion"));
+            const fetchedSurgeries = [];
+            ordenesSnap.forEach(d => fetchedSurgeries.push({ id: d.id, ...d.data() }));
+            setAllSurgeries(fetchedSurgeries);
+
         } catch (error) {
             console.error(error);
         } finally {
@@ -156,6 +171,44 @@ const AdminView = () => {
         fetchData();
         runNotificationCleanup();
     }, []);
+
+    useEffect(() => {
+        let totalCirugias = 0;
+        let realizadas = 0;
+        let proximas = 0;
+        let canceladas = 0;
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        allSurgeries.forEach(data => {
+            const dateStr = data.fechaCirugia || data.date || data.createdAt || '';
+            if (!dateStr) return;
+
+            let include = false;
+            if (statsFilterType === 'all') {
+                include = true;
+            } else if (statsFilterType === 'month') {
+                include = dateStr.startsWith(`${statsYear}-${statsMonth}`);
+            } else if (statsFilterType === 'year') {
+                include = dateStr.startsWith(statsYear);
+            } else if (statsFilterType === 'range') {
+                include = (!statsDateStart || dateStr >= statsDateStart) && (!statsDateEnd || dateStr <= statsDateEnd);
+            }
+
+            if (include) {
+                totalCirugias++;
+                if (data.suspendida) {
+                    canceladas++;
+                } else {
+                    if (dateStr < todayStr) {
+                        realizadas++;
+                    } else {
+                        proximas++;
+                    }
+                }
+            }
+        });
+        setStats({ totalCirugias, realizadas, proximas, canceladas });
+    }, [allSurgeries, statsFilterType, statsMonth, statsYear, statsDateStart, statsDateEnd]);
 
     const handleUpdateRole = async (id, newRoleValue) => {
         const authRecord = authorizedEmails.find(a => a.id === id);
@@ -527,6 +580,12 @@ const AdminView = () => {
                 {isSuperAdmin && (
                     <>
                         <button
+                            onClick={() => setActiveTab('stats')}
+                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'stats' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                        >
+                            Estadísticas
+                        </button>
+                        <button
                             onClick={() => setActiveTab('maintenance')}
                             className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
                         >
@@ -644,6 +703,145 @@ const AdminView = () => {
                                 </div>
                             ))}
                         </div>
+                    </div>
+                </div>
+            ) : activeTab === 'stats' ? (
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                                <PieChart size={24} />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Estadísticas de Cirugías</h3>
+                        </div>
+                        
+                        {/* Filters */}
+                        <div className="flex flex-wrap items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-2xl border border-slate-200 dark:border-slate-700">
+                            <select 
+                                value={statsFilterType} 
+                                onChange={(e) => setStatsFilterType(e.target.value)}
+                                className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm font-bold text-slate-700 dark:text-slate-200"
+                            >
+                                <option value="all">Historico (Todo)</option>
+                                <option value="month">Por Mes</option>
+                                <option value="year">Por Año</option>
+                                <option value="range">Rango de Fechas</option>
+                            </select>
+
+                            {statsFilterType === 'month' && (
+                                <>
+                                    <select 
+                                        value={statsMonth} 
+                                        onChange={(e) => setStatsMonth(e.target.value)}
+                                        className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
+                                    >
+                                        <option value="01">Ene</option>
+                                        <option value="02">Feb</option>
+                                        <option value="03">Mar</option>
+                                        <option value="04">Abr</option>
+                                        <option value="05">May</option>
+                                        <option value="06">Jun</option>
+                                        <option value="07">Jul</option>
+                                        <option value="08">Ago</option>
+                                        <option value="09">Sep</option>
+                                        <option value="10">Oct</option>
+                                        <option value="11">Nov</option>
+                                        <option value="12">Dic</option>
+                                    </select>
+                                    <input 
+                                        type="number" 
+                                        value={statsYear} 
+                                        onChange={(e) => setStatsYear(e.target.value)}
+                                        className="w-20 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
+                                    />
+                                </>
+                            )}
+
+                            {statsFilterType === 'year' && (
+                                <input 
+                                    type="number" 
+                                    value={statsYear} 
+                                    onChange={(e) => setStatsYear(e.target.value)}
+                                    className="w-24 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
+                                />
+                            )}
+
+                            {statsFilterType === 'range' && (
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        type="date" 
+                                        value={statsDateStart} 
+                                        onChange={(e) => setStatsDateStart(e.target.value)}
+                                        className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
+                                    />
+                                    <span className="text-slate-400">-</span>
+                                    <input 
+                                        type="date" 
+                                        value={statsDateEnd} 
+                                        onChange={(e) => setStatsDateEnd(e.target.value)}
+                                        className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-800/50">
+                            <p className="text-sm font-bold text-blue-600 dark:text-blue-400 mb-1">Totales</p>
+                            <p className="text-3xl font-black text-slate-800 dark:text-white">{stats.totalCirugias}</p>
+                        </div>
+                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-6 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
+                            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mb-1">Realizadas</p>
+                            <p className="text-3xl font-black text-slate-800 dark:text-white">{stats.realizadas}</p>
+                        </div>
+                        <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-2xl border border-amber-100 dark:border-amber-800/50">
+                            <p className="text-sm font-bold text-amber-600 dark:text-amber-400 mb-1">Próximas</p>
+                            <p className="text-3xl font-black text-slate-800 dark:text-white">{stats.proximas}</p>
+                        </div>
+                        <div className="bg-red-50 dark:bg-red-900/20 p-6 rounded-2xl border border-red-100 dark:border-red-800/50">
+                            <p className="text-sm font-bold text-red-600 dark:text-red-400 mb-1">Canceladas</p>
+                            <p className="text-3xl font-black text-slate-800 dark:text-white">{stats.canceladas}</p>
+                        </div>
+                    </div>
+
+                    {/* Simple Bar Chart UI using Tailwind */}
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
+                        <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-6 uppercase tracking-wider">Distribución de Estados</h4>
+                        
+                        {stats.totalCirugias > 0 ? (
+                            <div className="space-y-6">
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-2">
+                                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Realizadas</span>
+                                        <span className="text-slate-600 dark:text-slate-300">{Math.round((stats.realizadas / stats.totalCirugias) * 100)}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
+                                        <div className="bg-emerald-500 h-4 rounded-full transition-all duration-1000" style={{ width: `${(stats.realizadas / stats.totalCirugias) * 100}%` }}></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-2">
+                                        <span className="text-amber-600 dark:text-amber-400 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-amber-500"></div>Próximas</span>
+                                        <span className="text-slate-600 dark:text-slate-300">{Math.round((stats.proximas / stats.totalCirugias) * 100)}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
+                                        <div className="bg-amber-500 h-4 rounded-full transition-all duration-1000" style={{ width: `${(stats.proximas / stats.totalCirugias) * 100}%` }}></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-2">
+                                        <span className="text-red-600 dark:text-red-400 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500"></div>Canceladas</span>
+                                        <span className="text-slate-600 dark:text-slate-300">{Math.round((stats.canceladas / stats.totalCirugias) * 100)}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
+                                        <div className="bg-red-500 h-4 rounded-full transition-all duration-1000" style={{ width: `${(stats.canceladas / stats.totalCirugias) * 100}%` }}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-center text-slate-500 font-medium py-4">No hay cirugías registradas.</p>
+                        )}
                     </div>
                 </div>
             ) : activeTab === 'roles' ? (
