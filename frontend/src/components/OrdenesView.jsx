@@ -1584,7 +1584,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                         <td className="border border-slate-300 p-2 font-bold text-[10px]">{(o.afiliado || '').toUpperCase()}</td>
                                         <td className="border border-slate-300 p-2 text-[10px]">{(o.obraSocial || '').toUpperCase()}</td>
                                         <td className="border border-slate-300 p-2 text-center font-mono">{codigosStr}</td>
-                                        <td className="border border-slate-300 p-2">{shortProfName(o.tutor || o.profesional)}</td>
+                                        <td className="border border-slate-300 p-2">{shortProfName(o.profesional)}</td>
                                     </tr>
                                 )
                             })}
