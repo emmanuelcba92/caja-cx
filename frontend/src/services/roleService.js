@@ -1,20 +1,7 @@
-import { db } from '../firebase/config';
+import { db, isLocalEnv } from '../firebase/config';
 import { collection, doc, setDoc, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 
 export const DEFAULT_ROLES = {
-    user: {
-        name: 'Usuario',
-        isSystem: true,
-        permissions: {
-            can_view_admin: false,
-            can_manage_users: false,
-            can_view_shared_catalog: false,
-            can_view_ordenes: false,
-            can_share_ordenes: false,
-            can_delete_data: false,
-            is_ephemeral: false
-        }
-    },
     admin: {
         name: 'Administrador',
         isSystem: true,
@@ -28,8 +15,8 @@ export const DEFAULT_ROLES = {
             is_ephemeral: false
         }
     },
-    coat: {
-        name: 'COAT (Compartido)',
+    secretaria: {
+        name: 'Secretaria',
         isSystem: true,
         permissions: {
             can_view_admin: false,
@@ -38,33 +25,8 @@ export const DEFAULT_ROLES = {
             can_view_ordenes: true,
             can_share_ordenes: true,
             can_delete_data: false,
-            is_ephemeral: false
-        }
-    },
-    prueba: {
-        name: 'Prueba (24h)',
-        isSystem: true,
-        permissions: {
-            can_view_admin: false,
-            can_manage_users: false,
-            can_view_shared_catalog: false,
-            can_view_ordenes: false,
-            can_share_ordenes: false,
-            can_delete_data: false,
-            is_ephemeral: true
-        }
-    },
-    medico: {
-        name: 'Médico',
-        isSystem: true,
-        permissions: {
-            can_view_admin: false,
-            can_manage_users: false,
-            can_view_shared_catalog: false,
-            can_view_ordenes: true,
-            can_share_ordenes: false,
-            can_view_global_calendar: true,
-            can_delete_data: false,
+            can_edit_own: true,
+            can_delete_own: true,
             is_ephemeral: false
         }
     },
@@ -77,10 +39,8 @@ export const DEFAULT_ROLES = {
             can_view_shared_catalog: true,
             can_view_ordenes: true,
             can_share_ordenes: true,
-            can_view_audit: true,
-            can_approve_ordenes: true,
-            readonly_caja: true,
             can_delete_data: false,
+            readonly_caja: true,
             is_ephemeral: false
         }
     }
@@ -93,6 +53,7 @@ export const seedDefaultRoles = async () => {
         // Delete deprecated 'doctor' role if it exists
         const deprecatedRoles = ['doctor'];
         for (const deprecatedRole of deprecatedRoles) {
+            if (isLocalEnv) continue;
             const deprecatedRef = doc(rolesCol, deprecatedRole);
             const deprecatedSnap = await getDoc(deprecatedRef);
             if (deprecatedSnap.exists()) {

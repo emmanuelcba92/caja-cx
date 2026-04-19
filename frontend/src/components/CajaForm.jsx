@@ -5,6 +5,8 @@ import { collection, addDoc, getDoc, getDocs, query, where, deleteDoc, doc, upda
 import { apiService } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import MoneyInput from './MoneyInput';
+import ModalPortal from './common/ModalPortal';
+
 
 const CajaForm = () => {
     const { viewingUid, permission, currentUser, catalogOwnerUid, permissions } = useAuth(); // Get permission ('owner', 'editor', 'viewer')
@@ -59,10 +61,9 @@ const CajaForm = () => {
     const [commentModalId, setCommentModalId] = useState(null);
 
     const fetchProfs = async () => {
-        const ownerToUse = catalogOwnerUid || viewingUid;
-        if (!ownerToUse) return;
         try {
-            const profs = await apiService.getCollection("profesionales", { userId: ownerToUse });
+            // "Todos ven todo": ya no filtramos por userId
+            const profs = await apiService.getCollection("profesionales");
             profs.sort((a, b) => a.nombre.localeCompare(b.nombre));
             setProfesionales(profs);
         } catch (error) {
@@ -71,12 +72,11 @@ const CajaForm = () => {
     };
 
     const fetchHistory = async () => {
-        const ownerToUse = catalogOwnerUid || viewingUid;
-        if (!ownerToUse || !globalDate) return;
+        if (!globalDate) return;
         setLoadingHistory(true);
         try {
+            // "Todos ven todo": ya no filtramos por userId
             const entriesList = await apiService.getCollection("caja", {
-                userId: ownerToUse,
                 fecha: globalDate
             });
             entriesList.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
@@ -89,11 +89,9 @@ const CajaForm = () => {
     };
 
     const fetchReminders = async () => {
-        const ownerToUse = catalogOwnerUid || viewingUid;
-        if (!ownerToUse) return;
-
         try {
-            const rems = await apiService.getCollection("reminders", { userId: ownerToUse });
+            // Recordatorios también son globales ahora si "todos ven todo"
+            const rems = await apiService.getCollection("reminders");
             rems.sort((a, b) => {
                 if (a.completed === b.completed) {
                     return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
@@ -519,6 +517,18 @@ const CajaForm = () => {
             alert("No puedes modificar registros de producción desde el entorno de pruebas.");
             return;
         }
+
+        // --- ENFORCE OWN RECORDS POLICY ---
+        // Admin or superadmin can do everything.
+        // Others (Secretaria) can only edit/delete what they created.
+        const canManageAny = permissions?.can_delete_data || currentUser?.email === "emmanuel.ag92@gmail.com";
+        const isOwner = item.createdBy === currentUser?.email;
+
+        if (!canManageAny && !isOwner) {
+            alert(`Solo puedes ${action === 'edit' ? 'editar' : 'eliminar'} registros cargados por ti mismo.`);
+            return;
+        }
+
         setHistoryToEdit(item);
         setHistoryAction(action);
         if (isPinVerified) {
@@ -564,62 +574,62 @@ const CajaForm = () => {
     return (
         <div className="space-y-6">
             {/* Header & Date Section */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 transition-colors duration-300">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="flex items-center gap-4">
-                        <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-200 text-white">
+                        <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-200 dark:shadow-none text-white transition-all">
                             <LayoutDashboard size={24} />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">CIRUGIAS COAT</h2>
-                            <p className="text-sm font-medium text-slate-400">Control de gestión de ingresos diarios</p>
+                            <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight uppercase">CIRUGIAS COAT</h2>
+                            <p className="text-sm font-medium text-slate-400 dark:text-slate-500">Control de gestión de ingresos diarios</p>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                        <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl shadow-sm border border-slate-200">
-                            <Calendar size={18} className="text-blue-500" />
+                    <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-2xl border border-slate-100 dark:border-slate-700 transition-colors">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+                            <Calendar size={18} className="text-blue-500 dark:text-blue-400" />
                             <input
                                 type="date"
-                                className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none focus:ring-0 cursor-pointer"
+                                className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-slate-300 outline-none focus:ring-0 cursor-pointer"
                                 value={globalDate}
                                 onChange={(e) => setGlobalDate(e.target.value)}
                             />
                         </div>
 
-                        <div className="h-10 w-px bg-slate-200 mx-1" />
+                        <div className="h-10 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
                         <div className="flex gap-4">
-                            <div className="px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-center min-w-[100px]">
-                                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">COAT Pesos</p>
-                                <p className="text-lg font-black text-emerald-700 tabular-nums">${totals.coat_pesos.toLocaleString('es-AR')}</p>
+                            <div className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 rounded-xl text-center min-w-[100px] transition-colors">
+                                <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">COAT Pesos</p>
+                                <p className="text-lg font-black text-emerald-700 dark:text-emerald-300 tabular-nums">${totals.coat_pesos.toLocaleString('es-AR')}</p>
                             </div>
-                            <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl text-center min-w-[100px]">
-                                <p className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">COAT USD</p>
-                                <p className="text-lg font-black text-blue-700 tabular-nums">U$D {totals.coat_dolares.toLocaleString('es-AR')}</p>
+                            <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-xl text-center min-w-[100px] transition-colors">
+                                <p className="text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">COAT USD</p>
+                                <p className="text-lg font-black text-blue-700 dark:text-blue-300 tabular-nums">U$D {totals.coat_dolares.toLocaleString('es-AR')}</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Daily Comment Modal Trigger */}
+            {/* Daily Comment Modal */}
             {showDailyCommentModal && (
-                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg border border-slate-100 animate-in zoom-in-95 duration-300">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <ModalPortal onClose={() => setShowDailyCommentModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] shadow-xl w-full max-w-lg border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-300">
+                        <div className="flex justify-between items-center mb-8">
+                            <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-3 tracking-tight uppercase">
                                 <MessageSquare className="text-amber-500" /> Comentario General
                             </h3>
-                            <button onClick={() => setShowDailyCommentModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
+                            <button onClick={() => setShowDailyCommentModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400"><X size={20} /></button>
                         </div>
                         <textarea
-                            className="w-full h-40 border border-slate-200 rounded-2xl p-4 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none resize-none transition-all text-slate-700 font-medium"
+                            className="w-full h-48 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-3xl p-6 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none resize-none transition-all text-slate-700 dark:text-slate-200 font-bold leading-relaxed shadow-inner"
                             placeholder="Escribe aquí observaciones generales de la jornada..."
                             value={dailyComment}
                             onChange={(e) => setDailyComment(e.target.value)}
                         />
-                        <div className="flex justify-end mt-6">
+                        <div className="flex justify-end mt-8">
                             <button onClick={async () => {
                                 setShowDailyCommentModal(false);
                                 const ownerToUse = catalogOwnerUid || viewingUid;
@@ -647,60 +657,64 @@ const CajaForm = () => {
                                     console.error("Error saving daily comment", e);
                                     alert("Error al guardar comentario.");
                                 }
-                            }} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg">Cerrar y Guardar</button>
+                            }} className="w-full py-4 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-2xl font-black hover:scale-[1.02] active:scale-95 transition-all shadow-md shadow-slate-900/10 uppercase text-xs tracking-widest">
+                                Guardar Observación
+                            </button>
                         </div>
                     </div>
-                </div>
+                </ModalPortal>
             )}
 
             {/* Single Patient Comment Modal */}
             {commentModalId && (
-                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg border border-slate-100 animate-in zoom-in-95 duration-300">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                <MessageSquare className="text-blue-500" /> Observaciones del Paciente
+                <ModalPortal onClose={() => setCommentModalId(null)}>
+                    <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] shadow-md w-full max-w-lg border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-300">
+                        <div className="flex justify-between items-center mb-8">
+                            <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-3 tracking-tight uppercase">
+                                <MessageSquare className="text-blue-500" /> Notas del Paciente
                             </h3>
-                            <button onClick={() => setCommentModalId(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
+                            <button onClick={() => setCommentModalId(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400"><X size={20} /></button>
                         </div>
                         <textarea
-                            className="w-full h-40 border border-slate-200 rounded-2xl p-4 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none resize-none transition-all text-slate-700 font-medium"
+                            className="w-full h-48 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-3xl p-6 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none resize-none transition-all text-slate-700 dark:text-slate-200 font-bold leading-relaxed shadow-inner"
                             placeholder="Añada detalles específicos sobre este movimiento..."
                             value={entries.find(e => e.id === commentModalId)?.comentario || ''}
                             onChange={(e) => updateEntry(commentModalId, 'comentario', e.target.value)}
                         />
-                        <div className="flex justify-end mt-6">
-                            <button onClick={() => setCommentModalId(null)} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">Confirmar</button>
+                        <div className="flex justify-end mt-8">
+                            <button onClick={() => setCommentModalId(null)} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black hover:scale-[1.02] active:scale-95 transition-all shadow-md shadow-blue-500/10 uppercase text-xs tracking-widest">
+                                Confirmar Notas
+                            </button>
                         </div>
                     </div>
-                </div>
+                </ModalPortal>
             )}
 
             {/* Entries List - Card Style */}
             <div className="grid grid-cols-1 gap-4">
                 {entries.map((entry, index) => (
-                    <div key={entry.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group relative">
+                    <div key={entry.id} className="bg-white dark:bg-slate-900 rounded-3xl shadow-md border border-slate-200 dark:border-slate-800 overflow-hidden hover:shadow-md transition-all group relative">
                         {/* Entry Header/Patient Data */}
-                        <div className="bg-slate-50/50 p-6 border-b border-slate-100">
+                        <div className="bg-slate-50/50 dark:bg-slate-800/30 p-6 border-b border-slate-100 dark:border-slate-800">
                             <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center">
                                 <div className="flex items-center gap-4 flex-1">
-                                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold text-slate-300 border border-slate-200 flex-shrink-0">
+                                    <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center font-bold text-slate-300 dark:text-slate-600 border border-slate-200 dark:border-slate-700 flex-shrink-0">
                                         {index + 1}
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Paciente</label>
+                                            <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Paciente</label>
                                             <input
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 focus:ring-4 focus:ring-blue-50/50 focus:border-blue-400 outline-none transition-all"
+                                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 dark:text-slate-100 focus:ring-4 focus:ring-blue-50/50 dark:focus:ring-blue-900/20 focus:border-blue-400 outline-none transition-all"
                                                 value={entry.paciente}
                                                 onChange={(e) => updateEntry(entry.id, 'paciente', e.target.value)}
                                                 placeholder="Nombre Completo..."
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">DNI</label>
+                                            <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">DNI</label>
                                             <input
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-blue-50/50 focus:border-blue-400 outline-none transition-all"
+                                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 focus:ring-4 focus:ring-blue-50/50 dark:focus:ring-blue-900/20 focus:border-blue-400 outline-none transition-all"
                                                 value={entry.dni}
                                                 onChange={(e) => {
                                                     const val = e.target.value.replace(/\D/g, '');
@@ -710,9 +724,9 @@ const CajaForm = () => {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Obra Social</label>
+                                            <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Obra Social</label>
                                             <input
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-blue-50/50 focus:border-blue-400 outline-none transition-all"
+                                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 focus:ring-4 focus:ring-blue-50/50 dark:focus:ring-blue-900/20 focus:border-blue-400 outline-none transition-all"
                                                 value={entry.obra_social}
                                                 onChange={(e) => updateEntry(entry.id, 'obra_social', e.target.value)}
                                                 placeholder="Prepaga / OS..."
@@ -724,7 +738,7 @@ const CajaForm = () => {
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => setCommentModalId(entry.id)}
-                                        className={`p-3 rounded-2xl transition-all ${entry.comentario ? 'bg-amber-100 text-amber-600 shadow-inner' : 'bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-200'}`}
+                                        className={`p-3 rounded-2xl transition-all ${entry.comentario ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 shadow-inner' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-800'}`}
                                         title="Observations"
                                     >
                                         <MessageSquare size={20} />
@@ -732,7 +746,7 @@ const CajaForm = () => {
                                     {!isReadOnly && (
                                         <button
                                             onClick={() => removeRow(entry.id)}
-                                            className="p-3 bg-white border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 rounded-2xl transition-all"
+                                            className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900/30 rounded-2xl transition-all"
                                             title="Delete Row"
                                         >
                                             <Trash2 size={20} />
@@ -747,23 +761,23 @@ const CajaForm = () => {
                             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
 
                                 {/* Payments Section */}
-                                <div className="xl:col-span-3 space-y-4 pr-0 xl:pr-6 xl:border-r border-slate-100">
-                                    <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100">
-                                        <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2">Pago del Paciente</label>
+                                <div className="xl:col-span-3 space-y-4 pr-0 xl:pr-6 xl:border-r border-slate-100 dark:border-slate-800">
+                                    <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/20">
+                                        <label className="block text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-2">Pago del Paciente</label>
                                         <div className="space-y-3">
                                             <div className="relative group">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 font-bold">$</span>
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 dark:text-emerald-400 font-bold">$</span>
                                                 <MoneyInput
-                                                    className="w-full pl-8 pr-4 py-2.5 bg-white border border-emerald-200 rounded-xl text-emerald-900 font-black text-lg focus:ring-4 focus:ring-emerald-100 outline-none transition-all"
+                                                    className="w-full pl-8 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-900 dark:text-emerald-100 font-black text-lg focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900/20 outline-none transition-all"
                                                     value={entry.pesos}
                                                     onChange={(val) => updateEntry(entry.id, 'pesos', val)}
                                                     placeholder="0,00"
                                                 />
                                             </div>
                                             <div className="relative group">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 font-bold">U$D</span>
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-400 font-bold">U$D</span>
                                                 <MoneyInput
-                                                    className="w-full pl-12 pr-4 py-2.5 bg-white border border-blue-200 rounded-xl text-blue-900 font-black text-lg focus:ring-4 focus:ring-blue-100 outline-none transition-all"
+                                                    className="w-full pl-12 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-900 dark:text-blue-100 font-black text-lg focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/20 outline-none transition-all"
                                                     value={entry.dolares}
                                                     onChange={(val) => updateEntry(entry.id, 'dolares', val)}
                                                     placeholder="0,00"
@@ -772,22 +786,22 @@ const CajaForm = () => {
                                         </div>
                                     </div>
 
-                                    <div className="bg-orange-50/30 p-4 rounded-2xl border border-orange-100/50">
-                                        <label className="block text-[10px] font-black text-orange-600 uppercase tracking-widest mb-2">Administración COAT</label>
+                                    <div className="bg-orange-50/30 dark:bg-orange-900/10 p-4 rounded-2xl border border-orange-100/50 dark:border-orange-900/20">
+                                        <label className="block text-[10px] font-black text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-2">Administración COAT</label>
                                         <div className="grid grid-cols-2 gap-2">
-                                            <div className="bg-white p-2 rounded-xl border border-orange-100 focus-within:ring-2 focus-within:ring-orange-200 transition-all">
-                                                <p className="text-[8px] font-bold text-orange-400 uppercase">Pesos</p>
+                                            <div className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-orange-100 dark:border-orange-900/30 focus-within:ring-2 focus-within:ring-orange-200 dark:focus-within:ring-orange-900/40 transition-all">
+                                                <p className="text-[8px] font-bold text-orange-400 dark:text-orange-500 uppercase">Pesos</p>
                                                 <MoneyInput
-                                                    className="w-full bg-transparent border-none p-0 text-sm font-black text-orange-700 outline-none"
+                                                    className="w-full bg-transparent border-none p-0 text-sm font-black text-orange-700 dark:text-orange-300 outline-none"
                                                     value={entry.coat_pesos}
                                                     onChange={(val) => updateEntry(entry.id, 'coat_pesos', val)}
                                                     placeholder="0,00"
                                                 />
                                             </div>
-                                            <div className="bg-white p-2 rounded-xl border border-orange-100 focus-within:ring-2 focus-within:ring-orange-200 transition-all">
-                                                <p className="text-[8px] font-bold text-orange-400 uppercase">Dolares</p>
+                                            <div className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-orange-100 dark:border-orange-900/30 focus-within:ring-2 focus-within:ring-orange-200 dark:focus-within:ring-orange-900/40 transition-all">
+                                                <p className="text-[8px] font-bold text-orange-400 dark:text-orange-500 uppercase">Dolares</p>
                                                 <MoneyInput
-                                                    className="w-full bg-transparent border-none p-0 text-sm font-black text-orange-700 outline-none"
+                                                    className="w-full bg-transparent border-none p-0 text-sm font-black text-orange-700 dark:text-orange-300 outline-none"
                                                     value={entry.coat_dolares}
                                                     onChange={(val) => updateEntry(entry.id, 'coat_dolares', val)}
                                                     placeholder="0,00"
@@ -800,13 +814,13 @@ const CajaForm = () => {
                                 {/* Professionals Distribution Section */}
                                 <div className="xl:col-span-6 space-y-4">
                                     <div className="flex items-center justify-between">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                            Honorarios Médicos <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-500 font-bold">{entry.showProf3 ? 3 : 2} PROFS</span>
+                                        <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                            Honorarios Médicos <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-500 dark:text-slate-400 font-bold">{entry.showProf3 ? 3 : 2} PROFS</span>
                                         </label>
                                         {!entry.showProf3 && (
                                             <button
                                                 onClick={() => updateEntry(entry.id, 'showProf3', true)}
-                                                className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-lg transition-colors border border-blue-100"
+                                                className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg transition-colors border border-blue-100 dark:border-blue-900/30"
                                             >
                                                 <Plus size={12} /> Añadir Prof. 3
                                             </button>
@@ -815,11 +829,11 @@ const CajaForm = () => {
 
                                     <div className="space-y-3">
                                         {/* Prof 1 Row */}
-                                        <div className="grid grid-cols-[1fr_80px_1fr] md:grid-cols-[2fr_100px_1.5fr] gap-3 items-end p-4 bg-blue-50/30 rounded-2xl border border-blue-100 group/row">
+                                        <div className="grid grid-cols-[1fr_80px_1fr] md:grid-cols-[2fr_100px_1.5fr] gap-3 items-end p-4 bg-blue-50/30 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-900/20 group/row">
                                             <div>
-                                                <label className="block text-[9px] font-bold text-blue-400 uppercase mb-1">Médico 1</label>
+                                                <label className="block text-[9px] font-bold text-blue-400 dark:text-blue-500 uppercase mb-1">Médico 1</label>
                                                 <select
-                                                    className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-blue-100 outline-none"
+                                                    className="w-full bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/20 outline-none"
                                                     value={entry.prof_1}
                                                     onChange={(e) => updateEntry(entry.id, 'prof_1', e.target.value)}
                                                 >
@@ -828,10 +842,10 @@ const CajaForm = () => {
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-[9px] font-bold text-blue-400 uppercase mb-1">%</label>
+                                                <label className="block text-[9px] font-bold text-blue-400 dark:text-blue-500 uppercase mb-1">%</label>
                                                 <input
                                                     type="number"
-                                                    className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 text-sm font-black text-blue-700 text-center focus:ring-4 focus:ring-blue-100 outline-none"
+                                                    className="w-full bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 text-sm font-black text-blue-700 dark:text-blue-300 text-center focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/20 outline-none"
                                                     value={entry.porcentaje_prof_1}
                                                     onFocus={(e) => e.target.select()}
                                                     onChange={(e) => updateEntry(entry.id, 'porcentaje_prof_1', parseFloat(e.target.value) || 0)}
@@ -839,30 +853,30 @@ const CajaForm = () => {
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <div className="flex-1">
-                                                    <label className="block text-[9px] font-bold text-blue-400 uppercase mb-1">Liq. a Médicos</label>
+                                                    <label className="block text-[9px] font-bold text-blue-400 dark:text-blue-500 uppercase mb-1">Liq. a Médicos</label>
                                                     <div className="flex items-center gap-1">
                                                         <button
                                                             onClick={() => toggleCurrency(entry.id, 'liq_prof_1_currency')}
-                                                            className="text-[10px] font-black text-white bg-blue-500 px-2 py-1.5 rounded-lg shadow-sm hover:bg-blue-600 uppercase"
+                                                            className="text-[10px] font-black text-white bg-blue-500 dark:bg-blue-600 px-2 py-1.5 rounded-lg shadow-sm hover:bg-blue-600 dark:hover:bg-blue-700 uppercase transition-colors"
                                                         >
                                                             {entry.liq_prof_1_currency}
                                                         </button>
                                                         <MoneyInput
-                                                            className="flex-1 w-full bg-white border border-blue-200 rounded-xl px-3 py-2 text-sm font-black text-blue-900 focus:ring-4 focus:ring-blue-100 outline-none"
+                                                            className="flex-1 w-full bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 text-sm font-black text-blue-900 dark:text-blue-100 focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/20 outline-none"
                                                             value={entry.liq_prof_1}
                                                             onChange={(val) => updateEntry(entry.id, 'liq_prof_1', val)}
                                                         />
                                                     </div>
                                                 </div>
-                                                <button onClick={() => updateEntry(entry.id, 'showSecondary_1', !entry.showSecondary_1)} className="p-2 text-blue-300 hover:text-blue-600 transition-colors"><Plus size={16} /></button>
+                                                <button onClick={() => updateEntry(entry.id, 'showSecondary_1', !entry.showSecondary_1)} className="p-2 text-blue-300 hover:text-blue-600 dark:text-blue-700 dark:hover:text-blue-400 transition-colors"><Plus size={16} /></button>
                                             </div>
                                             {/* Sub-row for secondary currency if needed */}
                                             {entry.showSecondary_1 && (
-                                                <div className="col-span-full pt-2 flex items-center gap-2 border-t border-blue-100/50 animate-in slide-in-from-top-1">
-                                                    <span className="text-[10px] font-bold text-slate-400">Secundario:</span>
-                                                    <button onClick={() => toggleCurrency(entry.id, 'liq_prof_1_currency_secondary')} className="text-[10px] font-bold text-blue-400 uppercase">{entry.liq_prof_1_currency_secondary}</button>
+                                                <div className="col-span-full pt-2 flex items-center gap-2 border-t border-blue-100/50 dark:border-blue-900/30 animate-in slide-in-from-top-1">
+                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">Secundario:</span>
+                                                    <button onClick={() => toggleCurrency(entry.id, 'liq_prof_1_currency_secondary')} className="text-[10px] font-bold text-blue-400 dark:text-blue-500 uppercase">{entry.liq_prof_1_currency_secondary}</button>
                                                     <MoneyInput
-                                                        className="w-32 bg-transparent border-b border-blue-200 text-xs text-blue-800 font-bold outline-none"
+                                                        className="w-32 bg-transparent border-b border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-400 font-bold outline-none"
                                                         value={entry.liq_prof_1_secondary}
                                                         onChange={(val) => updateEntry(entry.id, 'liq_prof_1_secondary', val)}
                                                     />
@@ -871,11 +885,11 @@ const CajaForm = () => {
                                         </div>
 
                                         {/* Prof 2 Row */}
-                                        <div className="grid grid-cols-[1fr_80px_1fr] md:grid-cols-[2fr_100px_1.5fr] gap-3 items-end p-4 bg-indigo-50/30 rounded-2xl border border-indigo-100 group/row">
+                                        <div className="grid grid-cols-[1fr_80px_1fr] md:grid-cols-[2fr_100px_1.5fr] gap-3 items-end p-4 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100 dark:border-indigo-900/20 group/row">
                                             <div>
-                                                <label className="block text-[9px] font-bold text-indigo-400 uppercase mb-1">Médico 2</label>
+                                                <label className="block text-[9px] font-bold text-indigo-400 dark:text-indigo-500 uppercase mb-1">Médico 2</label>
                                                 <select
-                                                    className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-indigo-100 outline-none"
+                                                    className="w-full bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/20 outline-none"
                                                     value={entry.prof_2}
                                                     onChange={(e) => updateEntry(entry.id, 'prof_2', e.target.value)}
                                                 >
@@ -884,10 +898,10 @@ const CajaForm = () => {
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-[9px] font-bold text-indigo-400 uppercase mb-1">%</label>
+                                                <label className="block text-[9px] font-bold text-indigo-400 dark:text-indigo-500 uppercase mb-1">%</label>
                                                 <input
                                                     type="number"
-                                                    className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-sm font-black text-indigo-700 text-center focus:ring-4 focus:ring-indigo-100 outline-none"
+                                                    className="w-full bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 rounded-xl px-3 py-2 text-sm font-black text-indigo-700 dark:text-indigo-300 text-center focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/20 outline-none"
                                                     value={entry.porcentaje_prof_2}
                                                     onFocus={(e) => e.target.select()}
                                                     onChange={(e) => updateEntry(entry.id, 'porcentaje_prof_2', parseFloat(e.target.value) || 0)}
@@ -895,30 +909,30 @@ const CajaForm = () => {
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <div className="flex-1 text-right">
-                                                    <label className="block text-[9px] font-bold text-indigo-400 uppercase mb-1">Honorario</label>
+                                                    <label className="block text-[9px] font-bold text-indigo-400 dark:text-indigo-500 uppercase mb-1">Honorario</label>
                                                     <div className="flex items-center gap-1">
                                                         <button
                                                             onClick={() => toggleCurrency(entry.id, 'liq_prof_2_currency')}
-                                                            className="text-[10px] font-black text-white bg-indigo-500 px-2 py-1.5 rounded-lg shadow-sm hover:bg-indigo-600 uppercase"
+                                                            className="text-[10px] font-black text-white bg-indigo-500 dark:bg-indigo-600 px-2 py-1.5 rounded-lg shadow-sm hover:bg-indigo-600 dark:hover:bg-indigo-700 uppercase transition-colors"
                                                         >
                                                             {entry.liq_prof_2_currency}
                                                         </button>
                                                         <MoneyInput
-                                                            className="flex-1 w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-sm font-black text-indigo-900 focus:ring-4 focus:ring-indigo-100 outline-none"
+                                                            className="flex-1 w-full bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 rounded-xl px-3 py-2 text-sm font-black text-indigo-900 dark:text-indigo-100 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/20 outline-none"
                                                             value={entry.liq_prof_2}
                                                             onChange={(val) => updateEntry(entry.id, 'liq_prof_2', val)}
                                                         />
                                                     </div>
                                                 </div>
-                                                <button onClick={() => updateEntry(entry.id, 'showSecondary_2', !entry.showSecondary_2)} className="p-2 text-indigo-300 hover:text-indigo-600 transition-colors"><Plus size={16} /></button>
+                                                <button onClick={() => updateEntry(entry.id, 'showSecondary_2', !entry.showSecondary_2)} className="p-2 text-indigo-300 hover:text-indigo-600 dark:text-indigo-700 dark:hover:text-indigo-400 transition-colors"><Plus size={16} /></button>
                                             </div>
                                             {/* Sub-row for secondary currency if needed */}
                                             {entry.showSecondary_2 && (
-                                                <div className="col-span-full pt-2 flex items-center gap-2 border-t border-indigo-100/50 animate-in slide-in-from-top-1">
-                                                    <span className="text-[10px] font-bold text-slate-400">Secundario:</span>
-                                                    <button onClick={() => toggleCurrency(entry.id, 'liq_prof_2_currency_secondary')} className="text-[10px] font-bold text-indigo-400 uppercase">{entry.liq_prof_2_currency_secondary}</button>
+                                                <div className="col-span-full pt-2 flex items-center gap-2 border-t border-indigo-100/50 dark:border-indigo-900/30 animate-in slide-in-from-top-1">
+                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">Secundario:</span>
+                                                    <button onClick={() => toggleCurrency(entry.id, 'liq_prof_2_currency_secondary')} className="text-[10px] font-bold text-indigo-400 dark:text-indigo-500 uppercase">{entry.liq_prof_2_currency_secondary}</button>
                                                     <MoneyInput
-                                                        className="w-32 bg-transparent border-b border-indigo-200 text-xs text-indigo-800 font-bold outline-none"
+                                                        className="w-32 bg-transparent border-b border-indigo-200 dark:border-indigo-800 text-xs text-indigo-800 dark:text-indigo-400 font-bold outline-none"
                                                         value={entry.liq_prof_2_secondary}
                                                         onChange={(val) => updateEntry(entry.id, 'liq_prof_2_secondary', val)}
                                                     />
@@ -926,14 +940,16 @@ const CajaForm = () => {
                                             )}
                                         </div>
 
+
+
                                         {/* Prof 3 Row (Conditional) */}
                                         {entry.showProf3 && (
-                                            <div className="grid grid-cols-[1fr_80px_1fr] md:grid-cols-[2fr_100px_1.5fr] gap-3 items-end p-4 bg-teal-50/40 rounded-2xl border border-teal-100 group/row relative animate-in slide-in-from-right-2 duration-300">
-                                                <button onClick={() => updateEntry(entry.id, 'showProf3', false)} className="absolute top-2 right-2 text-teal-200 hover:text-red-500 transition-colors"><X size={14} /></button>
+                                            <div className="grid grid-cols-[1fr_80px_1fr] md:grid-cols-[2fr_100px_1.5fr] gap-3 items-end p-4 bg-teal-50/40 dark:bg-teal-900/10 rounded-2xl border border-teal-100 dark:border-teal-900/20 group/row relative animate-in slide-in-from-right-2 duration-300">
+                                                <button onClick={() => updateEntry(entry.id, 'showProf3', false)} className="absolute top-2 right-2 text-teal-200 dark:text-teal-700 hover:text-red-500 dark:hover:text-red-400 transition-colors"><X size={14} /></button>
                                                 <div>
-                                                    <label className="block text-[9px] font-bold text-teal-400 uppercase mb-1">Médico 3</label>
+                                                    <label className="block text-[9px] font-bold text-teal-400 dark:text-teal-500 uppercase mb-1">Médico 3</label>
                                                     <select
-                                                        className="w-full bg-white border border-teal-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-teal-100 outline-none"
+                                                        className="w-full bg-white dark:bg-slate-800 border border-teal-200 dark:border-teal-800 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-teal-100 dark:focus:ring-teal-900/20 outline-none"
                                                         value={entry.prof_3}
                                                         onChange={(e) => updateEntry(entry.id, 'prof_3', e.target.value)}
                                                     >
@@ -942,10 +958,10 @@ const CajaForm = () => {
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="block text-[9px] font-bold text-teal-400 uppercase mb-1">%</label>
+                                                    <label className="block text-[9px] font-bold text-teal-400 dark:text-teal-500 uppercase mb-1">%</label>
                                                     <input
                                                         type="number"
-                                                        className="w-full bg-white border border-teal-200 rounded-xl px-3 py-2 text-sm font-black text-teal-700 text-center focus:ring-4 focus:ring-teal-100 outline-none"
+                                                        className="w-full bg-white dark:bg-slate-800 border border-teal-200 dark:border-teal-800 rounded-xl px-3 py-2 text-sm font-black text-teal-700 dark:text-teal-300 text-center focus:ring-4 focus:ring-teal-100 dark:focus:ring-teal-900/20 outline-none"
                                                         value={entry.porcentaje_prof_3}
                                                         onFocus={(e) => e.target.select()}
                                                         onChange={(e) => updateEntry(entry.id, 'porcentaje_prof_3', parseFloat(e.target.value) || 0)}
@@ -953,30 +969,30 @@ const CajaForm = () => {
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <div className="flex-1">
-                                                        <label className="block text-[9px] font-bold text-teal-400 uppercase mb-1">Honorario</label>
+                                                        <label className="block text-[9px] font-bold text-teal-400 dark:text-teal-500 uppercase mb-1">Honorario</label>
                                                         <div className="flex items-center gap-1">
                                                             <button
                                                                 onClick={() => toggleCurrency(entry.id, 'liq_prof_3_currency')}
-                                                                className="text-[10px] font-black text-white bg-teal-500 px-2 py-1.5 rounded-lg shadow-sm hover:bg-teal-600 uppercase"
+                                                                className="text-[10px] font-black text-white bg-teal-500 dark:bg-teal-600 px-2 py-1.5 rounded-lg shadow-sm hover:bg-teal-600 dark:hover:bg-teal-700 uppercase transition-colors"
                                                             >
                                                                 {entry.liq_prof_3_currency}
                                                             </button>
                                                             <MoneyInput
-                                                                className="flex-1 w-full bg-white border border-teal-200 rounded-xl px-3 py-2 text-sm font-black text-teal-900 focus:ring-4 focus:ring-teal-100 outline-none"
+                                                                className="flex-1 w-full bg-white dark:bg-slate-800 border border-teal-200 dark:border-teal-800 rounded-xl px-3 py-2 text-sm font-black text-teal-900 dark:text-teal-100 focus:ring-4 focus:ring-teal-100 dark:focus:ring-teal-900/20 outline-none"
                                                                 value={entry.liq_prof_3}
                                                                 onChange={(val) => updateEntry(entry.id, 'liq_prof_3', val)}
                                                             />
                                                         </div>
                                                     </div>
-                                                    <button onClick={() => updateEntry(entry.id, 'showSecondary_3', !entry.showSecondary_3)} className="p-2 text-teal-300 hover:text-teal-600 transition-colors"><Plus size={16} /></button>
+                                                    <button onClick={() => updateEntry(entry.id, 'showSecondary_3', !entry.showSecondary_3)} className="p-2 text-teal-300 hover:text-teal-600 dark:text-teal-700 dark:hover:text-teal-400 transition-colors"><Plus size={16} /></button>
                                                 </div>
                                                 {/* Sub-row for secondary currency if needed */}
                                                 {entry.showSecondary_3 && (
-                                                    <div className="col-span-full pt-2 flex items-center gap-2 border-t border-teal-100/50 animate-in slide-in-from-top-1">
-                                                        <span className="text-[10px] font-bold text-slate-400">Secundario:</span>
-                                                        <button onClick={() => toggleCurrency(entry.id, 'liq_prof_3_currency_secondary')} className="text-[10px] font-bold text-teal-400 uppercase">{entry.liq_prof_3_currency_secondary}</button>
+                                                    <div className="col-span-full pt-2 flex items-center gap-2 border-t border-teal-100/50 dark:border-teal-900/30 animate-in slide-in-from-top-1">
+                                                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">Secundario:</span>
+                                                        <button onClick={() => toggleCurrency(entry.id, 'liq_prof_3_currency_secondary')} className="text-[10px] font-bold text-teal-400 dark:text-teal-500 uppercase">{entry.liq_prof_3_currency_secondary}</button>
                                                         <MoneyInput
-                                                            className="w-32 bg-transparent border-b border-teal-200 text-xs text-teal-800 font-bold outline-none"
+                                                            className="w-32 bg-transparent border-b border-teal-200 dark:border-teal-800 text-xs text-teal-800 dark:text-teal-400 font-bold outline-none"
                                                             value={entry.liq_prof_3_secondary}
                                                             onChange={(val) => updateEntry(entry.id, 'liq_prof_3_secondary', val)}
                                                         />
@@ -988,13 +1004,13 @@ const CajaForm = () => {
                                 </div>
 
                                 {/* Anesthetist Section */}
-                                <div className="xl:col-span-3 space-y-4 pl-0 xl:pl-6 xl:border-l border-slate-100">
-                                    <div className="bg-purple-50/30 p-5 rounded-2xl border border-purple-100 space-y-4">
-                                        <label className="block text-[10px] font-black text-purple-600 uppercase tracking-widest flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" /> Anestesia</label>
+                                <div className="xl:col-span-3 space-y-4 pl-0 xl:pl-6 xl:border-l border-slate-100 dark:border-slate-800">
+                                    <div className="bg-purple-50/30 dark:bg-purple-900/10 p-5 rounded-2xl border border-purple-100 dark:border-purple-900/20 space-y-4">
+                                        <label className="block text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-purple-400 dark:bg-purple-500 animate-pulse" /> Anestesia</label>
                                         <div>
-                                            <label className="block text-[9px] font-bold text-purple-400 uppercase mb-1">Profesional</label>
+                                            <label className="block text-[9px] font-bold text-purple-400 dark:text-purple-500 uppercase mb-1">Profesional</label>
                                             <select
-                                                className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-purple-100 outline-none"
+                                                className="w-full bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-purple-100 dark:focus:ring-purple-900/20 outline-none"
                                                 value={entry.anestesista || ''}
                                                 onChange={(e) => updateEntry(entry.id, 'anestesista', e.target.value)}
                                             >
@@ -1004,29 +1020,29 @@ const CajaForm = () => {
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <div className="flex-1">
-                                                <label className="block text-[9px] font-bold text-purple-400 uppercase mb-1">Honorario</label>
+                                                <label className="block text-[9px] font-bold text-purple-400 dark:text-purple-500 uppercase mb-1">Honorario</label>
                                                 <div className="flex items-center gap-1">
                                                     <button
                                                         onClick={() => toggleCurrency(entry.id, 'liq_anestesista_currency')}
-                                                        className="text-[10px] font-black text-white bg-purple-500 px-2 py-1.5 rounded-lg shadow-sm hover:bg-purple-600 uppercase"
+                                                        className="text-[10px] font-black text-white bg-purple-500 dark:bg-purple-600 px-2 py-1.5 rounded-lg shadow-sm hover:bg-purple-600 dark:hover:bg-purple-700 uppercase transition-colors"
                                                     >
                                                         {entry.liq_anestesista_currency}
                                                     </button>
                                                     <MoneyInput
-                                                        className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-sm font-black text-purple-800 focus:ring-4 focus:ring-purple-100 outline-none"
+                                                        className="w-full bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 rounded-xl px-3 py-2 text-sm font-black text-purple-800 dark:text-purple-200 focus:ring-4 focus:ring-purple-100 dark:focus:ring-purple-900/20 outline-none"
                                                         value={entry.liq_anestesista}
                                                         onChange={(val) => updateEntry(entry.id, 'liq_anestesista', val)}
                                                     />
                                                 </div>
                                             </div>
-                                            <button onClick={() => updateEntry(entry.id, 'showSecondaryAnes', !entry.showSecondaryAnes)} className="p-2 text-purple-300 hover:text-purple-600 transition-colors mt-4"><Plus size={16} /></button>
+                                            <button onClick={() => updateEntry(entry.id, 'showSecondaryAnes', !entry.showSecondaryAnes)} className="p-2 text-purple-300 hover:text-purple-600 dark:text-purple-700 dark:hover:text-purple-400 transition-colors mt-4"><Plus size={16} /></button>
                                         </div>
                                         {entry.showSecondaryAnes && (
-                                            <div className="pt-2 flex items-center gap-2 border-t border-purple-100/50 animate-in slide-in-from-top-1">
-                                                <span className="text-[10px] font-bold text-slate-400">Secundario:</span>
-                                                <button onClick={() => toggleCurrency(entry.id, 'liq_anestesista_currency_secondary')} className="text-[10px] font-bold text-purple-400 uppercase">{entry.liq_anestesista_currency_secondary}</button>
+                                            <div className="pt-2 flex items-center gap-2 border-t border-purple-100/50 dark:border-purple-900/30 animate-in slide-in-from-top-1">
+                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">Secundario:</span>
+                                                <button onClick={() => toggleCurrency(entry.id, 'liq_anestesista_currency_secondary')} className="text-[10px] font-bold text-purple-400 dark:text-purple-500 uppercase">{entry.liq_anestesista_currency_secondary}</button>
                                                 <MoneyInput
-                                                    className="w-full bg-transparent border-b border-purple-200 text-xs text-purple-800 font-bold outline-none"
+                                                    className="w-full bg-transparent border-b border-purple-200 dark:border-purple-800 text-xs text-purple-800 dark:text-purple-400 font-bold outline-none"
                                                     value={entry.liq_anestesista_secondary}
                                                     onChange={(val) => updateEntry(entry.id, 'liq_anestesista_secondary', val)}
                                                 />
@@ -1045,7 +1061,7 @@ const CajaForm = () => {
                 {!isReadOnly && (
                     <button
                         onClick={() => setShowDailyCommentModal(true)}
-                        className={`flex items-center gap-3 px-6 py-4 rounded-2xl transition-all font-bold border-2 ${dailyComment ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-amber-100' : 'bg-white text-slate-500 border-slate-100 hover:border-amber-200 hover:text-amber-600'} shadow-lg`}
+                        className={`flex items-center gap-3 px-6 py-4 rounded-2xl transition-all font-bold border-2 ${dailyComment ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 shadow-amber-100 dark:shadow-none' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-700 hover:border-amber-200 dark:hover:border-amber-800 hover:text-amber-600'} shadow-md`}
                     >
                         <MessageSquare size={20} />
                         {dailyComment ? "Ver Comentario de Jornada *" : "Añadir Observación General"}
@@ -1056,7 +1072,7 @@ const CajaForm = () => {
                     <div className="flex gap-4 w-full md:w-auto">
                         <button
                             onClick={addRow}
-                            className="flex-none flex items-center justify-center p-4 bg-white text-slate-400 rounded-2xl border-2 border-slate-100 hover:border-emerald-200 hover:text-emerald-500 transition-all font-bold shadow-sm"
+                            className="flex-none flex items-center justify-center p-4 bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-emerald-200 dark:hover:border-emerald-800 hover:text-emerald-500 transition-all font-bold shadow-sm"
                             title="Agregar otra fila"
                         >
                             <Plus size={20} />
@@ -1064,7 +1080,7 @@ const CajaForm = () => {
                         <button
                             onClick={handleSaveOperation}
                             disabled={isSaving}
-                            className={`flex-1 md:flex-none flex items-center justify-center gap-3 px-8 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all font-black shadow-xl shadow-emerald-200 uppercase tracking-widest text-sm ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`flex-1 md:flex-none flex items-center justify-center gap-3 px-8 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all font-black shadow-md shadow-emerald-200 dark:shadow-none uppercase tracking-widest text-sm ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             {isSaving ? <Clock className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
                             {isSaving ? "Guardando..." : "Guardar Operación"}
@@ -1072,7 +1088,7 @@ const CajaForm = () => {
                         <button
                             onClick={handleCerrarCaja}
                             disabled={isSaving}
-                            className={`flex-1 md:flex-none flex items-center justify-center gap-3 px-10 py-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-black shadow-xl shadow-blue-200 uppercase tracking-widest text-sm ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`flex-1 md:flex-none flex items-center justify-center gap-3 px-10 py-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-black shadow-md shadow-blue-200 dark:shadow-none uppercase tracking-widest text-sm ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             {isSaving ? <Clock className="animate-spin" size={20} /> : <Save size={20} />}
                             {isSaving ? "Procesando..." : "Guardar Jornada"}
@@ -1082,36 +1098,36 @@ const CajaForm = () => {
             </div>
 
             {/* Today's History Section */}
-            <div className="bg-slate-50/50 rounded-3xl p-8 border border-slate-100">
+            <div className="bg-slate-50/50 dark:bg-slate-900/50 rounded-3xl p-8 border border-slate-100 dark:border-slate-800">
                 <div className="flex items-center justify-between mb-8">
                     <div>
-                        <h3 className="text-xl font-black text-slate-800">Historial del Día</h3>
-                        <p className="text-xs text-slate-500 font-medium font-mono uppercase tracking-tighter">Pacientes ya confirmados</p>
+                        <h3 className="text-xl font-black text-slate-800 dark:text-slate-100">Historial del Día</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium font-mono uppercase tracking-tighter">Pacientes ya confirmados</p>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 bg-white px-3 py-1.5 rounded-full border border-slate-100 uppercase">
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-100 dark:border-slate-700 uppercase">
                         <User size={12} /> {history.length} Registros
                     </div>
                 </div>
 
                 <div className="space-y-3">
                     {history.length === 0 ? (
-                        <div className="py-12 text-center bg-white rounded-2xl border-2 border-dashed border-slate-200">
-                            <p className="text-sm text-slate-400 font-medium">Aún no hay operaciones guardadas para hoy.</p>
+                        <div className="py-12 text-center bg-white dark:bg-slate-800/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                            <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">Aún no hay operaciones guardadas para hoy.</p>
                         </div>
                     ) : (
                         history.map((item) => (
-                            <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 group hover:border-blue-300 transition-all shadow-sm">
+                            <div key={item.id} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4 group hover:border-blue-300 dark:hover:border-blue-700 transition-all shadow-sm">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500 font-bold shrink-0">
+                                    <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400 font-bold shrink-0">
                                         {item.paciente[0]}
                                     </div>
                                     <div className="overflow-hidden">
-                                        <p className="font-bold text-slate-800 truncate">{item.paciente}</p>
+                                        <p className="font-bold text-slate-800 dark:text-slate-100 truncate">{item.paciente}</p>
                                         <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="text-[10px] font-black uppercase text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded tracking-tighter">{item.obra_social}</span>
-                                            {item.dni && <span className="text-[10px] text-slate-400 font-mono">DNI: {item.dni}</span>}
+                                            <span className="text-[10px] font-black uppercase text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded tracking-tighter">{item.obra_social}</span>
+                                            {item.dni && <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">DNI: {item.dni}</span>}
                                             {isTestEnv && !item.isTest && (
-                                                <span className="text-[10px] font-black uppercase text-white bg-slate-800 px-1.5 py-0.5 rounded tracking-tighter flex items-center gap-1">
+                                                <span className="text-[10px] font-black uppercase text-white bg-slate-800 dark:bg-slate-900 px-1.5 py-0.5 rounded tracking-tighter flex items-center gap-1">
                                                     <LockIcon size={8} /> Producción (L)
                                                 </span>
                                             )}
@@ -1229,64 +1245,62 @@ const CajaForm = () => {
             </div>
 
             {/* PIN MODAL for History */}
-            {
-                showHistoryPinModal && (
-                    <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in zoom-in-95 duration-200">
-                            <div className="flex justify-center mb-6">
-                                <div className="p-4 bg-blue-50 rounded-2xl text-blue-600">
-                                    <Shield size={32} />
-                                </div>
-                            </div>
-                            <h3 className="text-xl font-black text-slate-800 text-center mb-2">PIN de Seguridad</h3>
-                            <p className="text-xs text-slate-500 text-center mb-6 font-medium">Acción protegida. Ingresa tu PIN de administrador.</p>
-
-                            <input
-                                type="password"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-center text-3xl font-black tracking-[1em] focus:ring-2 focus:ring-blue-100 outline-none mb-6"
-                                placeholder="****"
-                                maxLength={8}
-                                value={historyPinInput}
-                                onChange={(e) => setHistoryPinInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleVerifyPin()}
-                                autoFocus
-                            />
-
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={() => { setShowHistoryPinModal(false); setHistoryPinInput(''); }}
-                                    className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-50 rounded-2xl transition-all"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    onClick={handleVerifyPin}
-                                    className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all font-black uppercase tracking-widest text-xs"
-                                >
-                                    Verificar
-                                </button>
+            {showHistoryPinModal && (
+                <ModalPortal onClose={() => { setShowHistoryPinModal(false); setHistoryPinInput(''); }}>
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl w-full max-w-sm border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-center mb-6">
+                            <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-2xl text-blue-600 dark:text-blue-400">
+                                <Shield size={32} />
                             </div>
                         </div>
+                        <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 text-center mb-2">PIN de Seguridad</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 text-center mb-6 font-medium">Acción protegida. Ingresa tu PIN de administrador.</p>
+
+                        <input
+                            type="password"
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-4 text-center text-3xl font-black tracking-[1em] focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 outline-none mb-6 text-slate-800 dark:text-slate-100"
+                            placeholder="****"
+                            maxLength={8}
+                            value={historyPinInput}
+                            onChange={(e) => setHistoryPinInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleVerifyPin()}
+                            autoFocus
+                        />
+
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => { setShowHistoryPinModal(false); setHistoryPinInput(''); }}
+                                className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleVerifyPin}
+                                className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 shadow-md shadow-blue-500/10 active:scale-95 transition-all uppercase text-xs tracking-widest"
+                            >
+                                Verificar
+                            </button>
+                        </div>
                     </div>
-                )
-            }
+                </ModalPortal>
+            )}
 
 
             {/* Reminders Section */}
-            <div className="mt-10 pt-8 border-t border-slate-100">
+            <div className="mt-10 pt-8 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
-                        <div className="p-2 bg-amber-50 rounded-lg">
-                            <Bell size={20} className="text-amber-600" />
+                        <div className="p-2 bg-amber-50 dark:bg-amber-900/30 rounded-lg">
+                            <Bell size={20} className="text-amber-600 dark:text-amber-400" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                 Recordatorios
                                 {reminders.filter(r => !r.completed).length > 0 && (
                                     <span className="flex h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
                                 )}
                             </h3>
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
                                 {reminders.filter(r => !r.completed).length} pendientes
                             </p>
                         </div>
@@ -1294,7 +1308,7 @@ const CajaForm = () => {
                     {!isReadOnly && (
                         <button
                             onClick={() => setIsAddingReminder(true)}
-                            className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-all"
+                            className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
                         >
                             <Plus size={16} /> Agregar Recordatorio
                         </button>
@@ -1305,7 +1319,7 @@ const CajaForm = () => {
                     <div className="mb-4 flex gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
                         <input
                             type="text"
-                            className="flex-1 bg-white border border-blue-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                            className="flex-1 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 outline-none text-slate-800 dark:text-slate-100"
                             placeholder="Escribe un recordatorio..."
                             value={newReminder}
                             onKeyDown={(e) => e.key === 'Enter' && handleAddReminder()}
@@ -1314,13 +1328,13 @@ const CajaForm = () => {
                         />
                         <button
                             onClick={handleAddReminder}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100"
+                            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100 dark:shadow-none"
                         >
                             Guardar
                         </button>
                         <button
                             onClick={() => { setIsAddingReminder(false); setNewReminder(''); }}
-                            className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-xl text-sm font-medium"
+                            className="px-4 py-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-colors"
                         >
                             Cancelar
                         </button>
@@ -1329,40 +1343,40 @@ const CajaForm = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {reminders.map((rem) => (
-                        <div key={rem.id} className={`group border rounded-2xl p-4 transition-all relative overflow-hidden ${rem.completed ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 hover:border-amber-200 hover:shadow-md'}`}>
-                            <div className={`absolute top-0 left-0 w-1 h-full transition-opacity ${rem.completed ? 'bg-emerald-400' : 'bg-amber-200 opacity-0 group-hover:opacity-100'}`} />
+                        <div key={rem.id} className={`group border rounded-2xl p-4 transition-all relative overflow-hidden ${rem.completed ? 'bg-slate-50 dark:bg-slate-800/30 border-slate-100 dark:border-slate-800 opacity-60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-200 dark:hover:border-amber-700 hover:shadow-md'}`}>
+                            <div className={`absolute top-0 left-0 w-1 h-full transition-opacity ${rem.completed ? 'bg-emerald-400' : 'bg-amber-200 dark:bg-amber-500 opacity-0 group-hover:opacity-100'}`} />
                             <div className="flex justify-between items-start gap-3">
                                 <div className="flex gap-3 items-start flex-1">
                                     <button
                                         onClick={() => toggleReminderStatus(rem.id, rem.completed)}
-                                        className={`mt-0.5 transition-colors ${rem.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-blue-500'}`}
+                                        className={`mt-0.5 transition-colors ${rem.completed ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-600 hover:text-blue-500 dark:hover:text-blue-400'}`}
                                     >
                                         {rem.completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                                     </button>
-                                    <p className={`text-sm leading-relaxed ${rem.completed ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>{rem.text}</p>
+                                    <p className={`text-sm leading-relaxed ${rem.completed ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>{rem.text}</p>
                                 </div>
                                 {!isReadOnly && (
                                     <button
                                         onClick={() => handleDeleteReminder(rem.id)}
-                                        className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                        className="p-1.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0"
                                     >
                                         <Trash2 size={14} />
                                     </button>
                                 )}
                             </div>
                             <div className="mt-3 flex justify-between items-center">
-                                <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wider">
                                     {rem.createdAt?.seconds ? new Date(rem.createdAt.seconds * 1000).toLocaleDateString() : 'Reciente'}
                                 </p>
                                 {rem.completed && (
-                                    <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase italic tracking-tighter">Realizado</span>
+                                    <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full uppercase italic tracking-tighter">Realizado</span>
                                 )}
                             </div>
                         </div>
                     ))}
                     {reminders.length === 0 && !isAddingReminder && (
-                        <div className="col-span-full py-8 text-center bg-slate-50/30 rounded-2xl border border-dashed border-slate-200">
-                            <p className="text-sm text-slate-400">No hay recordatorios pendientes.</p>
+                        <div className="col-span-full py-8 text-center bg-slate-50/30 dark:bg-slate-800/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                            <p className="text-sm text-slate-400 dark:text-slate-500">No hay recordatorios pendientes.</p>
                         </div>
                     )}
                 </div>

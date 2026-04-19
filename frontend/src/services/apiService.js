@@ -1,4 +1,4 @@
-import { db, USE_LOCAL_DB, LOCAL_API_URL } from '../firebase/config';
+import { db, USE_LOCAL_DB, LOCAL_API_URL, isLocalEnv } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc } from 'firebase/firestore';
 
 const apiService = {
@@ -68,6 +68,12 @@ const apiService = {
             });
             return response.json();
         } else {
+            // SEGURIDAD: Evitar borrados en la nube desde local
+            if (isLocalEnv) {
+                console.warn("⚠️ Intento de borrado bloqueado: Estás en modo LOCAL conectado a la CLOUD.");
+                alert("🔒 SEGURIDAD: No se permite eliminar datos de la nube desde el entorno local.");
+                throw new Error("Borrado no permitido en entorno local.");
+            }
             await deleteDoc(doc(db, collectionName, id));
             return { id };
         }

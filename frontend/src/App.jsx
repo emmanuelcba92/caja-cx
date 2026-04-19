@@ -3,7 +3,7 @@ import { db } from './firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
-import { Users, LayoutDashboard, FileText, History, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, FileHeart, Calendar as CalendarIcon, ShieldCheck } from 'lucide-react';
+import { Users, LayoutDashboard, FileText, History, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon } from 'lucide-react';
 
 // Static immediately-needed components
 import NotificationBell from './components/NotificationBell';
@@ -18,10 +18,20 @@ const HistorialCaja = lazy(() => import('./components/HistorialCaja'));
 const AccessManager = lazy(() => import('./components/AccessManager'));
 const NotesView = lazy(() => import('./components/NotesView'));
 const OrdenesView = lazy(() => import('./components/OrdenesView'));
-const CalendarView = lazy(() => import('./components/CalendarView'));
-const AuditView = lazy(() => import('./components/AuditView'));
 const AdminView = lazy(() => import('./components/AdminView'));
+import { createPortal } from 'react-dom';
 
+const ModalPortal = ({ children, onClose }) => {
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-300">
+      <div className="fixed inset-0" onClick={onClose} />
+      <div className="relative pointer-events-auto">
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+};
 
 function AuthenticatedApp() {
   const { currentUser, logout, viewingUid, sharedAccounts, switchContext, catalogOwnerUid } = useAuth();
@@ -29,10 +39,35 @@ function AuthenticatedApp() {
   const [pendingCount, setPendingCount] = useState(0);
   const [notesCount, setNotesCount] = useState(0);
 
-  // Ensure light mode is always active
+  // Theme Management
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  });
+
+  const [lowPerfMode, setLowPerfMode] = useState(() => {
+    return localStorage.getItem('low_perf_mode') === 'true';
+  });
+
   useEffect(() => {
-    document.documentElement.classList.remove('dark');
-  }, []);
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
+
+  useEffect(() => {
+    if (lowPerfMode) {
+      document.documentElement.classList.add('low-perf');
+      localStorage.setItem('low_perf_mode', 'true');
+    } else {
+      document.documentElement.classList.remove('low-perf');
+      localStorage.setItem('low_perf_mode', 'false');
+    }
+  }, [lowPerfMode]);
 
   // Sync Combined Counts for Browser Tab (Reminders + Notes)
   useEffect(() => {
@@ -50,7 +85,6 @@ function AuthenticatedApp() {
 
     const q = query(
       collection(db, "reminders"),
-      where("userId", "==", currentUser.uid),
       where("completed", "==", false)
     );
 
@@ -59,7 +93,7 @@ function AuthenticatedApp() {
     });
 
     return () => unsubscribe();
-  }, [viewingUid, catalogOwnerUid]);
+  }, []);
 
   // Sync Unread Notes Count
   useEffect(() => {
@@ -77,66 +111,73 @@ function AuthenticatedApp() {
     return () => unsubscribe();
   }, [currentUser?.uid]);
 
-  // Tabs Definition
-  // Grouped Sidebar Configuration
-  const sidebarConfig = [
+  const navStructure = [
     {
-      section: 'GESTIÓN DE CAJA',
+      id: 'module_caja',
+      label: 'Caja',
+      icon: LayoutDashboard,
+      defaultTab: 'caja',
       tabs: [
-        { id: 'caja', icon: LayoutDashboard, label: 'Caja Diaria' },
-        { id: 'historial', icon: History, label: 'Cajas' },
-        { id: 'liquidaciones', icon: FileText, label: 'Liquidaciones' },
-        { id: 'profesionales', icon: Users, label: 'Profesionales' }
+        { id: 'caja', label: 'Caja', icon: LayoutDashboard },
+        { id: 'historial', label: 'Historial', icon: History },
+        { id: 'liquidaciones', label: 'Liquidaciones', icon: FileText },
+        { id: 'profesionales', label: 'Profesionales', icon: Users }
       ]
     },
     {
-      section: 'CIRUGÍAS',
+      id: 'module_cirugias',
+      label: 'Cirugías',
+      icon: ClipboardList,
+      defaultTab: 'ordenes',
       tabs: [
-        { id: 'ordenes', icon: ClipboardList, label: 'Órdenes' },
-        { id: 'pedidos', icon: FileHeart, label: 'Pedidos (PM)' }
+        { id: 'ordenes', label: 'Órdenes', icon: ClipboardList },
+        { id: 'control', label: 'Control', icon: Printer }
       ]
     },
     {
-      section: 'OTROS',
+      id: 'notas',
+      label: 'Notas',
+      icon: StickyNote,
+      tabs: [{ id: 'notas', label: 'Notas', icon: StickyNote }]
+    },
+    {
+      id: 'module_sistema',
+      label: 'Sistema',
+      icon: ShieldCheck,
+      defaultTab: 'admin',
       tabs: [
-        { id: 'notas', icon: StickyNote, label: 'Notas' },
-        { id: 'compartir', icon: Share2, label: 'Compartir' },
-        { id: 'admin', icon: ShieldAlert, label: 'Administración' }
+        { id: 'admin', label: 'Admin', icon: ShieldAlert }
       ]
     }
   ];
 
-  // Logic to filter visible tabs within sections
-  const sections = sidebarConfig.map(sec => ({
-    ...sec,
-    tabs: sec.tabs.filter(tab => {
-      // 1. Admin Tab Security
-      if (tab.id === 'admin') {
-        return isSuperAdmin;
-      }
-
-      // Medico restricted tabs
-      if (userRole === 'medico') {
-        return ['notas', 'ordenes', 'pedidos'].includes(tab.id);
-      }
-
-      // 1.5. Ordenes Tab - for Super Admin or users with ordenes permissions
-      if (tab.id === 'ordenes' || tab.id === 'pedidos') {
+  // Logic to filter visible modules and tabs based on permissions
+  const filteredNav = navStructure.map(module => ({
+    ...module,
+    tabs: module.tabs.filter(tab => {
+      if (tab.id === 'admin') return isSuperAdmin || permissions?.can_view_admin;
+      if (userRole === 'medico') return ['notas', 'ordenes', 'control'].includes(tab.id);
+      if (tab.id === 'ordenes' || tab.id === 'control') {
         return isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes;
       }
-
-      // 2. Shared Catalog Viewers (COAT behavior and Directora)
       if (permissions?.can_view_shared_catalog) {
         const allowed = ['caja', 'liquidaciones', 'profesionales', 'historial', 'notas'];
-        if (permissions?.can_view_ordenes) allowed.push('ordenes', 'pedidos');
+        if (permissions?.can_view_ordenes) allowed.push('ordenes', 'control');
         return allowed.includes(tab.id);
       }
-
       return true;
     })
-  })).filter(sec => sec.tabs.length > 0);
+  })).filter(mod => mod.tabs.length > 0);
 
-  const [activeTab, setActiveTab] = useState(userRole === 'coat' ? 'profesionales' : 'caja'); // Default tab logic
+  const [activeModuleId, setActiveModuleId] = useState(() => {
+    if (userRole === 'coat') return 'module_caja';
+    return 'module_caja';
+  });
+  
+  const [activeTab, setActiveTab] = useState(() => {
+    if (userRole === 'coat') return 'profesionales';
+    return 'caja';
+  });
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   const [showNextFeatures, setShowNextFeatures] = useState(false);
   const [draftSurgery, setDraftSurgery] = useState(null);
@@ -156,7 +197,7 @@ function AuthenticatedApp() {
   if (!isAuthorized) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl max-w-md w-full text-center space-y-6 border border-slate-200 animate-in zoom-in-95 duration-300">
+        <div className="bg-white p-8 md:p-12 rounded-3xl shadow-xl max-w-md w-full text-center space-y-6 border border-slate-200 animate-in zoom-in-95 duration-300">
           <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <ShieldAlert size={40} />
           </div>
@@ -184,7 +225,7 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="min-h-screen font-sans text-slate-900 flex bg-slate-50">
+    <div className="h-screen font-sans text-slate-900 dark:text-slate-100 flex bg-slate-100 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -194,86 +235,131 @@ function AuthenticatedApp() {
         />
       )}
 
-      {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-0 md:translate-x-0 md:w-20'} fixed md:relative min-h-screen bg-white border-r border-slate-200 flex flex-col shadow-xl md:shadow-none transition-all duration-300 z-30`}>
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className={`absolute -right-3 top-24 bg-amber-500 text-white p-1 rounded-full shadow-md z-30 hover:bg-amber-600 transition-colors hidden md:flex`}
-        >
-          {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-        </button>
-
-        <div className="p-4 md:p-6 flex-1 overflow-y-auto">
-          <div className={`flex items-center gap-3 mb-8 overflow-hidden whitespace-nowrap ${!sidebarOpen && 'justify-center'}`}>
-            <img src="/c_logo.svg" alt="Logo" className="w-8 h-8 rounded-lg flex-shrink-0" />
-            <div className={`transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>
-              <h1 className="font-bold text-lg leading-tight uppercase tracking-tight text-blue-600">Cirugías COAT</h1>
-              <p className="text-[10px] text-slate-400 font-medium truncate">{currentUser?.email}</p>
-            </div>
+      {/* Redesigned Sidebar (Fixed Width, Vertical Icons) */}
+      <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} fixed md:relative h-screen w-[85px] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shadow-md md:shadow-none transition-all duration-300 z-30`}>
+        
+        {/* Sidebar Logo */}
+        <div className="py-6 flex flex-col items-center flex-shrink-0">
+          <div className="flex flex-col items-center gap-1">
+            <img src="/c_logo.svg" alt="Logo" className="w-10 h-10 rounded-xl shadow-md shadow-blue-500/10" />
+            <span className="text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter mt-1">CIRUGÍAS</span>
           </div>
+        </div>
 
-          <nav className="space-y-6">
-            {sections.map((sec, sIdx) => (
-              <div key={sIdx} className="space-y-2">
-                {sidebarOpen && (
-                  <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 opacity-70">
-                    {sec.section}
-                  </h3>
+        {/* Sidebar Navigation */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden py-4">
+          <nav className="flex flex-col items-center gap-4">
+            {filteredNav.map((mod) => (
+              <button
+                key={mod.id}
+                onClick={() => {
+                  setActiveModuleId(mod.id);
+                  if (mod.tabs.length > 0) {
+                    // Switch to the first tab of the module if the current tab isn't in it
+                    if (!mod.tabs.find(t => t.id === activeTab)) {
+                      setActiveTab(mod.tabs[0].id);
+                    }
+                  }
+                  if (window.innerWidth < 768 && mod.tabs.length === 1) setSidebarOpen(false);
+                }}
+                className={`w-16 h-16 flex flex-col items-center justify-center rounded-2xl transition-all group relative ${activeModuleId === mod.id
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-400/20'
+                  : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
+                title={mod.label}
+              >
+                <mod.icon size={22} className={`mb-1 transition-transform duration-300 ${activeModuleId === mod.id ? 'scale-110' : 'group-hover:scale-110'}`} />
+                <span className="text-[9px] font-bold uppercase tracking-tighter text-center leading-none px-1">
+                  {mod.label}
+                </span>
+
+                {/* Notifications Badges for specific modules */}
+                {mod.id === 'notas' && notesCount > 0 && (
+                  <span className="absolute top-2 right-2 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[8px] font-black items-center justify-center shadow-sm">
+                      {notesCount}
+                    </span>
+                  </span>
                 )}
-                <div className="space-y-1">
-                  {sec.tabs.map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setActiveTab(item.id);
-                        if (window.innerWidth < 768) setSidebarOpen(false); // Close on mobile select
-                      }}
-                      className={`w-full flex items-center px-4 py-3 rounded-xl transition-all font-medium whitespace-nowrap overflow-hidden ${activeTab === item.id
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
-                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-                        } ${!sidebarOpen ? 'justify-center px-0' : 'gap-3'}`}
-                      title={!sidebarOpen ? item.label : ''}
-                    >
-                      <item.icon size={sidebarOpen ? 20 : 28} className={`flex-shrink-0 transition-all ${!sidebarOpen && 'hover:scale-110'}`} />
-                      <span className={`flex-1 transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 w-0 text-xs'}`}>{item.label}</span>
-                      {item.id === 'notas' && notesCount > 0 && sidebarOpen && (
-                        <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-sm animate-pulse">
-                          {notesCount}
-                        </span>
-                      )}
-                      {item.id === 'notas' && notesCount > 0 && !sidebarOpen && (
-                        <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full shadow-sm animate-pulse" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              </button>
             ))}
           </nav>
         </div>
 
+        {/* Sidebar Footer (Theme, User, Logout) */}
+        <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex flex-col items-center gap-4 py-6">
+          
+          {/* Theme Toggle */}
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 transition-all shadow-inner"
+            title={darkMode ? 'Modo Claro' : 'Modo Oscuro'}
+          >
+            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
 
+          {/* User Profile */}
+          <div className="w-full flex justify-center">
+            <UserMenu 
+              isCollapsed={true} 
+              lowPerfMode={lowPerfMode}
+              setLowPerfMode={setLowPerfMode}
+            />
+          </div>
+
+          {/* Logout Icon */}
+          <button
+            onClick={logout}
+            className="w-10 h-10 flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all"
+            title="Cerrar Sesión"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10 transition-colors duration-300">
-          <div className="text-sm font-medium text-slate-500 capitalize flex items-center gap-2">
+        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 shadow-sm z-10 transition-colors duration-300">
+          <div className="flex items-center gap-6">
             <button
               onClick={() => setSidebarOpen(true)}
-              className={`md:hidden mr-2 p-2 rounded-lg hover:bg-slate-100 transition-colors ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              className={`md:hidden mr-2 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
             >
-              <Menu size={24} className="text-slate-600" />
+              <Menu size={24} className="text-slate-600 dark:text-slate-400" />
             </button>
-            <span className="hidden sm:inline">Principal /</span> {activeTab}
+            
+            <div className="flex items-baseline gap-2 shrink-0">
+              <span className="text-sm md:text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                {filteredNav.find(m => m.id === activeModuleId)?.tabs.find(t => t.id === activeTab)?.label || activeTab}
+              </span>
+            </div>
+
+            {/* Sub-navigation Tabs for grouped modules */}
+            {filteredNav.find(m => m.id === activeModuleId)?.tabs.length > 1 && (
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800/50 p-1 rounded-xl ml-2 md:ml-4 overflow-x-auto no-scrollbar max-w-[150px] sm:max-w-[300px] md:max-w-none">
+                {filteredNav.find(m => m.id === activeModuleId).tabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 md:px-4 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <NotificationBell />
-            <UserMenu />
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto p-8 bg-slate-50 transition-colors duration-300">
+        <section className="flex-1 overflow-y-auto p-8 bg-slate-100 dark:bg-slate-950 transition-colors duration-300">
           <div className={`mx-auto space-y-6 transition-all duration-300 ${sidebarOpen ? 'max-w-7xl' : 'max-w-[1600px]'}`}>
             <Suspense fallback={
               <div className="flex flex-col items-center justify-center p-20 gap-4 text-slate-400">
@@ -282,8 +368,6 @@ function AuthenticatedApp() {
               </div>
             }>
               {activeTab === 'caja' && <CajaForm />}
-              {activeTab === 'calendario' && <CalendarView onNavigate={handleNavigate} />}
-              {activeTab === 'auditoria' && <AuditView onNavigate={handleNavigate} />}
               {activeTab === 'notas' && <NotesView />}
               {activeTab === 'historial' && <HistorialCaja />}
               {activeTab === 'liquidaciones' && <LiquidacionView />}
@@ -296,9 +380,9 @@ function AuthenticatedApp() {
                   onDraftConsumed={() => setDraftSurgery(null)}
                 />
               )}
-              {activeTab === 'pedidos' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
+              {activeTab === 'control' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
                 <OrdenesView
-                  initialTab="pedidos"
+                  initialTab="control"
                   draftData={draftSurgery}
                   onDraftConsumed={() => setDraftSurgery(null)}
                 />
@@ -310,40 +394,40 @@ function AuthenticatedApp() {
 
         {/* HISTORIAL DE CAMBIOS MODAL */}
         {showNextFeatures && (
-          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-100 animate-in zoom-in-95 duration-200">
+          <ModalPortal onClose={() => setShowNextFeatures(false)}>
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl w-full max-w-lg border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h3 className="text-xl font-bold text-slate-900">Historial de Cambios 📓</h3>
-                  <p className="text-xs text-slate-400 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
+                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Historial de Cambios 📓</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
                 </div>
-                <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
                   <Menu size={20} className="rotate-45" />
                 </button>
               </div>
 
-              <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
+              <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                 <div className="space-y-3">
                   <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">19 de Enero, 2026</h4>
                   <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong>Compatibilidad W7:</strong>
+                        <strong className="text-slate-900 dark:text-slate-200">Compatibilidad W7:</strong>
                         <p className="text-xs opacity-70">Añadidos fallbacks de colores y estilos para soportar Chrome 109 y navegadores antiguos.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong>Diseño Responsivo:</strong>
+                        <strong className="text-slate-900 dark:text-slate-200">Diseño Responsivo:</strong>
                         <p className="text-xs opacity-70">Menú de botones adaptativo en Liquidaciones y mejoras de visualización en móviles.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong>URL Corta:</strong>
+                        <strong className="text-slate-900 dark:text-slate-200">URL Corta:</strong>
                         <p className="text-xs opacity-70">Migración al nuevo dominio corto: cajacx.web.app.</p>
                       </div>
                     </li>
@@ -353,31 +437,31 @@ function AuthenticatedApp() {
                 <div className="space-y-3">
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-l-2 border-slate-300 pl-3">18 de Enero, 2026</h4>
                   <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong>Sistema de Fechas Seguro:</strong>
+                        <strong className="text-slate-900 dark:text-slate-200">Sistema de Fechas Seguro:</strong>
                         <p className="text-xs opacity-70">Implementación de escudos contra errores de renderizado por fechas inválidas.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong>Deducciones Detalladas:</strong>
+                        <strong className="text-slate-900 dark:text-slate-200">Deducciones Detalladas:</strong>
                         <p className="text-xs opacity-70">Añadida fecha individual a cada ítem de "Agregar Detalle".</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong>Liquidación Multi-profesional:</strong>
+                        <strong className="text-slate-900 dark:text-slate-200">Liquidación Multi-profesional:</strong>
                         <p className="text-xs opacity-70">Nueva funcionalidad para dividir honorarios manuales entre múltiples médicos.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong>Recibos Dinámicos:</strong>
+                        <strong className="text-slate-900 dark:text-slate-200">Recibos Dinámicos:</strong>
                         <p className="text-xs opacity-70">La fecha del recibo ahora coincide con el periodo de liquidación seleccionado.</p>
                       </div>
                     </li>
@@ -387,12 +471,12 @@ function AuthenticatedApp() {
 
               <button
                 onClick={() => setShowNextFeatures(false)}
-                className="w-full mt-8 py-3 bg-slate-900 text-white font-bold rounded-xl hover:opacity-90 transition-opacity"
+                className="w-full mt-8 py-4 bg-slate-900 dark:bg-blue-600 text-white font-black rounded-2xl hover:opacity-90 transition-opacity uppercase text-xs tracking-widest shadow-md shadow-slate-200 dark:shadow-none"
               >
                 Cerrar Registro
               </button>
             </div>
-          </div>
+          </ModalPortal>
         )}
       </main>
     </div>

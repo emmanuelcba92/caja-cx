@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { User, Printer, Download, Search, FileText, Plus, X, Pencil, Lock as LockIcon, Save, Trash2, CircleHelp, Trash } from 'lucide-react';
 import { db } from '../firebase/config';
-import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { createPortal } from 'react-dom';
+import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { isLocalEnv } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
+import ModalPortal from './common/ModalPortal';
 // Dynamic import used for exceljs
 import { saveAs } from 'file-saver';
+
 
 const LiquidacionView = () => {
     const { viewingUid, permission, catalogOwnerUid, permissions } = useAuth();
@@ -93,6 +96,9 @@ const LiquidacionView = () => {
     const [startDate, setStartDate] = useState(today);
     const [endDate, setEndDate] = useState(today);
     const [data, setData] = useState(null);
+
+    const normalize = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
+
     const [batchData, setBatchData] = useState([]);
     const [isBatchPrint, setIsBatchPrint] = useState(false);
     const [batchPrintType, setBatchPrintType] = useState('liquidacion'); // 'liquidacion' or 'recibo'
@@ -102,7 +108,8 @@ const LiquidacionView = () => {
         const ownerToUse = catalogOwnerUid || viewingUid;
         if (!ownerToUse) return;
         try {
-            const q = query(collection(db, "profesionales"), where("userId", "==", ownerToUse));
+            // "Todos ven todo": ya no filtramos por userId para los profesionales
+            const q = query(collection(db, "profesionales"));
             const querySnapshot = await getDocs(q);
             const profs = querySnapshot.docs.map(doc => ({
                 id: doc.id,
@@ -119,10 +126,11 @@ const LiquidacionView = () => {
 
     // Helper to check transfer status for a specific professional
     const getTransferStatus = (item, profName) => {
-        if (item.prof_1 === profName) return item.isTransfer_prof_1 === true;
-        if (item.prof_2 === profName) return item.isTransfer_prof_2 === true;
-        if (item.prof_3 === profName) return item.isTransfer_prof_3 === true;
-        if (item.anestesista === profName) return item.isTransfer_anestesista === true;
+        const norm = normalize(profName);
+        if (normalize(item.prof_1) === norm) return item.isTransfer_prof_1 === true;
+        if (normalize(item.prof_2) === norm) return item.isTransfer_prof_2 === true;
+        if (normalize(item.prof_3) === norm) return item.isTransfer_prof_3 === true;
+        if (normalize(item.anestesista) === norm) return item.isTransfer_anestesista === true;
         return item.isTransfer === true; // Fallback for legacy global flag
     };
 
@@ -132,17 +140,18 @@ const LiquidacionView = () => {
             // Determine which field to toggle based on the CURRENTLY selected professional
             let fieldToUpdate = null;
             let currentStatus = false;
+            const normSelected = normalize(selectedProf);
 
-            if (entry.prof_1 === selectedProf) {
+            if (normalize(entry.prof_1) === normSelected) {
                 fieldToUpdate = 'isTransfer_prof_1';
                 currentStatus = entry.isTransfer_prof_1 === true;
-            } else if (entry.prof_2 === selectedProf) {
+            } else if (normalize(entry.prof_2) === normSelected) {
                 fieldToUpdate = 'isTransfer_prof_2';
                 currentStatus = entry.isTransfer_prof_2 === true;
-            } else if (entry.prof_3 === selectedProf) {
+            } else if (normalize(entry.prof_3) === normSelected) {
                 fieldToUpdate = 'isTransfer_prof_3';
                 currentStatus = entry.isTransfer_prof_3 === true;
-            } else if (entry.anestesista === selectedProf) {
+            } else if (normalize(entry.anestesista) === normSelected) {
                 fieldToUpdate = 'isTransfer_anestesista';
                 currentStatus = entry.isTransfer_anestesista === true;
             }
@@ -177,10 +186,8 @@ const LiquidacionView = () => {
         if (!viewingUid || !selectedProf) return;
         setError('');
         try {
-            // 1. Fetch all caja entries for user in date range
-            const q = query(collection(db, "caja"),
-                where("userId", "==", viewingUid)
-            );
+            // 1. Fetch all caja entries for all users in date range (Global Access)
+            const q = query(collection(db, "caja"));
             const querySnapshot = await getDocs(q);
             const allEntries = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -192,29 +199,36 @@ const LiquidacionView = () => {
             let totalPesos = 0;
             let totalDolares = 0;
 
+            const normalizedSelected = normalize(selectedProf);
+
             entries.forEach(item => {
                 let liqPesosForEntry = 0;
                 let liqDolaresForEntry = 0;
                 let hasLiquidation = false;
                 const isTransfer = getTransferStatus(item, selectedProf); // Use helper
 
+                const isProf1 = normalize(item.prof_1) === normalizedSelected;
+                const isProf2 = normalize(item.prof_2) === normalizedSelected;
+                const isProf3 = normalize(item.prof_3) === normalizedSelected;
+                const isAnes = normalize(item.anestesista) === normalizedSelected;
+
                 // 1. Check Primary
-                if (item.prof_1 === selectedProf) {
+                if (isProf1) {
                     const amt = parseFloat(item.liq_prof_1) || 0;
                     if (item.liq_prof_1_currency === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
                     if (amt !== 0) hasLiquidation = true;
-                } else if (item.prof_2 === selectedProf) {
+                } else if (isProf2) {
                     const amt = parseFloat(item.liq_prof_2) || 0;
                     if (item.liq_prof_2_currency === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
                     if (amt !== 0) hasLiquidation = true;
-                } else if (item.prof_3 === selectedProf) {
+                } else if (isProf3) {
                     const amt = parseFloat(item.liq_prof_3) || 0;
                     if (item.liq_prof_3_currency === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
                     if (amt !== 0) hasLiquidation = true;
-                } else if (item.anestesista === selectedProf) {
+                } else if (isAnes) {
                     const amt = parseFloat(item.liq_anestesista) || 0;
                     if (item.liq_anestesista_currency === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
@@ -222,22 +236,22 @@ const LiquidacionView = () => {
                 }
 
                 // 2. Check Secondary (including Anesthesiologist)
-                if (item.prof_1 === selectedProf) {
+                if (isProf1) {
                     const amt = parseFloat(item.liq_prof_1_secondary) || 0;
                     if (item.liq_prof_1_currency_secondary === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
                     if (amt !== 0) hasLiquidation = true;
-                } else if (item.prof_2 === selectedProf) {
+                } else if (isProf2) {
                     const amt = parseFloat(item.liq_prof_2_secondary) || 0;
                     if (item.liq_prof_2_currency_secondary === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
                     if (amt !== 0) hasLiquidation = true;
-                } else if (item.prof_3 === selectedProf) {
+                } else if (isProf3) {
                     const amt = parseFloat(item.liq_prof_3_secondary) || 0;
                     if (item.liq_prof_3_currency_secondary === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
                     if (amt !== 0) hasLiquidation = true;
-                } else if (item.anestesista === selectedProf) {
+                } else if (isAnes) {
                     const amt = parseFloat(item.liq_anestesista_secondary) || 0;
                     if (item.liq_anestesista_currency_secondary === 'USD') liqDolaresForEntry += amt;
                     else liqPesosForEntry += amt;
@@ -245,31 +259,25 @@ const LiquidacionView = () => {
                 }
 
                 // 3. Fallback to explicit _ars / _usd fields if available (from new CajaForm)
-                if (item.prof_1 === selectedProf) {
+                if (isProf1) {
                     if (item.liq_prof_1_ars > 0 && liqPesosForEntry === 0) liqPesosForEntry = item.liq_prof_1_ars;
                     if (item.liq_prof_1_usd > 0 && liqDolaresForEntry === 0) liqDolaresForEntry = item.liq_prof_1_usd;
-                } else if (item.prof_2 === selectedProf) {
+                } else if (isProf2) {
                     if (item.liq_prof_2_ars > 0 && liqPesosForEntry === 0) liqPesosForEntry = item.liq_prof_2_ars;
                     if (item.liq_prof_2_usd > 0 && liqDolaresForEntry === 0) liqDolaresForEntry = item.liq_prof_2_usd;
-                } else if (item.prof_3 === selectedProf) {
+                } else if (isProf3) {
                     if (item.liq_prof_3_ars > 0 && liqPesosForEntry === 0) liqPesosForEntry = item.liq_prof_3_ars;
                     if (item.liq_prof_3_usd > 0 && liqDolaresForEntry === 0) liqDolaresForEntry = item.liq_prof_3_usd;
-                } else if (item.anestesista === selectedProf) {
+                } else if (isAnes) {
                     if (item.liq_anestesista_ars > 0 && liqPesosForEntry === 0) liqPesosForEntry = item.liq_anestesista_ars;
                     if (item.liq_anestesista_usd > 0 && liqDolaresForEntry === 0) liqDolaresForEntry = item.liq_anestesista_usd;
                 }
 
                 if (liqPesosForEntry !== 0 || liqDolaresForEntry !== 0) hasLiquidation = true;
 
-                // 3. Add to list if relevant
-                // We show the row if there is ANY liquidation amount
-                // OR if it's a manual entry SPECIFICALLY for this professional (checking fields to avoid duplicates)
-                const isRelevantManual = item.isManualLiquidation && (
-                    item.prof_1 === selectedProf ||
-                    item.prof_2 === selectedProf ||
-                    item.prof_3 === selectedProf ||
-                    item.anestesista === selectedProf
-                );
+                // 4. Add to list if relevant
+                const isRelevantManual = item.isManualLiquidation && (isProf1 || isProf2 || isProf3 || isAnes);
+
 
                 if (hasLiquidation || isRelevantManual) {
 
@@ -418,7 +426,11 @@ const LiquidacionView = () => {
     };
 
     const removeDeduction = async (id) => {
-        if (!window.confirm("¿Eliminar esta deducción?")) return;
+        if (isLocalEnv) {
+            alert("🔒 SEGURIDAD: No se puede eliminar deducciones de la nube desde local.");
+            return;
+        }
+        if (!window.confirm("¿Seguro que deseas eliminar esta deducción?")) return;
         try {
             await deleteDoc(doc(db, "deducciones", id));
             fetchDeductions();
@@ -514,6 +526,11 @@ const LiquidacionView = () => {
     };
 
     const performDelete = async () => {
+        if (isLocalEnv) {
+            alert("🔒 SEGURIDAD: No se puede eliminar movimientos de caja de la nube desde local.");
+            return;
+        }
+        if (!window.confirm("¿Seguro que deseas eliminar este movimiento? Esta acción no se puede deshacer.")) return;
         try {
             await deleteDoc(doc(db, "caja", editingEntry.id));
 
@@ -1401,68 +1418,68 @@ const LiquidacionView = () => {
             )}
 
             {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+                <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded relative mb-4">
                     <strong className="font-bold">Error: </strong>
                     <span className="block sm:inline">{error}</span>
                 </div>
             )}
 
             {showReceipt ? (
-                <div className="bg-white min-h-screen p-8 print:hidden animate-in fade-in duration-300 relative">
-                    <div className="flex gap-4 mb-8 border-b border-slate-100 pb-4">
-                        <button onClick={() => setShowReceipt(false)} className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-slate-800 font-bold transition-colors">
+                <div className="bg-white dark:bg-slate-900 min-h-screen p-8 print:hidden animate-in fade-in duration-300 relative">
+                    <div className="flex gap-4 mb-8 border-b border-slate-100 dark:border-slate-800 pb-4">
+                        <button onClick={() => setShowReceipt(false)} className="flex items-center gap-2 px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 font-bold transition-colors">
                             <Search size={16} /> Volver a Liquidación
                         </button>
-                        <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 font-bold shadow-lg">
+                        <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-800 text-white rounded-lg hover:bg-slate-800 dark:hover:bg-slate-700 font-bold shadow-lg">
                             <Printer size={16} /> Imprimir Recibo
                         </button>
                     </div>
 
-                    <div className="max-w-3xl mx-auto border border-slate-200 shadow-sm p-12 bg-white">
+                    <div className="max-w-3xl mx-auto border border-slate-200 dark:border-slate-800 shadow-sm p-12 bg-white dark:bg-slate-900">
                         <div className="mb-8">
                             <img src="/coat_logo.png" alt="COAT" className="h-20 object-contain mx-auto" />
                         </div>
-                        <div className="grid grid-cols-[100px_1fr] gap-y-2 text-sm text-slate-800 mb-8 font-medium">
-                            <div className="font-bold text-slate-900">Fecha:</div>
+                        <div className="grid grid-cols-[100px_1fr] gap-y-2 text-sm text-slate-800 dark:text-slate-200 mb-8 font-medium">
+                            <div className="font-bold text-slate-900 dark:text-white">Fecha:</div>
                             <div>
                                 {startDate === endDate
                                     ? formatDate(startDate)
                                     : `${formatDate(startDate)} al ${formatDate(endDate)}`}
                             </div>
-                            <div className="font-bold text-slate-900">Movimiento:</div>
+                            <div className="font-bold text-slate-900 dark:text-white">Movimiento:</div>
                             <div>Egreso</div>
-                            <div className="font-bold text-slate-900">Concepto:</div>
+                            <div className="font-bold text-slate-900 dark:text-white">Concepto:</div>
                             <div>Honorarios por técnica en común de por cuenta y orden de {data?.profesional || 'Profesional'}</div>
-                            <div className="font-bold text-slate-900">Referencia:</div>
+                            <div className="font-bold text-slate-900 dark:text-white">Referencia:</div>
                             <div className="text-xs">{receiptEntries.map(e => cleanPatientName(e.paciente)).join(', ')}</div>
                         </div>
-                        <table className="w-full text-sm mb-12 border-t border-slate-300">
+                        <table className="w-full text-sm mb-12 border-t border-slate-300 dark:border-slate-700">
                             <thead>
-                                <tr className="border-b border-slate-300">
-                                    <th className="text-left py-2 font-bold text-slate-900 w-1/3">M. de Pago</th>
-                                    <th className="text-left py-2 font-bold text-slate-900">Número</th>
-                                    <th className="text-left py-2 font-bold text-slate-900">F. Cobro</th>
-                                    <th className="text-right py-2 font-bold text-slate-900">Importe</th>
+                                <tr className="border-b border-slate-300 dark:border-slate-700">
+                                    <th className="text-left py-2 font-bold text-slate-900 dark:text-white w-1/3">M. de Pago</th>
+                                    <th className="text-left py-2 font-bold text-slate-900 dark:text-white">Número</th>
+                                    <th className="text-left py-2 font-bold text-slate-900 dark:text-white">F. Cobro</th>
+                                    <th className="text-right py-2 font-bold text-slate-900 dark:text-white">Importe</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 <tr>
-                                    <td className="py-2 text-slate-600">Efectivo</td>
+                                    <td className="py-2 text-slate-600 dark:text-slate-400">Efectivo</td>
                                     <td className="py-2"></td>
                                     <td className="py-2"></td>
-                                    <td className="py-2 text-right font-mono font-bold text-slate-800">${formatMoney(receiptFinalPesos)}</td>
+                                    <td className="py-2 text-right font-mono font-bold text-slate-800 dark:text-slate-100">${formatMoney(receiptFinalPesos)}</td>
                                 </tr>
                                 <tr>
-                                    <td className="py-2 text-slate-600">Dólares</td>
+                                    <td className="py-2 text-slate-600 dark:text-slate-400">Dólares</td>
                                     <td className="py-2"></td>
                                     <td className="py-2"></td>
-                                    <td className="py-2 text-right font-mono font-bold text-slate-800">USD {formatMoney(receiptFinalDolares)}</td>
+                                    <td className="py-2 text-right font-mono font-bold text-slate-800 dark:text-slate-100">USD {formatMoney(receiptFinalDolares)}</td>
                                 </tr>
                             </tbody>
                         </table>
                         <div className="mt-32 flex justify-end">
-                            <div className="text-center w-64 border-t border-slate-900 pt-2">
-                                <p className="font-bold text-slate-900 text-sm">Recibí conforme</p>
+                            <div className="text-center w-64 border-t border-slate-900 dark:border-white pt-2">
+                                <p className="font-bold text-slate-900 dark:text-white text-sm">Recibí conforme</p>
                             </div>
                         </div>
                     </div>
@@ -1470,109 +1487,109 @@ const LiquidacionView = () => {
             ) : (
                 <div className="space-y-6">
                     {/* Cabecera de Filtros */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4 no-print">
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 space-y-4 no-print">
                         <div className="flex flex-wrap gap-4 items-center justify-between">
-                            <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
-                                <button onClick={() => setModelo(1)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${modelo === 1 ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Modelo 1</button>
-                                <button onClick={() => setModelo(2)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${modelo === 2 ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Modelo 2</button>
+                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-1 rounded-xl border border-slate-100 dark:border-slate-700">
+                                <button onClick={() => setModelo(1)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${modelo === 1 ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'}`}>Modelo 1</button>
+                                <button onClick={() => setModelo(2)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${modelo === 2 ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'}`}>Modelo 2</button>
                             </div>
-                            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-                                <span className="text-xs font-bold text-slate-400 uppercase">Filtrar:</span>
-                                <input type="date" className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 focus:border-teal-500 outline-none" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                                <span className="text-slate-400">-</span>
-                                <input type="date" className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 focus:border-teal-500 outline-none" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Filtrar:</span>
+                                <input type="date" className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-xs text-slate-600 dark:text-slate-200 focus:border-teal-500 outline-none" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                                <span className="text-slate-400 dark:text-slate-500">-</span>
+                                <input type="date" className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-xs text-slate-600 dark:text-slate-200 focus:border-teal-500 outline-none" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                             </div>
                         </div>
                         <div className="flex flex-col gap-4">
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                <input type="text" placeholder="Buscar profesional..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-teal-500 outline-none" value={profSearch} onChange={(e) => setProfSearch(e.target.value)} />
+                                <input type="text" placeholder="Buscar profesional..." className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:border-teal-500 outline-none text-slate-700 dark:text-slate-200" value={profSearch} onChange={(e) => setProfSearch(e.target.value)} />
                             </div>
-                            <div className="flex flex-wrap gap-2 p-2 bg-slate-50/50 rounded-xl max-h-[200px] overflow-y-auto">
+                            <div className="flex flex-wrap gap-2 p-2 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl max-h-[200px] overflow-y-auto">
                                 {profesionales.filter(p => p.categoria !== 'Tutoras').filter(p => p.nombre.toLowerCase().includes(profSearch.toLowerCase())).map(prof => (
-                                    <button key={prof.id} onClick={() => setSelectedProf(prof.nombre)} className={`px-4 py-2 rounded-xl border transition-all font-medium text-sm ${selectedProf === prof.nombre ? 'bg-white border-teal-200 text-teal-600 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}>{prof.nombre}</button>
+                                    <button key={prof.id} onClick={() => setSelectedProf(prof.nombre)} className={`px-4 py-2 rounded-xl border transition-all font-medium text-sm ${selectedProf === prof.nombre ? 'bg-white dark:bg-slate-700 border-teal-200 dark:border-teal-800 text-teal-600 dark:text-teal-400 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>{prof.nombre}</button>
                                 ))}
-                                {profesionales.filter(p => p.categoria !== 'Tutoras').filter(p => p.nombre.toLowerCase().includes(profSearch.toLowerCase())).length === 0 && <div className="w-full py-4 text-center text-slate-400 text-sm italic">No se encontraron profesionales</div>}
+                                {profesionales.filter(p => p.categoria !== 'Tutoras').filter(p => p.nombre.toLowerCase().includes(profSearch.toLowerCase())).length === 0 && <div className="w-full py-4 text-center text-slate-400 dark:text-slate-500 text-sm italic">No se encontraron profesionales</div>}
                             </div>
                         </div>
                     </div>
 
                     {data && data.entradas ? (
-                        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden no-print">
-                            <div className="p-4 md:p-8 border-b border-slate-100 flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6 bg-gradient-to-r from-white to-slate-50/50">
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-800 overflow-hidden no-print">
+                            <div className="p-4 md:p-8 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6 bg-gradient-to-r from-white to-slate-50/50 dark:from-slate-900 dark:to-slate-800/50">
                                 <div className="flex-1 w-full">
                                     <div className="flex items-center gap-3 mb-2">
-                                        <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center shrink-0"><User size={24} /></div>
+                                        <div className="w-12 h-12 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-2xl flex items-center justify-center shrink-0"><User size={24} /></div>
                                         <div>
-                                            <h2 className="text-xl md:text-2xl font-bold text-slate-900 leading-tight" title="v1.1.0">Liquidación: {data.profesional}</h2>
-                                            <p className="text-slate-500 font-medium text-sm md:text-base">{data.categoria} | Modelo: {modelo === 1 ? 'Detallado' : 'Simplificado'}</p>
+                                            <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100 leading-tight" title="v1.1.0">Liquidación: {data.profesional}</h2>
+                                            <p className="text-slate-500 dark:text-slate-400 font-medium text-sm md:text-base">{data.categoria} | Modelo: {modelo === 1 ? 'Detallado' : 'Simplificado'}</p>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="flex flex-wrap gap-3 w-full md:w-auto justify-start md:justify-end">
-                                    {!isReadOnly && <button onClick={() => setShowManualModal(true)} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-semibold shadow-lg shadow-emerald-200 transition-all text-sm md:text-base"><Plus size={20} /> Agregar</button>}
-                                    <button onClick={handleExportExcel} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-slate-100 text-slate-700 rounded-xl hover:bg-green-100 hover:text-green-800 font-semibold transition-all text-sm md:text-base"><Download size={20} /> Excel</button>
+                                    {!isReadOnly && <button onClick={() => setShowManualModal(true)} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-semibold shadow-lg shadow-emerald-200 dark:shadow-none transition-all text-sm md:text-base"><Plus size={20} /> Agregar</button>}
+                                    <button onClick={handleExportExcel} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-green-100 dark:hover:bg-green-900/40 hover:text-green-800 dark:hover:text-green-400 font-semibold transition-all text-sm md:text-base"><Download size={20} /> Excel</button>
 
                                     {data.categoria !== 'Tutoras' && (
                                         <>
-                                            <button onClick={() => setShowReceipt(true)} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-semibold shadow-lg shadow-purple-200 transition-all text-sm md:text-base"><FileText size={20} /> Recibo</button>
+                                            <button onClick={() => setShowReceipt(true)} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-semibold shadow-lg shadow-purple-200 dark:shadow-none transition-all text-sm md:text-base"><FileText size={20} /> Recibo</button>
                                             <div className="relative">
-                                                <button onClick={() => setShowBatchMenu(!showBatchMenu)} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 font-semibold shadow-lg transition-all text-sm md:text-base"><Printer size={20} /> Imprimir Todo</button>
+                                                <button onClick={() => setShowBatchMenu(!showBatchMenu)} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-slate-700 dark:bg-slate-800 text-white rounded-xl hover:bg-slate-600 dark:hover:bg-slate-700 font-semibold shadow-md transition-all text-sm md:text-base"><Printer size={20} /> Imprimir Todo</button>
                                                 {showBatchMenu && (
-                                                    <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 p-2 z-50 min-w-[200px] flex flex-col gap-2">
-                                                        <div onClick={() => { handlePrintAll('liquidacion'); setShowBatchMenu(false); }} className="px-4 py-3 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 cursor-pointer flex items-center gap-2"><FileText size={16} /> Liquidaciones</div>
-                                                        <div onClick={() => { handlePrintAll('recibo'); setShowBatchMenu(false); }} className="px-4 py-3 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 cursor-pointer flex items-center gap-2"><div className="w-4 h-4 border border-slate-400 rounded-sm" /> Recibos</div>
+                                                    <div className="absolute top-full right-0 mt-2 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 p-2 z-50 min-w-[200px] flex flex-col gap-2">
+                                                        <div onClick={() => { handlePrintAll('liquidacion'); setShowBatchMenu(false); }} className="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer flex items-center gap-2"><FileText size={16} /> Liquidaciones</div>
+                                                        <div onClick={() => { handlePrintAll('recibo'); setShowBatchMenu(false); }} className="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer flex items-center gap-2"><div className="w-4 h-4 border border-slate-400 rounded-sm" /> Recibos</div>
                                                     </div>
                                                 )}
                                             </div>
-                                            <button onClick={handlePrint} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-slate-900 text-white rounded-xl hover:bg-slate-800 font-semibold shadow-lg transition-all text-sm md:text-base"><Printer size={20} /> Imprimir Detalle</button>
+                                            <button onClick={handlePrint} className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-slate-900 dark:bg-slate-950 text-white rounded-xl hover:bg-slate-800 dark:hover:bg-black font-semibold shadow-lg transition-all text-sm md:text-base"><Printer size={20} /> Imprimir Detalle</button>
                                         </>
                                     )}
                                 </div>
                             </div>
 
 
-                            <div className="p-6 bg-slate-50 border-b border-slate-100">
+                            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
                                 <div className="flex items-center gap-2 mb-4">
-                                    <h3 className="text-sm font-bold text-slate-500 uppercase">Agregar deducción</h3>
+                                    <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase">Agregar deducción</h3>
                                     <div className="group relative">
-                                        <CircleHelp size={16} className="text-slate-400 cursor-help" />
-                                        <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-slate-800 text-white text-[11px] rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100] normal-case font-medium">
+                                        <CircleHelp size={16} className="text-slate-400 dark:text-slate-500 cursor-help" />
+                                        <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-slate-800 dark:bg-slate-950 text-white text-[11px] rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100] normal-case font-medium border border-slate-700 dark:border-slate-800">
                                             Utilice esta sección únicamente para agregar montos que deban **restarse** del total de la liquidación (ej: gastos, retenciones, etc).
                                         </div>
                                     </div>
                                 </div>
                                 <div className="flex gap-4 mb-4">
-                                    <input type="date" className="p-2 border rounded-lg bg-white" value={newDeductionDate} onChange={e => setNewDeductionDate(e.target.value)} />
-                                    <input type="text" placeholder="Descripción" className="flex-1 p-2 border rounded-lg" value={newDeductionDesc} onChange={e => setNewDeductionDesc(e.target.value)} />
-                                    <div className="flex border rounded-lg overflow-hidden bg-white">
+                                    <input type="date" className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 outline-none" value={newDeductionDate} onChange={e => setNewDeductionDate(e.target.value)} />
+                                    <input type="text" placeholder="Descripción" className="flex-1 p-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-400" value={newDeductionDesc} onChange={e => setNewDeductionDesc(e.target.value)} />
+                                    <div className="flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-700">
                                         <select
-                                            className="p-2 bg-slate-100 border-r text-xs font-bold"
+                                            className="p-2 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none"
                                             value={newDeductionCurrency}
                                             onChange={e => setNewDeductionCurrency(e.target.value)}
                                         >
                                             <option value="ARS">$</option>
                                             <option value="USD">U$S</option>
                                         </select>
-                                        <input type="number" placeholder="Monto" className="w-24 p-2 focus:outline-none" value={newDeductionAmount} onChange={e => setNewDeductionAmount(e.target.value)} />
+                                        <input type="number" placeholder="Monto" className="w-24 p-2 bg-transparent focus:outline-none text-slate-700 dark:text-slate-200" value={newDeductionAmount} onChange={e => setNewDeductionAmount(e.target.value)} />
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <input type="checkbox" id="dedInReceipt" className="w-4 h-4 rounded" checked={newDeductionInReceipt} onChange={e => setNewDeductionInReceipt(e.target.checked)} />
-                                        <label htmlFor="dedInReceipt" className="text-xs font-bold text-slate-500 uppercase cursor-pointer">En recibo</label>
+                                        <input type="checkbox" id="dedInReceipt" className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700" checked={newDeductionInReceipt} onChange={e => setNewDeductionInReceipt(e.target.checked)} />
+                                        <label htmlFor="dedInReceipt" className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase cursor-pointer">En recibo</label>
                                     </div>
-                                    <button onClick={addDeduction} className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold transition-colors">Agregar</button>
+                                    <button onClick={addDeduction} className="px-4 py-2 bg-slate-800 dark:bg-slate-950 text-white rounded-lg hover:bg-slate-700 dark:hover:bg-black font-bold transition-colors">Agregar</button>
                                 </div>
                                 {deductions.length > 0 && (
                                     <div className="space-y-2">
                                         {deductions.map((d, idx) => (
-                                            <div key={idx} className="flex justify-between items-center bg-white p-3 rounded border border-red-100">
+                                            <div key={idx} className="flex justify-between items-center bg-white dark:bg-slate-800 p-3 rounded border border-red-100 dark:border-red-900/30">
                                                 <div className="flex flex-col">
-                                                    <span className="text-[10px] text-slate-400 font-bold uppercase">{formatDate(d.date)}</span>
-                                                    <span className="text-slate-700 font-medium">{d.desc}</span>
+                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase">{formatDate(d.date)}</span>
+                                                    <span className="text-slate-700 dark:text-slate-200 font-medium">{d.desc}</span>
                                                 </div>
                                                 <div className="flex items-center gap-4">
-                                                    <span className="text-red-600 font-bold">-{d.currency === 'USD' ? 'U$S' : '$'}{formatMoney(d.amount)}</span>
-                                                    <button onClick={() => removeDeduction(d.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+                                                    <span className="text-red-600 dark:text-red-400 font-bold">-{d.currency === 'USD' ? 'U$S' : '$'}{formatMoney(d.amount)}</span>
+                                                    <button onClick={() => removeDeduction(d.id)} className="text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
                                                 </div>
                                             </div>
                                         ))}
@@ -1583,7 +1600,7 @@ const LiquidacionView = () => {
                             <div className="overflow-x-auto">
                                 <table className="w-full border-collapse">
                                     <thead>
-                                        <tr className="bg-slate-50/50 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                                        <tr className="bg-slate-50/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                                             <th className="px-8 py-4 text-left">Fecha</th>
                                             <th className="px-8 py-4 text-left">Paciente</th>
                                             <th className="px-2 py-4 text-center w-10">Transf.</th>
@@ -1593,26 +1610,26 @@ const LiquidacionView = () => {
                                                     <th className="px-8 py-4 text-right">Cobro USD</th>
                                                 </>
                                             )}
-                                            <th className={`px-8 py-4 text-right bg-teal-50/30`}>Su Liquidación</th>
+                                            <th className="px-8 py-4 text-right bg-teal-50/30 dark:bg-teal-900/10">Su Liquidación</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-50 font-medium text-slate-700 text-sm">
+                                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300 text-sm">
                                         {data.entradas.map((entry, idx) => (
-                                            <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
-                                                <td className="px-8 py-4 text-slate-400 tabular-nums">{formatDate(entry.fecha)}</td>
+                                            <tr key={idx} className="hover:bg-slate-50/30 dark:hover:bg-slate-800/30 transition-colors">
+                                                <td className="px-8 py-4 text-slate-400 dark:text-slate-500 tabular-nums">{formatDate(entry.fecha)}</td>
                                                 <td className="px-8 py-4">
-                                                    <div className="font-bold text-slate-900">
+                                                    <div className="font-bold text-slate-900 dark:text-slate-100">
                                                         {cleanPatientName(entry.paciente)}
-                                                        {entry.isManualLiquidation && entry.isTransfer && <span className="ml-2 text-[10px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Manual</span>}
+                                                        {entry.isManualLiquidation && entry.isTransfer && <span className="ml-2 text-[10px] bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Manual</span>}
                                                     </div>
-                                                    <div className="text-xs text-slate-400">{entry.dni}</div>
+                                                    <div className="text-xs text-slate-400 dark:text-slate-500 font-medium">{entry.dni}</div>
                                                 </td>
                                                 <td className="px-2 py-4 text-center">
                                                     {!isReadOnly && (
                                                         <div className="flex justify-center">
                                                             <input
                                                                 type="checkbox"
-                                                                className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                                                className="w-4 h-4 text-teal-600 rounded border-slate-300 dark:border-slate-700 dark:bg-slate-800 focus:ring-indigo-500 cursor-pointer"
                                                                 checked={entry.isTransfer || false}
                                                                 onChange={() => handleToggleTransfer(entry)}
                                                                 title="Marcar como Transferencia (No suma al total)"
@@ -1622,14 +1639,14 @@ const LiquidacionView = () => {
                                                 </td>
                                                 {modelo === 1 && (
                                                     <>
-                                                        <td className="px-8 py-4 text-right tabular-nums text-slate-400">
+                                                        <td className="px-8 py-4 text-right tabular-nums text-slate-400 dark:text-slate-500">
                                                             {entry.abonado_ref > 0 && entry.abonado_ref_currency === 'ARS' ? (
                                                                 `$${formatMoney(entry.abonado_ref)}`
                                                             ) : (
                                                                 `$${formatMoney(entry.pago_pesos)}`
                                                             )}
                                                         </td>
-                                                        <td className="px-8 py-4 text-right tabular-nums text-slate-400">
+                                                        <td className="px-8 py-4 text-right tabular-nums text-slate-400 dark:text-slate-500">
                                                             {entry.abonado_ref > 0 && entry.abonado_ref_currency === 'USD' ? (
                                                                 `U$D ${formatMoney(entry.abonado_ref)}`
                                                             ) : (
@@ -1638,23 +1655,23 @@ const LiquidacionView = () => {
                                                         </td>
                                                     </>
                                                 )}
-                                                <td className={`px-8 py-4 text-right tabular-nums font-bold text-teal-600 bg-teal-50/5 relative group/cell`}>
+                                                <td className="px-8 py-4 text-right tabular-nums font-bold text-teal-600 dark:text-teal-400 bg-teal-50/5 dark:bg-teal-900/5 relative group/cell">
                                                     <div className="flex flex-col items-end gap-1">
                                                         {(entry.liq_pesos_total !== 0 || entry.liq_dolares_total === 0) && <span>${formatMoney(entry.liq_pesos_total)}</span>}
-                                                        {entry.liq_dolares_total !== 0 && <span className="text-teal-600">U$D {formatMoney(entry.liq_dolares_total)}</span>}
+                                                        {entry.liq_dolares_total !== 0 && <span className="text-teal-600 dark:text-teal-400">U$D {formatMoney(entry.liq_dolares_total)}</span>}
                                                     </div>
                                                     {!isReadOnly && (
-                                                        <div className="absolute top-1/2 -translate-y-1/2 right-2 flex gap-1 opacity-0 group-hover/cell:opacity-100 transition-all bg-white/80 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-slate-100 no-print">
+                                                        <div className="absolute top-1/2 -translate-y-1/2 right-2 flex gap-1 opacity-0 group-hover/cell:opacity-100 transition-all bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-slate-100 dark:border-slate-700 no-print">
                                                             <button
                                                                 onClick={() => handleEditClick(entry)}
-                                                                className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all"
+                                                                className="p-1.5 text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-all"
                                                                 title="Editar (Requiere PIN)"
                                                             >
                                                                 <Pencil size={14} />
                                                             </button>
                                                             <button
                                                                 onClick={() => handleDeleteClick(entry)}
-                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                                className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"
                                                                 title="Eliminar (Requiere PIN)"
                                                             >
                                                                 <Trash2 size={14} />
@@ -1666,25 +1683,25 @@ const LiquidacionView = () => {
                                         ))}
                                     </tbody>
                                     <tfoot>
-                                        <tr className="bg-slate-50 border-t border-slate-200">
+                                        <tr className="bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800">
                                             <td colSpan={modelo === 1 ? 4 : 2} className="px-8 py-5 text-right font-bold uppercase tracking-widest text-xs opacity-50">Subtotal</td>
-                                            <td className="px-8 py-5 text-right font-bold text-lg tabular-nums text-slate-500">
+                                            <td className="px-8 py-5 text-right font-bold text-lg tabular-nums text-slate-500 dark:text-slate-400">
                                                 <div className="flex flex-col items-end gap-1">
                                                     {(data.totales.liq_pesos !== 0 || data.totales.liq_dolares === 0) && <span>${formatMoney(data.totales.liq_pesos)}</span>}
-                                                    {data.totales.liq_dolares !== 0 && <span className="text-teal-600">U$D {formatMoney(data.totales.liq_dolares)}</span>}
+                                                    {data.totales.liq_dolares !== 0 && <span className="text-teal-600 dark:text-teal-400">U$D {formatMoney(data.totales.liq_dolares)}</span>}
                                                 </div>
                                             </td>
                                         </tr>
                                         {deductions.map((d, i) => (
-                                            <tr key={i} className="bg-red-50/50">
-                                                <td className="px-8 py-3 text-slate-400 tabular-nums">{formatDate(d.date)}</td>
-                                                <td colSpan={modelo === 1 ? 3 : 1} className="px-8 py-3 text-right font-medium italic text-red-800">{d.desc}</td>
-                                                <td className="px-8 py-3 text-right font-bold text-red-600">-{d.currency === 'USD' ? 'U$D' : '$'}{formatMoney(d.amount)}</td>
+                                            <tr key={i} className="bg-red-50/50 dark:bg-red-900/10">
+                                                <td className="px-8 py-3 text-slate-400 dark:text-slate-500 tabular-nums">{formatDate(d.date)}</td>
+                                                <td colSpan={modelo === 1 ? 3 : 1} className="px-8 py-3 text-right font-medium italic text-red-800 dark:text-red-400">{d.desc}</td>
+                                                <td className="px-8 py-3 text-right font-bold text-red-600 dark:text-red-400">-{d.currency === 'USD' ? 'U$D' : '$'}{formatMoney(d.amount)}</td>
                                             </tr>
                                         ))}
 
-                                        <tr className="bg-slate-900 text-white">
-                                            <td colSpan={modelo === 1 ? 4 : 2} className="px-8 py-5 text-right font-bold uppercase tracking-widest text-xs opacity-50">Total Final</td>
+                                        <tr className="bg-slate-900 dark:bg-black text-white">
+                                            <td colSpan={modelo === 1 ? 4 : 2} className="px-8 py-5 text-right font-bold uppercase tracking-widest text-xs opacity-50 text-slate-400">Total Final</td>
                                             <td className="px-8 py-5 text-right font-black text-lg tabular-nums">
                                                 <div className="flex flex-col items-end gap-1">
                                                     {(finalTotalPesos !== 0 || finalTotalDolares === 0) && <span>${formatMoney(finalTotalPesos)}</span>}
@@ -1697,9 +1714,9 @@ const LiquidacionView = () => {
                             </div>
                         </div>
                     ) : (
-                        <div className="p-20 text-center bg-white rounded-2xl border border-slate-100 shadow-sm text-slate-300">
-                            <User size={64} className="mx-auto mb-4 opacity-10" />
-                            <p className="text-xl font-medium">Selecciona un profesional para ver su liquidación</p>
+                        <div className="p-20 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm text-slate-300 dark:text-slate-600 animate-in fade-in duration-500">
+                            <User size={64} className="mx-auto mb-4 opacity-20" />
+                            <p className="text-xl font-bold text-slate-400 dark:text-slate-500">Selecciona un profesional para ver su liquidación</p>
                         </div>
                     )}
                 </div>
@@ -1707,25 +1724,26 @@ const LiquidacionView = () => {
             }
 
             {/* MANUAL LIQUIDATION MODAL */}
-            {
-                showManualModal && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm no-print">
-                        <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md">
-                            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                                <h3 className="text-xl font-bold text-slate-900">Agregar Liquidación Manual</h3>
-                                <button onClick={() => setShowManualModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={20} /></button>
-                            </div>
-                            <div className="space-y-4">
+            {showManualModal && (
+                <ModalPortal onClose={() => setShowManualModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl w-full max-w-2xl border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-8 border-b border-slate-100 dark:border-slate-800 pb-4">
+                            <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Agregar Liquidación Manual</h3>
+                            <button onClick={() => setShowManualModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-colors"><X size={24} /></button>
+                        </div>
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha</label>
-                                    <input type="date" className="w-full p-2 border rounded-lg bg-slate-50" value={manualForm.date} onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })} />
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-1">Fecha</label>
+                                    <input type="date" className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium focus:border-teal-500 outline-none" value={manualForm.date} onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Paciente</label>
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-1">Paciente</label>
                                     <input
                                         list="manual-patients"
                                         type="text"
-                                        className="w-full p-2 border rounded-lg"
+                                        placeholder="Buscar o escribir paciente..."
+                                        className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium focus:border-teal-500 outline-none placeholder:text-slate-400"
                                         value={manualForm.patient}
                                         onChange={(e) => {
                                             const val = e.target.value;
@@ -1743,115 +1761,139 @@ const LiquidacionView = () => {
                                         {dayPatients.map((p, i) => <option key={i} value={p.name} />)}
                                     </datalist>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 text-teal-600">Total Abonado</label>
-                                        <input
-                                            type="number"
-                                            className="w-full p-2 border border-teal-100 bg-teal-50 rounded-lg font-bold text-teal-900"
-                                            placeholder="Monto paciente"
-                                            value={manualForm.totalPayment}
-                                            onChange={(e) => setManualForm({ ...manualForm, totalPayment: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Moneda</label>
-                                        <select
-                                            className="w-full p-2 border rounded-lg"
-                                            value={manualForm.currency}
-                                            onChange={(e) => setManualForm({ ...manualForm, currency: e.target.value })}
-                                        >
-                                            <option value="ARS">Pesos ($)</option>
-                                            <option value="USD">Dólares (USD)</option>
-                                        </select>
-                                    </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-6 p-4 bg-teal-50/30 dark:bg-teal-900/10 rounded-2xl border border-teal-100/50 dark:border-teal-800/30">
+                                <div>
+                                    <label className="block text-xs font-bold text-teal-600 dark:text-teal-400 uppercase mb-2 ml-1">Total Abonado</label>
+                                    <input
+                                        type="number"
+                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-teal-100 dark:border-teal-800 rounded-xl font-bold text-teal-900 dark:text-teal-100 text-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
+                                        placeholder="Monto"
+                                        value={manualForm.totalPayment}
+                                        onChange={(e) => setManualForm({ ...manualForm, totalPayment: e.target.value })}
+                                    />
                                 </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-1">Moneda</label>
+                                    <select
+                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold outline-none"
+                                        value={manualForm.currency}
+                                        onChange={(e) => setManualForm({ ...manualForm, currency: e.target.value })}
+                                    >
+                                        <option value="ARS">Pesos ($)</option>
+                                        <option value="USD">Dólares (USD)</option>
+                                    </select>
+                                </div>
+                            </div>
 
-                                <div className="space-y-3 pt-2">
-                                    <div className="flex justify-between items-center">
-                                        <label className="block text-xs font-bold text-slate-500 uppercase">Distribución por Profesionales</label>
-                                        <button onClick={addManualProfRow} className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-lg transition-colors">
-                                            <Plus size={14} /> Añadir
-                                        </button>
-                                    </div>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center px-1">
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Distribución por Profesionales</label>
+                                    <button onClick={addManualProfRow} className="text-xs font-bold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 flex items-center gap-2 bg-teal-50 dark:bg-teal-900/30 px-3 py-1.5 rounded-lg transition-all border border-teal-100 dark:border-teal-800">
+                                        <Plus size={14} /> Añadir Profesional
+                                    </button>
+                                </div>
+                                <div className="max-h-[250px] overflow-y-auto space-y-3 pr-2 scrollbar-thin">
                                     {manualForm.profs.map((item, idx) => (
-                                        <div key={idx} className="grid grid-cols-[1fr_100px_40px] gap-2 items-end bg-slate-50 p-3 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-right-2 duration-300">
-                                            <div className="space-y-1">
-                                                <label className="block text-[10px] font-bold text-slate-400">Profesional</label>
-                                                <select className="w-full p-1.5 border rounded-lg bg-white text-sm" value={item.prof} onChange={(e) => updateManualProfRow(idx, 'prof', e.target.value)}>
+                                        <div key={idx} className="grid grid-cols-[1fr_120px_48px] gap-3 items-end bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 animate-in fade-in slide-in-from-right-4 duration-300">
+                                            <div className="space-y-2">
+                                                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase ml-1">Profesional</label>
+                                                <select className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white font-medium outline-none" value={item.prof} onChange={(e) => updateManualProfRow(idx, 'prof', e.target.value)}>
                                                     <option value="">Seleccionar</option>
                                                     {profesionales.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
                                                 </select>
                                             </div>
-                                            <div className="space-y-1">
-                                                <label className="block text-[10px] font-bold text-slate-400">Monto</label>
-                                                <input type="number" className="w-full p-1.5 border rounded-lg bg-white text-sm font-bold" value={item.amount} onChange={(e) => updateManualProfRow(idx, 'amount', e.target.value)} />
+                                            <div className="space-y-2">
+                                                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase ml-1">Monto</label>
+                                                <input type="number" className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none" value={item.amount} onChange={(e) => updateManualProfRow(idx, 'amount', e.target.value)} />
                                             </div>
-                                            <button onClick={() => removeManualProfRow(idx)} className="p-2 text-slate-400 hover:text-red-500 transition-colors" disabled={manualForm.profs.length <= 1}>
-                                                <Trash size={16} />
+                                            <button onClick={() => removeManualProfRow(idx)} className="p-2.5 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all mb-0.5" disabled={manualForm.profs.length <= 1}>
+                                                <Trash size={18} />
                                             </button>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="flex items-center gap-2 py-2">
-                                    <input type="checkbox" id="includeReceipt" className="w-4 h-4 text-teal-600 rounded" checked={manualForm.includeInReceipt} onChange={(e) => setManualForm({ ...manualForm, includeInReceipt: e.target.checked })} />
-                                    <label htmlFor="includeReceipt" className="text-sm font-medium text-slate-700 cursor-pointer">Mostrar referencia en recibo</label>
-                                </div>
-                                <div className="flex items-center gap-2 py-2">
-                                    <input type="checkbox" id="isTransfer" className="w-4 h-4 text-teal-600 rounded" checked={manualForm.isTransfer || false} onChange={(e) => setManualForm({ ...manualForm, isTransfer: e.target.checked })} />
-                                    <label htmlFor="isTransfer" className="text-sm font-bold text-teal-700 cursor-pointer">Es Transferencia (No suma a total)</label>
-                                    <div className="group relative">
-                                        <CircleHelp size={14} className="text-slate-400 cursor-help" />
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-                                            Si se marca, el nombre del paciente aparecerá en el listado de referencias del recibo impreso.
-                                        </div>
-                                    </div>
-                                </div>
-                                <button onClick={handleSaveManual} className="w-full py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-emerald-200 mt-4">Confirmar Liquidación</button>
                             </div>
+                            <div className="flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center gap-3 py-1">
+                                    <input type="checkbox" id="includeReceipt" className="w-5 h-5 text-teal-600 rounded-lg dark:bg-slate-800 dark:border-slate-700" checked={manualForm.includeInReceipt} onChange={(e) => setManualForm({ ...manualForm, includeInReceipt: e.target.checked })} />
+                                    <label htmlFor="includeReceipt" className="text-sm font-bold text-slate-600 dark:text-slate-300 cursor-pointer">Mostrar referencia en recibo</label>
+                                </div>
+                                <div className="flex items-center gap-3 py-1">
+                                    <input type="checkbox" id="isTransfer" className="w-5 h-5 text-teal-600 rounded-lg dark:bg-slate-800 dark:border-slate-700" checked={manualForm.isTransfer || false} onChange={(e) => setManualForm({ ...manualForm, isTransfer: e.target.checked })} />
+                                    <label htmlFor="isTransfer" className="text-sm font-bold text-teal-700 dark:text-teal-400 cursor-pointer flex items-center gap-2">
+                                        Es Transferencia (No suma a total)
+                                        <div className="group relative">
+                                            <CircleHelp size={14} className="text-slate-400 dark:text-slate-500 cursor-help" />
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 bg-slate-800 dark:bg-black text-white text-[10px] rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100] border border-slate-700 dark:border-slate-800 leading-relaxed font-medium">
+                                                Si se marca, el nombre del paciente aparecerá en el listado de referencias del recibo impreso pero el monto no se incluirá en los totales de caja.
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <button onClick={handleSaveManual} className="w-full py-4 bg-teal-600 text-white font-black rounded-2xl hover:bg-teal-700 shadow-xl shadow-emerald-200/20 dark:shadow-none transition-all mt-4 text-lg">Confirmar Liquidación</button>
                         </div>
                     </div>
-                )
-            }
+                </ModalPortal>
+            )}
 
             {/* SECURE EDIT PIN MODAL */}
-            {
-                showEditPinModal && (
-                    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm no-print">
-                        <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-xs">
-                            <div className="text-center mb-6">
-                                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-500"><LockIcon size={24} /></div>
-                                <h3 className="text-lg font-bold">Seguridad</h3>
-                                <p className="text-xs text-slate-500">{pendingAction === 'delete' ? "Ingrese PIN para ELIMINAR" : "Ingrese PIN para editar"}</p>
+            {showEditPinModal && (
+                <ModalPortal onClose={() => setShowEditPinModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl w-full max-w-xs border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-slate-500 dark:text-slate-400 shadow-inner">
+                                <LockIcon size={32} />
                             </div>
-                            <input type="password" underline="none" className="w-full text-center text-2xl tracking-widest font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-teal-500 outline-none" maxLength={8} value={editPinInput} onChange={(e) => setEditPinInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleVerifyEditPin()} autoFocus />
-                            <div className="flex gap-3"><button onClick={() => setShowEditPinModal(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancelar</button><button onClick={handleVerifyEditPin} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200">Verificar</button></div>
+                            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Seguridad</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{pendingAction === 'delete' ? "Ingrese PIN para ELIMINAR" : "Ingrese PIN para editar"}</p>
+                        </div>
+                        <input
+                            type="password"
+                            className="w-full text-center text-3xl tracking-[0.5em] font-black py-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl mb-8 focus:border-teal-500 dark:focus:border-teal-400 outline-none text-slate-900 dark:text-white transition-all"
+                            maxLength={8}
+                            value={editPinInput}
+                            onChange={(e) => setEditPinInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleVerifyEditPin()}
+                            autoFocus
+                        />
+                        <div className="flex gap-4">
+                            <button onClick={() => setShowEditPinModal(false)} className="flex-1 py-3 text-slate-500 dark:text-slate-400 font-bold hover:text-slate-800 dark:hover:text-slate-200 transition-colors">Cancelar</button>
+                            <button onClick={handleVerifyEditPin} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl shadow-lg shadow-teal-200 dark:shadow-none hover:bg-teal-700 transition-all">Verificar</button>
                         </div>
                     </div>
-                )
-            }
+                </ModalPortal>
+            )}
 
             {/* EDIT ENTRY MODAL */}
-            {
-                showEditFormModal && editFormData && (
-                    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4 backdrop-blur-sm no-print">
-                        <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-                            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                                <h3 className="text-xl font-bold flex items-center gap-2"><Pencil size={20} className="text-teal-500" /> Editar Liquidación</h3>
-                                <button onClick={() => setShowEditFormModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={20} /></button>
+            {showEditFormModal && editFormData && (
+                <ModalPortal onClose={() => setShowEditFormModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-8 border-b border-slate-100 dark:border-slate-800 pb-4">
+                            <h3 className="text-2xl font-bold flex items-center gap-3 text-slate-900 dark:text-white"><Pencil size={24} className="text-teal-500" /> Editar Liquidación</h3>
+                            <button onClick={() => setShowEditFormModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-colors"><X size={24} /></button>
+                        </div>
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-1">Paciente</label>
+                                <input type="text" className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold focus:border-teal-500 outline-none transition-all" value={editFormData.paciente || ''} onChange={(e) => setEditFormData({ ...editFormData, paciente: e.target.value })} />
                             </div>
-                            <div className="space-y-4">
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Paciente</label><input type="text" className="w-full p-2 border rounded-lg" value={editFormData.paciente || ''} onChange={(e) => setEditFormData({ ...editFormData, paciente: e.target.value })} /></div>
-                                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-xl">
-                                    <div><label className="block text-[10px] font-bold text-slate-500 mb-1">Pesos</label><input type="number" className="w-full p-2 border rounded-lg bg-white" value={editFormData.monto_pesos || 0} onChange={(e) => setEditFormData({ ...editFormData, monto_pesos: parseFloat(e.target.value) })} /></div>
-                                    <div><label className="block text-[10px] font-bold text-slate-500 mb-1">Dólares</label><input type="number" className="w-full p-2 border rounded-lg bg-white" value={editFormData.monto_dolares || 0} onChange={(e) => setEditFormData({ ...editFormData, monto_dolares: parseFloat(e.target.value) })} /></div>
+                            <div className="grid grid-cols-2 gap-6 p-1">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-1">Pesos ($)</label>
+                                    <input type="number" className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold focus:border-teal-500 outline-none transition-all" value={editFormData.monto_pesos || 0} onChange={(e) => setEditFormData({ ...editFormData, monto_pesos: parseFloat(e.target.value) })} />
                                 </div>
-                                <button onClick={handleUpdateEntry} className="w-full py-4 bg-teal-600 text-white font-bold rounded-xl flex justify-center items-center gap-2 shadow-lg shadow-blue-200"><Save size={20} /> Guardar</button>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-1">Dólares (USD)</label>
+                                    <input type="number" className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold focus:border-teal-500 outline-none transition-all" value={editFormData.monto_dolares || 0} onChange={(e) => setEditFormData({ ...editFormData, monto_dolares: parseFloat(e.target.value) })} />
+                                </div>
                             </div>
+                            <button onClick={handleUpdateEntry} className="w-full py-4 bg-teal-600 text-white font-black rounded-2xl flex justify-center items-center gap-3 shadow-lg shadow-teal-200 dark:shadow-none hover:bg-teal-700 transition-all text-lg mt-4"><Save size={24} /> Guardar Cambios</button>
                         </div>
                     </div>
-                )
-            }
+                </ModalPortal>
+            )}
         </div >
     );
 };

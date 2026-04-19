@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import ModalPortal from './common/ModalPortal';
 import {
     User, Settings, LogOut, Moon, Sun, ChevronDown,
-    Shield, Mail, Key, Users, Check
+    Shield, Mail, Key, Users, Check, Zap
 } from 'lucide-react';
 import { updatePassword, updateEmail, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
-const UserMenu = () => {
+const UserMenu = ({ isCollapsed = false, lowPerfMode, setLowPerfMode }) => {
     const { currentUser, logout, viewingUid, sharedAccounts, switchContext, linkEmailPassword, hasPasswordProvider } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
 
@@ -18,6 +19,9 @@ const UserMenu = () => {
     const [showPinModal, setShowPinModal] = useState(false);
     const [showLinkPasswordModal, setShowLinkPasswordModal] = useState(false);
 
+    // ... (rest of the state and handlers remain same)
+    // I'll keep them for consistency in the replacement
+    
     // Password State
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -37,36 +41,21 @@ const UserMenu = () => {
 
     const [loading, setLoading] = useState(false);
 
-
     const handlePasswordChange = async (e) => {
         e.preventDefault();
         if (newPassword !== confirmPassword) return alert("Las contraseñas nuevas no coinciden");
-
         setLoading(true);
         try {
-            // Re-authenticate
             const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
             await reauthenticateWithCredential(currentUser, credential);
-
-            // Update
             await updatePassword(currentUser, newPassword);
             alert("Contraseña actualizada correctamente");
             setShowPasswordModal(false);
-            setNewPassword('');
-            setConfirmPassword('');
-            setCurrentPassword('');
+            setNewPassword(''); setConfirmPassword(''); setCurrentPassword('');
         } catch (error) {
             console.error(error);
-            if (error.code === 'auth/wrong-password') {
-                alert("La contraseña actual es incorrecta.");
-            } else if (error.code === 'auth/requires-recent-login') {
-                alert("Por seguridad, inicia sesión nuevamente.");
-            } else {
-                alert("Error: " + error.message);
-            }
-        } finally {
-            setLoading(false);
-        }
+            alert("Error: " + (error.code === 'auth/wrong-password' ? "Contraseña actual incorrecta" : error.message));
+        } finally { setLoading(false); }
     };
 
     const handleEmailChange = async (e) => {
@@ -79,332 +68,259 @@ const UserMenu = () => {
             setNewEmail('');
         } catch (error) {
             console.error(error);
-            if (error.code === 'auth/requires-recent-login') {
-                alert("Por seguridad, debes cerrar sesión y volver a entrar para cambiar el email.");
-            } else {
-                alert("Error al actualizar email: " + error.message);
-            }
-        } finally {
-            setLoading(false);
-        }
+            alert("Error: " + (error.code === 'auth/requires-recent-login' ? "Debes re-autenticarte para este cambio" : error.message));
+        } finally { setLoading(false); }
     };
 
     const handlePinChange = async (e) => {
         e.preventDefault();
-        if (newPin !== confirmPin) return alert("Los PINs nuevos no coinciden");
-
+        if (newPin !== confirmPin) return alert("Los PINs no coinciden");
         setLoading(true);
         try {
-            // Verify Old PIN if exists
             const settingsRef = doc(db, "user_settings", currentUser.uid);
             const settingsSnap = await getDoc(settingsRef);
-
-            let storedPin = ['0511', 'admin', '1234']; // Default valid pins
-            let actualCurrentPin = null;
-            if (settingsSnap.exists() && settingsSnap.data().adminPin) {
-                actualCurrentPin = settingsSnap.data().adminPin;
-                storedPin.push(actualCurrentPin);
-            }
-
-            // Check if input currentPin is valid
-            if (!storedPin.includes(currentPin)) {
-                alert("El PIN actual es incorrecto.");
-                setLoading(false);
-                return;
-            }
-
-            // Save to user_settings collection with doc ID = user UID
-            await setDoc(doc(db, "user_settings", currentUser.uid), {
-                adminPin: newPin
-            }, { merge: true });
-
-            alert("PIN de seguridad actualizado correctamente");
+            let storedPin = ['0511', 'admin', '1234'];
+            if (settingsSnap.exists() && settingsSnap.data().adminPin) storedPin.push(settingsSnap.data().adminPin);
+            if (!storedPin.includes(currentPin)) { alert("PIN actual incorrecto"); setLoading(false); return; }
+            await setDoc(doc(db, "user_settings", currentUser.uid), { adminPin: newPin }, { merge: true });
+            alert("PIN actualizado");
             setShowPinModal(false);
-            setNewPin('');
-            setConfirmPin('');
-            setCurrentPin('');
-        } catch (error) {
-            console.error("Error saving PIN:", error);
-            alert("Error al guardar el PIN.");
-        } finally {
-            setLoading(false);
-        }
+            setNewPin(''); setConfirmPin(''); setCurrentPin('');
+        } catch (error) { console.error(error); alert("Error al guardar PIN"); } finally { setLoading(false); }
     };
 
     const handleLinkPassword = async (e) => {
         e.preventDefault();
-        if (linkPassword !== linkConfirmPassword) return alert("Las contraseñas no coinciden");
-        if (linkPassword.length < 6) return alert("La contraseña debe tener al menos 6 caracteres");
-
+        if (linkPassword !== linkConfirmPassword) return alert("No coinciden");
         setLoading(true);
         try {
             await linkEmailPassword(linkPassword);
-            alert("¡Contraseña vinculada correctamente! Ahora puedes iniciar sesión con email/contraseña.");
+            alert("Contraseña vinculada");
             setShowLinkPasswordModal(false);
-            setLinkPassword('');
-            setLinkConfirmPassword('');
-        } catch (error) {
-            console.error(error);
-            if (error.code === 'auth/provider-already-linked') {
-                alert("Ya tienes una contraseña vinculada.");
-            } else if (error.code === 'auth/requires-recent-login') {
-                alert("Por seguridad, cierra sesión y vuelve a entrar con Google.");
-            } else {
-                alert("Error: " + error.message);
-            }
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { console.error(error); alert(error.message); } finally { setLoading(false); }
     };
 
+
+    const userInitials = currentUser?.email ? currentUser.email.substring(0, 2).toUpperCase() : '??';
+
     return (
-        <div className="relative z-50">
-            {/* Trigger Button */}
+        <div className="relative">
+            {/* Trigger Button - Circle Avatar */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-100 transition-all group"
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm group ${isOpen ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                title="Cuenta de Usuario"
             >
-                <div className="text-right hidden sm:block">
-                    <p className="text-xs font-bold text-slate-700">{currentUser?.email}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium group-hover:text-blue-500 transition-colors">
-                        {viewingUid === currentUser.uid ? 'Mi Caja' : 'Caja Compartida'}
-                    </p>
-                </div>
-                <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                    <User size={20} />
-                </div>
-                <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                <span className="text-xs font-black tracking-tighter group-hover:scale-110 transition-transform">{userInitials}</span>
             </button>
 
             {/* Dropdown Backdrop */}
             {isOpen && (
                 <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-            )}
-
-            {/* Dropdown Menu */}
+            )}            {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                <div className="absolute left-full bottom-0 ml-4 w-72 bg-white dark:bg-slate-900 rounded-[2rem] shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-200 origin-left">
 
                     {/* Header */}
-                    <div className="p-4 bg-slate-50 border-b border-slate-100">
-                        <p className="text-sm font-bold text-slate-900 truncate">{currentUser?.email}</p>
-                        <p className="text-xs text-slate-400">Cuenta de Usuario</p>
+                    <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                        <p className="text-sm font-black text-slate-900 dark:text-slate-100 truncate tracking-tight">{currentUser?.email}</p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-black tracking-widest mt-1">Cuenta de Usuario</p>
                     </div>
 
-                    <div className="p-2 space-y-1">
+                    <div className="p-3 space-y-1">
 
-                        {/* Context Switcher Section */}
-                        <div className="px-2 py-1.5">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Cajas Disponibles</p>
 
-                            <button
-                                onClick={() => { switchContext(currentUser.uid); setIsOpen(false); }}
-                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === currentUser.uid ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Shield size={16} /> Mi Caja
-                                </span>
-                                {viewingUid === currentUser.uid && <Check size={16} />}
-                            </button>
-
-                            {sharedAccounts.map(acc => (
-                                <button
-                                    key={acc.id}
-                                    onClick={() => { switchContext(acc.ownerUid); setIsOpen(false); }}
-                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewingUid === acc.ownerUid ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                                >
-                                    <span className="flex items-center gap-2">
-                                        <Users size={16} /> {acc.ownerEmail.split('@')[0]}
-                                    </span>
-                                    {viewingUid === acc.ownerUid && <Check size={16} />}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="h-px bg-slate-100 my-1" />
 
                         {/* Settings Section */}
-                        <div className="px-2 py-1.5">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Configuración</p>
+                        <div className="px-2 py-2">
+                            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 opacity-50">Configuración</p>
 
-                            <button
-                                onClick={() => { setShowPasswordModal(true); setIsOpen(false); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-                            >
-                                <Key size={16} /> Cambiar Contraseña
-                            </button>
-
-                            <button
-                                onClick={() => { setShowEmailModal(true); setIsOpen(false); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-                            >
-                                <Mail size={16} /> Cambiar Email
-                            </button>
-
-                            <button
-                                onClick={() => { setShowPinModal(true); setIsOpen(false); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-                            >
-                                <Shield size={16} /> Configurar PIN de Seguridad
-                            </button>
-
-                            {/* Link Password - Solo mostrar si aún no tiene contraseña */}
-                            {!hasPasswordProvider() && (
+                            <div className="space-y-1">
                                 <button
-                                    onClick={() => { setShowLinkPasswordModal(true); setIsOpen(false); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-emerald-600 hover:bg-emerald-50 transition-colors"
+                                    onClick={() => { setShowPasswordModal(true); setIsOpen(false); }}
+                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                                 >
-                                    <Key size={16} /> Vincular Contraseña
+                                    <Key size={18} /> Cambiar Contraseña
                                 </button>
-                            )}
 
-                            {/* Migrar a coat.com.ar */}
-                            {!currentUser?.email?.endsWith('@coat.com.ar') && (
                                 <button
-                                    onClick={() => {
-                                        const base = currentUser.email.split('@')[0];
-                                        setNewEmail(`${base}@coat.com.ar`);
-                                        setShowEmailModal(true);
-                                        setIsOpen(false);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-amber-600 hover:bg-amber-50 transition-colors border border-amber-100 mt-1"
+                                    onClick={() => { setShowEmailModal(true); setIsOpen(false); }}
+                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                                 >
-                                    <Shield size={16} /> Migrar a @coat.com.ar
+                                    <Mail size={18} /> Cambiar Email
                                 </button>
-                            )}
+
+                                <button
+                                    onClick={() => { setShowPinModal(true); setIsOpen(false); }}
+                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                                >
+                                    <Shield size={18} /> Configurar PIN
+                                </button>
+
+                                {!hasPasswordProvider() && (
+                                    <button
+                                        onClick={() => { setShowLinkPasswordModal(true); setIsOpen(false); }}
+                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+                                    >
+                                        <Key size={18} /> Vincular Contraseña
+                                    </button>
+                                )}
+
+                                {!currentUser?.email?.endsWith('@coat.com.ar') && (
+                                    <button
+                                        onClick={() => {
+                                            const base = currentUser.email.split('@')[0];
+                                            setNewEmail(`${base}@coat.com.ar`);
+                                            setShowEmailModal(true);
+                                            setIsOpen(false);
+                                        }}
+                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors border border-amber-100 dark:border-amber-900/50 mt-1"
+                                    >
+                                        <Shield size={18} /> Migrar a @coat.com.ar
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="h-px bg-slate-100 my-1" />
+                        <div className="h-px bg-slate-100 dark:bg-slate-800 my-2" />
 
-                        <button
-                            onClick={logout}
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-                        >
-                            <LogOut size={16} /> Cerrar Sesión
-                        </button>
+                        {/* Advanced/Performance Section */}
+                        <div className="px-2 py-2">
+                            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 opacity-50">Rendimiento</p>
+                            
+                            <button
+                                onClick={() => setLowPerfMode(!lowPerfMode)}
+                                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all ${lowPerfMode ? 'bg-amber-500 text-white shadow-md shadow-amber-200/20 dark:shadow-none' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                            >
+                                <span className="flex items-center gap-3">
+                                    <Zap size={18} fill={lowPerfMode ? "currentColor" : "none"} /> 
+                                    Modo PC Antigua
+                                </span>
+                                <div className={`w-8 h-4 rounded-full relative transition-colors ${lowPerfMode ? 'bg-amber-400' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                    <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all ${lowPerfMode ? 'right-1' : 'left-1'}`} />
+                                </div>
+                            </button>
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-2 px-1 leading-tight font-medium">
+                                Elimina sombras y efectos visuales para maximizar la velocidad en hardware limitado.
+                            </p>
+                        </div>
                     </div>
                 </div>
             )}
 
             {/* Change Password Modal */}
             {showPasswordModal && (
-                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <h3 className="text-lg font-bold text-slate-900 mb-4">Cambiar Contraseña</h3>
+                <ModalPortal onClose={() => setShowPasswordModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 w-full max-w-sm p-10 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-6 tracking-tight uppercase">Cambiar Contraseña</h3>
                         <form onSubmit={handlePasswordChange} className="space-y-4">
-                            <div>
-                                <input
-                                    type="password"
-                                    placeholder="Contraseña Actual"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    value={currentPassword}
-                                    onChange={(e) => setCurrentPassword(e.target.value)}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <input
-                                    type="password"
-                                    placeholder="Nueva conraseña (min 6 caracteres)"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    value={newPassword}
-                                    onChange={(e) => setNewPassword(e.target.value)}
-                                    minLength={6}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <input
-                                    type="password"
-                                    placeholder="Confirmar Nueva Contraseña"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    minLength={6}
-                                    required
-                                />
-                            </div>
-                            <div className="flex gap-3 pt-2">
+                            <input
+                                type="password"
+                                placeholder="Contraseña Actual"
+                                className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold transition-all"
+                                value={currentPassword}
+                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                required
+                            />
+                            <input
+                                type="password"
+                                placeholder="Nueva contraseña"
+                                className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold transition-all"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                minLength={6}
+                                required
+                            />
+                            <input
+                                type="password"
+                                placeholder="Confirmar Nueva"
+                                className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold transition-all"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                minLength={6}
+                                required
+                            />
+                            <div className="flex gap-3 pt-6">
                                 <button
                                     type="button"
                                     onClick={() => setShowPasswordModal(false)}
-                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-xl"
+                                    className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-black hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors uppercase text-xs tracking-widest"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                                    className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 disabled:opacity-50 shadow-md shadow-blue-500/10 uppercase text-xs tracking-widest transition-all hover:scale-[1.02]"
                                 >
                                     {loading ? '...' : 'Guardar'}
                                 </button>
                             </div>
                         </form>
                     </div>
-                </div>
+                </ModalPortal>
             )}
 
             {/* Change Email Modal */}
             {showEmailModal && (
-                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <h3 className="text-lg font-bold text-slate-900 mb-4">Cambiar Email</h3>
-                        <form onSubmit={handleEmailChange}>
+                <ModalPortal onClose={() => setShowEmailModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 w-full max-w-sm p-10 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-6 tracking-tight uppercase">Cambiar Email</h3>
+                        <form onSubmit={handleEmailChange} className="space-y-4">
                             <input
                                 type="email"
                                 placeholder="Nuevo correo electrónico"
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold transition-all"
                                 value={newEmail}
                                 onChange={(e) => setNewEmail(e.target.value)}
                                 required
                             />
-                            <div className="flex gap-3">
+                            <div className="flex gap-3 pt-6">
                                 <button
                                     type="button"
                                     onClick={() => setShowEmailModal(false)}
-                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-xl"
+                                    className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-black hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors uppercase text-xs tracking-widest"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                                    className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 disabled:opacity-50 shadow-md shadow-blue-500/10 uppercase text-xs tracking-widest transition-all hover:scale-[1.02]"
                                 >
                                     {loading ? '...' : 'Guardar'}
                                 </button>
                             </div>
                         </form>
                     </div>
-                </div>
+                </ModalPortal>
             )}
 
             {/* Change PIN Modal */}
             {showPinModal && (
-                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <h3 className="text-lg font-bold text-slate-900 mb-4">Configurar PIN de Admin</h3>
-                        <p className="text-xs text-slate-500 mb-4">Protege acciones sensibles (borrar, editar en modo seguro).</p>
-                        <form onSubmit={handlePinChange} className="space-y-4">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">PIN Actual</label>
+                <ModalPortal onClose={() => setShowPinModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 w-full max-w-sm p-10 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight uppercase">PIN de Seguridad</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-8 font-medium leading-relaxed">Protege acciones sensibles como borrar o editar registros históricos.</p>
+                        <form onSubmit={handlePinChange} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 opacity-50">PIN Actual</label>
                                 <input
                                     type="text"
-                                    placeholder="PIN Actual (ej: 1234)"
-                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center tracking-widest"
+                                    placeholder="####"
+                                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center tracking-[1em] font-black text-xl shadow-inner"
                                     value={currentPin}
                                     onChange={(e) => setCurrentPin(e.target.value)}
                                     required
                                 />
                             </div>
 
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Nuevo PIN</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 opacity-50">Nuevo PIN</label>
                                 <input
                                     type="text"
-                                    placeholder="Nuevo PIN"
-                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold tracking-widest text-xl"
+                                    placeholder="####"
+                                    className="w-full px-5 py-5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-black tracking-[1em] text-3xl shadow-sm"
                                     value={newPin}
                                     onChange={(e) => setNewPin(e.target.value)}
                                     maxLength={8}
@@ -412,12 +328,12 @@ const UserMenu = () => {
                                 />
                             </div>
 
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Confirmar Nuevo PIN</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 opacity-50">Confirmar PIN</label>
                                 <input
                                     type="text"
-                                    placeholder="Repetir Nuevo PIN"
-                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold tracking-widest text-xl"
+                                    placeholder="####"
+                                    className="w-full px-5 py-5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-black tracking-[1em] text-3xl shadow-sm"
                                     value={confirmPin}
                                     onChange={(e) => setConfirmPin(e.target.value)}
                                     maxLength={8}
@@ -425,75 +341,71 @@ const UserMenu = () => {
                                 />
                             </div>
 
-                            <div className="flex gap-3 pt-2">
+                            <div className="flex gap-3 pt-6">
                                 <button
                                     type="button"
                                     onClick={() => setShowPinModal(false)}
-                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-xl"
+                                    className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-black hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors uppercase text-xs tracking-widest"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                                    className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 disabled:opacity-50 shadow-md shadow-blue-500/10 uppercase text-xs tracking-widest transition-all hover:scale-[1.02]"
                                 >
                                     {loading ? '...' : 'Guardar'}
                                 </button>
                             </div>
                         </form>
                     </div>
-                </div>
+                </ModalPortal>
             )}
 
             {/* Link Password Modal */}
             {showLinkPasswordModal && (
-                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <h3 className="text-lg font-bold text-slate-900 mb-2">Vincular Contraseña</h3>
-                        <p className="text-xs text-slate-500 mb-4">Crea una contraseña para acceder con email y contraseña además de Google.</p>
+                <ModalPortal onClose={() => setShowLinkPasswordModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 w-full max-w-sm p-10 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight uppercase">Vincular Contraseña</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-8 font-medium leading-relaxed">Crea una contraseña para acceder con email además de Google.</p>
                         <form onSubmit={handleLinkPassword} className="space-y-4">
-                            <div>
-                                <input
-                                    type="password"
-                                    placeholder="Nueva Contraseña (min 6 caracteres)"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                    value={linkPassword}
-                                    onChange={(e) => setLinkPassword(e.target.value)}
-                                    minLength={6}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <input
-                                    type="password"
-                                    placeholder="Confirmar Contraseña"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                    value={linkConfirmPassword}
-                                    onChange={(e) => setLinkConfirmPassword(e.target.value)}
-                                    minLength={6}
-                                    required
-                                />
-                            </div>
-                            <div className="flex gap-3 pt-2">
+                            <input
+                                type="password"
+                                placeholder="Nueva Contraseña"
+                                className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold transition-all"
+                                value={linkPassword}
+                                onChange={(e) => setLinkPassword(e.target.value)}
+                                minLength={6}
+                                required
+                            />
+                            <input
+                                type="password"
+                                placeholder="Confirmar Contraseña"
+                                className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold transition-all"
+                                value={linkConfirmPassword}
+                                onChange={(e) => setLinkConfirmPassword(e.target.value)}
+                                minLength={6}
+                                required
+                            />
+                            <div className="flex gap-3 pt-6">
                                 <button
                                     type="button"
                                     onClick={() => setShowLinkPasswordModal(false)}
-                                    className="flex-1 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-xl"
+                                    className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-black hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors uppercase text-xs tracking-widest"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+                                    className="flex-1 py-4 bg-emerald-600 text-white font-black rounded-2xl hover:bg-emerald-700 disabled:opacity-50 shadow-md shadow-emerald-500/10 uppercase text-xs tracking-widest transition-all hover:scale-[1.02]"
                                 >
                                     {loading ? '...' : 'Vincular'}
                                 </button>
                             </div>
                         </form>
                     </div>
-                </div>
+                </ModalPortal>
             )}
         </div>
     );

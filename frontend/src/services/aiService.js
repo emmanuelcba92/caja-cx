@@ -25,7 +25,7 @@ export async function parseEmailToOrder(emailText, profesionalesList = []) {
 Te voy a dar el texto de un email y necesito que extraigas los datos y los devuelvas ÚNICAMENTE como un objeto JSON válido, sin markdown, sin explicaciones, solo el JSON.
 
 REGLAS:
-- "profesional": Intentá hacer match con alguno de estos profesionales del sistema: [${profNames}]. Si no hay match exacto, usá el nombre tal cual viene en el email. Incluí el prefijo (Dr., Dra., etc.).
+- "profesional": Intentá hacer match con alguno de estos profesionales del sistema: [${profNames}]. Si no hay match exacto, usá el nombre tal cual viene en el email pero siempre incluí el título (Dr., Dra., etc.) y asegurate de que sea nombre y apellido. NO pongas iniciales o letras sueltas.
 - "afiliado": Nombre del paciente en MAYÚSCULAS.
 - "obraSocial": Nombre de la obra social. Corregí errores de tipeo obvios (ej: "swiss mwdical" → "Swiss Medical", "ospedyc" → "OSPEDYC").
 - "numeroAfiliado": Número de afiliado si está disponible, sino cadena vacía.
@@ -41,7 +41,7 @@ REGLAS:
 - "incluyeMaterial": true si hay materiales a solicitar (que no sean "." o vacío o "no"), false si no.
 - "descripcionMaterial": Descripción del material si aplica, sino cadena vacía.
 - "diagnostico": Diagnóstico o justificación de la cirugía. Si dice "." o está vacío, dejá cadena vacía.
-- "anotacionCalendario": "Auto-completado por IA" + cualquier dato extra relevante que no entre en otros campos.
+- "anotacionCalendario": "Auto-completado por IA". SOLO agregá datos extra MUY breves si es absolutamente necesario (no pegues el email original acá).
 - "habitacion": Cadena vacía (no suele venir en el email).
 
 EJEMPLO DE RESPUESTA:

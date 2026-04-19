@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Search, Edit, Edit2, Trash2, Check, X, Calendar, DollarSign, User, Folder, ChevronRight, Home, ArrowLeft, FileText, Printer, Settings, Lock as LockIcon, Database, ChevronLeft } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { isLocalEnv } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
+import ModalPortal from './common/ModalPortal';
 // Dynamic import used for exceljs
 // Helper function to wait for Firestore writes to propagate
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -12,6 +14,7 @@ const MONTH_NAMES = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ];
+
 
 const HistorialCaja = () => {
     const { currentUser: user, viewingUid, catalogOwnerUid, permission, permissions } = useAuth();
@@ -98,7 +101,8 @@ const HistorialCaja = () => {
             anestesista: newEntry.anestesista || '',
             paciente: newEntry.paciente,
             dni: newEntry.dni || '',
-            obra_social: newEntry.obra_social || ''
+            obra_social: newEntry.obra_social || '',
+            createdBy: user?.email || 'unknown'
         };
 
         try {
@@ -114,10 +118,9 @@ const HistorialCaja = () => {
     };
 
     const fetchHistory = async () => {
-        const ownerToUse = catalogOwnerUid || viewingUid;
-        if (!ownerToUse) return;
         try {
-            const q = query(collection(db, "caja"), where("userId", "==", ownerToUse));
+            // "Todos ven todo": ya no filtramos por userId
+            const q = query(collection(db, "caja"));
             const querySnapshot = await getDocs(q);
             const data = querySnapshot.docs.map(doc => ({
                 id: doc.id,
@@ -143,10 +146,9 @@ const HistorialCaja = () => {
     };
 
     const fetchProfs = async () => {
-        const ownerToUse = catalogOwnerUid || viewingUid;
-        if (!ownerToUse) return;
         try {
-            const q = query(collection(db, "profesionales"), where("userId", "==", ownerToUse));
+            // "Todos ven todo": ya no filtramos por userId para los profesionales
+            const q = query(collection(db, "profesionales"));
             const querySnapshot = await getDocs(q);
             const profs = querySnapshot.docs.map(doc => ({
                 id: doc.id,
@@ -351,12 +353,20 @@ const HistorialCaja = () => {
 
     // --- Table Actions ---
     const handleEditClick = (item) => {
-        // console.log("Editing:", item); 
         if (!item.id) {
             alert("Error: Este registro no tiene ID válido. Recarga la página.");
             return;
         }
         if (isReadOnly) return;
+
+        // --- ENFORCE OWN RECORDS POLICY ---
+        const canManageAny = permissions?.can_delete_data || isSuperAdmin;
+        const isOwner = item.createdBy === user?.email;
+        if (!canManageAny && !isOwner) {
+            alert("Solo puedes editar registros cargados por ti mismo.");
+            return;
+        }
+
         setEditId(item.id);
         setEditFormData({ ...item });
     };
@@ -390,10 +400,23 @@ const HistorialCaja = () => {
         }
     };
 
-    const handleDelete = async (id) => {
-        if (!window.confirm("¿Seguro que deseas eliminar esta entrada?")) return;
+    const handleDelete = async (item) => {
+        if (isLocalEnv) {
+            alert("🔒 SEGURIDAD: No se permite borrar el historial de la nube desde local.");
+            return;
+        }
+
+        // --- ENFORCE OWN RECORDS POLICY ---
+        const canManageAny = permissions?.can_delete_data || isSuperAdmin;
+        const isOwner = item.createdBy === user?.email;
+        if (!canManageAny && !isOwner) {
+            alert("Solo puedes eliminar registros cargados por ti mismo.");
+            return;
+        }
+
+        if (!window.confirm("¿Seguro que quieres eliminar este registro permanentemente?")) return;
         try {
-            await deleteDoc(doc(db, "caja", id));
+            await deleteDoc(doc(db, "caja", item.id));
             fetchHistory();
             alert("Entrada eliminada");
         } catch (error) {
@@ -770,13 +793,19 @@ const HistorialCaja = () => {
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
             {/* PIN MODAL */}
             {showPinModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm no-print">
-                    <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm">
-                        <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">Ingrese PIN de Admin</h3>
+                <ModalPortal onClose={() => { setShowPinModal(false); setPinInput(''); }}>
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-lg w-full max-w-md border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+                        <div className="flex flex-col items-center text-center mb-6">
+                            <div className="w-16 h-16 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-2xl flex items-center justify-center mb-4">
+                                <LockIcon size={32} />
+                            </div>
+                            <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Modo Administrador</h3>
+                            <p className="text-slate-500 dark:text-slate-400 mt-2">Ingrese su PIN de seguridad para editar registros</p>
+                        </div>
                         <input
                             type="password"
-                            className="w-full text-center text-2xl tracking-widest font-bold py-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-teal-500 focus:outline-none"
-                            placeholder="****"
+                            className="w-full p-4 text-center text-2xl tracking-[1em] border-2 border-slate-200 dark:border-slate-700 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-teal-500 outline-none transition-all mb-6"
+                            placeholder="••••"
                             maxLength={8}
                             value={pinInput}
                             onChange={(e) => setPinInput(e.target.value)}
@@ -784,11 +813,11 @@ const HistorialCaja = () => {
                             autoFocus
                         />
                         <div className="flex gap-3">
-                            <button onClick={() => setShowPinModal(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
-                            <button onClick={handleUnlock} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-blue-200">Desbloquear</button>
+                            <button onClick={() => { setShowPinModal(false); setPinInput(''); }} className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors">Cancelar</button>
+                            <button onClick={handleUnlock} className="flex-1 py-4 bg-teal-600 text-white font-bold rounded-2xl hover:bg-teal-700 shadow-md shadow-teal-200 dark:shadow-none transition-all">Verificar PIN</button>
                         </div>
                     </div>
-                </div>
+                </ModalPortal>
             )}
 
 
@@ -880,33 +909,33 @@ const HistorialCaja = () => {
             {/* SCREEN CONTENT WRAPPER */}
             <div id="screen-content">
                 {/* HEADER */}
-                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 no-print">
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 no-print">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center">
+                        <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl flex items-center justify-center">
                             <Calendar size={20} />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold text-slate-900">Registro de Cajas</h1>
-                            <div className="flex items-center gap-2 text-sm text-slate-500 font-medium mt-1">
-                                <button onClick={navigateHome} className="hover:text-teal-600 flex items-center gap-1">
+                            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Registro de Cajas</h1>
+                            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">
+                                <button onClick={navigateHome} className="hover:text-teal-600 dark:hover:text-teal-400 flex items-center gap-1 transition-colors">
                                     <Home size={14} /> Inicio
                                 </button>
                                 {selectedYear && (
                                     <>
                                         <ChevronRight size={14} />
-                                        <span onClick={() => { setView('months'); setSelectedDate(null); }} className="hover:text-teal-600 cursor-pointer">{selectedYear}</span>
+                                        <span onClick={() => { setView('months'); setSelectedDate(null); }} className="hover:text-teal-600 dark:hover:text-teal-400 cursor-pointer transition-colors">{selectedYear}</span>
                                     </>
                                 )}
                                 {selectedMonth !== null && (
                                     <>
                                         <ChevronRight size={14} />
-                                        <span onClick={() => { setView('days'); setSelectedDate(null); }} className="hover:text-teal-600 cursor-pointer">{MONTH_NAMES[selectedMonth]}</span>
+                                        <span onClick={() => { setView('days'); setSelectedDate(null); }} className="hover:text-teal-600 dark:hover:text-teal-400 cursor-pointer transition-colors">{MONTH_NAMES[selectedMonth]}</span>
                                     </>
                                 )}
                                 {selectedDate && (
                                     <>
                                         <ChevronRight size={14} />
-                                        <span className="text-slate-800 font-bold">{selectedDate}</span>
+                                        <span className="text-slate-800 dark:text-slate-200 font-bold">{selectedDate}</span>
                                     </>
                                 )}
                             </div>
@@ -915,56 +944,56 @@ const HistorialCaja = () => {
 
                     {view === 'table' ? (
                         <div className="flex items-center gap-4">
-                            <div className="flex gap-2 mr-4 border-r border-slate-200 pr-4">
-                                <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-bold shadow-lg shadow-slate-200">
+                            <div className="flex gap-2 mr-4 border-r border-slate-200 dark:border-slate-800 pr-4">
+                                <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors text-sm font-bold shadow-lg shadow-slate-200 dark:shadow-none">
                                     <Printer size={16} /> Imprimir
                                 </button>
-                                <button onClick={handleExportExcel} className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-sm font-bold border border-green-200">
+                                <button onClick={handleExportExcel} className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors text-sm font-bold border border-green-200 dark:border-green-800">
                                     <DollarSign size={16} /> Excel COAT
                                 </button>
                             </div>
                             {isAdmin ? (
                                 <div className="flex items-center gap-3">
-                                    <button onClick={handleBackup} className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-indigo-200 text-sm">
+                                    <button onClick={handleBackup} className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-teal-200 dark:shadow-none text-sm">
                                         <Database size={16} /> Backup
                                     </button>
-                                    <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-emerald-200">
+                                    <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-teal-200 dark:shadow-none">
                                         <User size={16} /> Agregar Paciente
                                     </button>
-                                    <button onClick={handleDeleteDay} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-bold shadow-lg shadow-red-200">
+                                    <button onClick={handleDeleteDay} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-bold shadow-lg shadow-red-200 dark:shadow-none">
                                         <Trash2 size={16} /> Eliminar Día
                                     </button>
-                                    <button onClick={() => isAdmin ? setIsAdmin(false) : setShowPinModal(true)} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-xl transition-all ${isAdmin ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                                    <button onClick={() => isAdmin ? setIsAdmin(false) : setShowPinModal(true)} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-xl transition-all ${isAdmin ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'}`}>
                                         {isAdmin ? <><LockIcon size={16} /> Bloquear Edición</> : <><LockIcon size={16} /> Admin</>}
                                     </button>
                                 </div>
                             ) : (
                                 !isReadOnly && (
-                                    <button onClick={() => setShowPinModal(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 font-bold text-sm hover:bg-slate-200 transition-colors">
+                                    <button onClick={() => setShowPinModal(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
                                         <LockIcon size={16} /> Modo Admin
                                     </button>
                                 )
                             )}
-                            <button onClick={navigateUp} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700 transition-colors">
+                            <button onClick={navigateUp} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
                                 <ArrowLeft size={20} />
                             </button>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200 no-print">
-                            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200">
+                        <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 no-print">
+                            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Desde</label>
                                 <input
                                     type="date"
-                                    className="bg-transparent border-none text-xs font-bold text-slate-700 outline-none"
+                                    className="bg-transparent border-none text-xs font-bold text-slate-700 dark:text-slate-200 outline-none"
                                     value={rangeStart}
                                     onChange={(e) => setRangeStart(e.target.value)}
                                 />
                             </div>
-                            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200">
+                            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Hasta</label>
                                 <input
                                     type="date"
-                                    className="bg-transparent border-none text-xs font-bold text-slate-700 outline-none"
+                                    className="bg-transparent border-none text-xs font-bold text-slate-700 dark:text-slate-200 outline-none"
                                     value={rangeEnd}
                                     onChange={(e) => setRangeEnd(e.target.value)}
                                 />
@@ -972,7 +1001,7 @@ const HistorialCaja = () => {
                             <button
                                 onClick={handleExportRange}
                                 disabled={isExportingRange}
-                                className={`flex items-center gap-2 px-4 py-2 ${isExportingRange ? 'bg-slate-200 text-slate-400' : 'bg-teal-600 text-white hover:bg-teal-700'} rounded-xl font-bold shadow-lg transition-all text-xs`}
+                                className={`flex items-center gap-2 px-4 py-2 ${isExportingRange ? 'bg-slate-200 dark:bg-slate-700 text-slate-400' : 'bg-teal-600 text-white hover:bg-teal-700'} rounded-xl font-bold shadow-lg dark:shadow-none transition-all text-xs`}
                             >
                                 <FileText size={16} /> {isExportingRange ? 'Exportando...' : 'Descargar Rango (Excel)'}
                             </button>
@@ -982,184 +1011,153 @@ const HistorialCaja = () => {
 
 
                 {/* ADD PATIENT MODAL */}
-                {
-                    showAddModal && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm no-print overflow-y-auto">
-                            <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                                <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                                    <h3 className="text-xl font-bold text-slate-900">Agregar Nuevo Paciente</h3>
-                                    <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
-                                        <X size={20} />
-                                    </button>
-                                </div>
+                {showAddModal && (
+                    <ModalPortal onClose={() => setShowAddModal(false)}>
+                        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200 no-print">
+                            <div className="flex justify-between items-center mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
+                                <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Agregar Nuevo Paciente</h3>
+                                <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                                    <X size={24} />
+                                </button>
+                            </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Paciente</label>
-                                        <input className="w-full p-2 border rounded-lg" value={newEntry.paciente || ''} onChange={(e) => setNewEntry({ ...newEntry, paciente: e.target.value })} />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">DNI</label>
-                                        <input className="w-full p-2 border rounded-lg" value={newEntry.dni || ''} onChange={(e) => {
-                                            const val = e.target.value.replace(/\D/g, '');
-                                            setNewEntry({ ...newEntry, dni: val });
-                                        }} />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Obra Social</label>
-                                        <input className="w-full p-2 border rounded-lg" value={newEntry.obra_social || ''} onChange={(e) => setNewEntry({ ...newEntry, obra_social: e.target.value })} />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Fecha</label>
-                                        <input type="date" disabled className="w-full p-2 border rounded-lg bg-slate-100 text-slate-500" value={selectedDate} />
-                                    </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Paciente</label>
+                                    <input className="w-full p-3 border dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none transition-all shadow-sm" placeholder="Nombre completo" value={newEntry.paciente || ''} onChange={(e) => setNewEntry({ ...newEntry, paciente: e.target.value })} />
                                 </div>
-
-                                <div className="space-y-4 mb-6">
-                                    <h4 className="font-bold text-sm text-slate-900 border-b pb-1">Profesionales</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Prof. 1</label>
-                                            <select className="w-full p-2 border rounded-lg" value={newEntry.prof_1 || ''} onChange={(e) => setNewEntry({ ...newEntry, prof_1: e.target.value })}>
-                                                <option value="">Seleccionar</option>
-                                                {profesionales.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Prof. 2</label>
-                                            <select className="w-full p-2 border rounded-lg" value={newEntry.prof_2 || ''} onChange={(e) => setNewEntry({ ...newEntry, prof_2: e.target.value })}>
-                                                <option value="">Seleccionar</option>
-                                                {profesionales.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Prof. 3</label>
-                                            <select className="w-full p-2 border rounded-lg" value={newEntry.prof_3 || ''} onChange={(e) => setNewEntry({ ...newEntry, prof_3: e.target.value })}>
-                                                <option value="">Seleccionar</option>
-                                                {profesionales.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Anestesista</label>
-                                            <select className="w-full p-2 border rounded-lg" value={newEntry.anestesista || ''} onChange={(e) => setNewEntry({ ...newEntry, anestesista: e.target.value })}>
-                                                <option value="">Seleccionar</option>
-                                                {profesionales.filter(p => p.categoria === 'Anestesista').map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">DNI</label>
+                                    <input className="w-full p-3 border dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none transition-all shadow-sm" placeholder="Sin puntos" value={newEntry.dni || ''} onChange={(e) => {
+                                        const val = e.target.value.replace(/\D/g, '');
+                                        setNewEntry({ ...newEntry, dni: val });
+                                    }} />
                                 </div>
-
-                                <div className="space-y-4 mb-6">
-                                    <h4 className="font-bold text-sm text-slate-900 border-b pb-1">Montos y Liquidaciones</h4>
-                                    <div className="grid grid-cols-2 gap-4 text-xs">
-                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
-                                            <p className="font-bold text-slate-700">Pagos Totales</p>
-                                            <div>
-                                                <label className="block text-slate-400">Pesos</label>
-                                                <input type="number" className="w-full p-1 border rounded" value={newEntry.pesos || ''} onChange={(e) => setNewEntry({ ...newEntry, pesos: e.target.value })} />
-                                            </div>
-                                            <div>
-                                                <label className="block text-slate-400">Dólares</label>
-                                                <input type="number" className="w-full p-1 border rounded" value={newEntry.dolares || ''} onChange={(e) => setNewEntry({ ...newEntry, dolares: e.target.value })} />
-                                            </div>
-                                        </div>
-                                        <div className="p-3 bg-teal-50/50 rounded-lg border border-teal-100 space-y-2">
-                                            <p className="font-bold text-teal-800">Liq. Prof 1</p>
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex gap-1">
-                                                    <input type="number" className="w-full p-1 border rounded" value={newEntry.liq_prof_1 || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_1: e.target.value })} />
-                                                    <select className="w-20 p-1 border rounded text-xs" value={newEntry.liq_prof_1_currency || 'ARS'} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_1_currency: e.target.value })}>
-                                                        <option value="ARS">ARS</option>
-                                                        <option value="USD">USD</option>
-                                                    </select>
-                                                </div>
-                                                <div className="flex gap-1">
-                                                    <input type="number" placeholder="Sec." className="w-full p-1 border rounded text-xs" value={newEntry.liq_prof_1_secondary || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_1_secondary: e.target.value })} />
-                                                    <select className="w-20 p-1 border rounded text-xs" value={newEntry.liq_prof_1_currency_secondary || 'USD'} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_1_currency_secondary: e.target.value })}>
-                                                        <option value="ARS">ARS</option>
-                                                        <option value="USD">USD</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="p-3 bg-teal-50/50 rounded-lg border border-teal-100 space-y-2">
-                                            <p className="font-bold text-teal-800">Liq. Prof 2</p>
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex gap-1">
-                                                    <input type="number" className="w-full p-1 border rounded" value={newEntry.liq_prof_2 || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_2: e.target.value })} />
-                                                    <select className="w-20 p-1 border rounded text-xs" value={newEntry.liq_prof_2_currency || 'ARS'} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_2_currency: e.target.value })}>
-                                                        <option value="ARS">ARS</option>
-                                                        <option value="USD">USD</option>
-                                                    </select>
-                                                </div>
-                                                <div className="flex gap-1">
-                                                    <input type="number" placeholder="Sec." className="w-full p-1 border rounded text-xs" value={newEntry.liq_prof_2_secondary || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_2_secondary: e.target.value })} />
-                                                    <select className="w-20 p-1 border rounded text-xs" value={newEntry.liq_prof_2_currency_secondary || 'USD'} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_2_currency_secondary: e.target.value })}>
-                                                        <option value="ARS">ARS</option>
-                                                        <option value="USD">USD</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="p-3 bg-teal-50/50 rounded-lg border border-teal-100 space-y-2">
-                                            <p className="font-bold text-teal-800">Liq. Prof 3</p>
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex gap-1">
-                                                    <input type="number" className="w-full p-1 border rounded" value={newEntry.liq_prof_3 || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_3: e.target.value })} />
-                                                    <select className="w-20 p-1 border rounded text-xs" value={newEntry.liq_prof_3_currency || 'ARS'} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_3_currency: e.target.value })}>
-                                                        <option value="ARS">ARS</option>
-                                                        <option value="USD">USD</option>
-                                                    </select>
-                                                </div>
-                                                <div className="flex gap-1">
-                                                    <input type="number" placeholder="Sec." className="w-full p-1 border rounded text-xs" value={newEntry.liq_prof_3_secondary || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_3_secondary: e.target.value })} />
-                                                    <select className="w-20 p-1 border rounded text-xs" value={newEntry.liq_prof_3_currency_secondary || 'USD'} onChange={(e) => setNewEntry({ ...newEntry, liq_prof_3_currency_secondary: e.target.value })}>
-                                                        <option value="ARS">ARS</option>
-                                                        <option value="USD">USD</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="p-3 bg-purple-50/50 rounded-lg border border-purple-100 space-y-2">
-                                            <p className="font-bold text-purple-800">Liq. Anestesista</p>
-                                            <div className="flex gap-1">
-                                                <input type="number" className="w-full p-1 border rounded" value={newEntry.liq_anestesista || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_anestesista: e.target.value })} />
-                                                <select className="w-20 p-1 border rounded text-xs" value={newEntry.liq_anestesista_currency || 'ARS'} onChange={(e) => setNewEntry({ ...newEntry, liq_anestesista_currency: e.target.value })}>
-                                                    <option value="ARS">ARS</option>
-                                                    <option value="USD">USD</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div className="p-3 bg-orange-50/50 rounded-lg border border-orange-100 space-y-2 col-span-2">
-                                            <p className="font-bold text-orange-800">Retención COAT (Manual)</p>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label className="block text-slate-400">Pesos</label>
-                                                    <input type="number" className="w-full p-1 border rounded" value={newEntry.coat_pesos || ''} onChange={(e) => setNewEntry({ ...newEntry, coat_pesos: e.target.value })} />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-slate-400">Dólares</label>
-                                                    <input type="number" className="w-full p-1 border rounded" value={newEntry.coat_dolares || ''} onChange={(e) => setNewEntry({ ...newEntry, coat_dolares: e.target.value })} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Obra Social</label>
+                                    <input className="w-full p-3 border dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none transition-all shadow-sm" placeholder="Ej: OSDE" value={newEntry.obra_social || ''} onChange={(e) => setNewEntry({ ...newEntry, obra_social: e.target.value })} />
                                 </div>
-
-                                <div className="flex gap-3">
-                                    <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
-                                    <button onClick={handleCreateEntry} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-lg shadow-emerald-200">Guardar Paciente</button>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Fecha</label>
+                                    <input type="date" disabled className="w-full p-3 border dark:border-slate-700 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-500 cursor-not-allowed shadow-inner" value={selectedDate} />
                                 </div>
                             </div>
+
+                            <div className="space-y-6 mb-8">
+                                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 border-b dark:border-slate-800 pb-2 flex items-center gap-2">
+                                    <User size={16} className="text-teal-500" /> Profesionales
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {[1, 2, 3].map(i => (
+                                        <div key={i} className="space-y-2">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Prof. {i}</label>
+                                            <select className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none shadow-sm text-xs" value={newEntry[`prof_${i}`] || ''} onChange={(e) => setNewEntry({ ...newEntry, [`prof_${i}`]: e.target.value })}>
+                                                <option value="">Seleccionar</option>
+                                                {profesionales.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                                            </select>
+                                        </div>
+                                    ))}
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Anestesista</label>
+                                        <select className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none shadow-sm text-xs" value={newEntry.anestesista || ''} onChange={(e) => setNewEntry({ ...newEntry, anestesista: e.target.value })}>
+                                            <option value="">Seleccionar</option>
+                                            {profesionales.filter(p => p.categoria === 'Anestesista').map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-6 mb-8">
+                                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 border-b dark:border-slate-800 pb-2 flex items-center gap-2">
+                                    <DollarSign size={16} className="text-teal-500" /> Montos y Liquidaciones
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-4">
+                                        <p className="font-bold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Pagos Totales
+                                        </p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Pesos</label>
+                                                <input type="number" className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.pesos || ''} onChange={(e) => setNewEntry({ ...newEntry, pesos: e.target.value })} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Dólares</label>
+                                                <input type="number" className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.dolares || ''} onChange={(e) => setNewEntry({ ...newEntry, dolares: e.target.value })} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {[1, 2, 3].map(i => (
+                                        <div key={i} className="p-4 bg-teal-50/50 dark:bg-teal-900/10 rounded-2xl border border-teal-100 dark:border-teal-900/30 space-y-4">
+                                            <p className="font-bold text-xs text-teal-800 dark:text-teal-400 flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-teal-500" /> Liq. Prof {i}
+                                            </p>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                <div className="flex gap-2">
+                                                    <input type="number" className="flex-1 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry[`liq_prof_${i}`] || ''} onChange={(e) => setNewEntry({ ...newEntry, [`liq_prof_${i}`]: e.target.value })} />
+                                                    <select className="w-20 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold" value={newEntry[`liq_prof_${i}_currency`] || 'ARS'} onChange={(e) => setNewEntry({ ...newEntry, [`liq_prof_${i}_currency`]: e.target.value })}>
+                                                        <option value="ARS">ARS</option>
+                                                        <option value="USD">USD</option>
+                                                    </select>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <input type="number" placeholder="Monto Sec." className="flex-1 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px]" value={newEntry[`liq_prof_${i}_secondary`] || ''} onChange={(e) => setNewEntry({ ...newEntry, [`liq_prof_${i}_secondary`]: e.target.value })} />
+                                                    <select className="w-20 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold" value={newEntry[`liq_prof_${i}_currency_secondary`] || 'USD'} onChange={(e) => setNewEntry({ ...newEntry, [`liq_prof_${i}_currency_secondary`]: e.target.value })}>
+                                                        <option value="ARS">ARS</option>
+                                                        <option value="USD">USD</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div className="p-4 bg-purple-50/50 dark:bg-purple-900/10 rounded-2xl border border-purple-100 dark:border-purple-900/30 space-y-4">
+                                        <p className="font-bold text-xs text-purple-800 dark:text-purple-400 flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Liq. Anestesista
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <input type="number" className="flex-1 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.liq_anestesista || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_anestesista: e.target.value })} />
+                                            <select className="w-20 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold" value={newEntry.liq_anestesista_currency || 'ARS'} onChange={(e) => setNewEntry({ ...newEntry, liq_anestesista_currency: e.target.value })}>
+                                                <option value="ARS">ARS</option>
+                                                <option value="USD">USD</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-orange-50/50 dark:bg-orange-900/10 rounded-2xl border border-orange-100 dark:border-orange-900/30 space-y-4">
+                                        <p className="font-bold text-xs text-orange-800 dark:text-orange-400 flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-orange-500" /> Retención COAT
+                                        </p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Pesos</label>
+                                                <input type="number" className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.coat_pesos || ''} onChange={(e) => setNewEntry({ ...newEntry, coat_pesos: e.target.value })} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Dólares</label>
+                                                <input type="number" className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.coat_dolares || ''} onChange={(e) => setNewEntry({ ...newEntry, coat_dolares: e.target.value })} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-4 sticky bottom-0 bg-white dark:bg-slate-900 pt-4 border-t dark:border-slate-800 mt-auto">
+                                <button onClick={() => setShowAddModal(false)} className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-all">Cancelar</button>
+                                <button onClick={handleCreateEntry} className="flex-1 py-4 bg-teal-600 text-white font-bold rounded-2xl hover:bg-teal-700 shadow-xl shadow-teal-200 dark:shadow-none transition-all flex items-center justify-center gap-2">
+                                    <Save size={20} /> Guardar Paciente
+                                </button>
+                            </div>
                         </div>
-                    )
-                }
+                    </ModalPortal>
+                )}
 
                 {/* Daily Comment Section (SCREEN VERSION - Interactive) */}
                 {
                     selectedDate && (
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 no-print animate-in fade-in slide-in-from-bottom-2">
-                            <h3 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 no-print animate-in fade-in slide-in-from-bottom-2">
+                            <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
                                 <FileText size={18} className="text-teal-500" /> Comentario del Día
                             </h3>
                             {isEditingComment ? (
@@ -1167,7 +1165,7 @@ const HistorialCaja = () => {
                                     <textarea
                                         value={dailyComment}
                                         onChange={(e) => setDailyComment(e.target.value)}
-                                        className="w-full p-3 border border-slate-300 rounded-lg focus:border-teal-500 focus:ring-2 focus:ring-teal-100 focus:outline-none min-h-[80px]"
+                                        className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900/20 focus:outline-none min-h-[80px] transition-all"
                                         placeholder="Escribe un comentario global para este día..."
                                         autoFocus
                                     />
@@ -1175,16 +1173,16 @@ const HistorialCaja = () => {
                                         <button onClick={saveDailyComment} className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm" title="Guardar">
                                             <Check size={20} />
                                         </button>
-                                        <button onClick={() => { setIsEditingComment(false); fetchDailyComment(selectedDate); }} className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors" title="Cancelar">
+                                        <button onClick={() => { setIsEditingComment(false); fetchDailyComment(selectedDate); }} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="Cancelar">
                                             <X size={20} />
                                         </button>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="flex justify-between items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                    <p className="text-slate-600 italic whitespace-pre-wrap break-words break-all overflow-hidden w-full">{dailyComment || 'Sin comentario asignado.'}</p>
+                                <div className="flex justify-between items-start bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                                    <p className="text-slate-600 dark:text-slate-400 italic whitespace-pre-wrap break-words break-all overflow-hidden w-full">{dailyComment || 'Sin comentario asignado.'}</p>
                                     {isAdmin && (
-                                        <button onClick={() => setIsEditingComment(true)} className="text-teal-600 hover:text-teal-800 font-bold text-sm flex items-center gap-1 px-3 py-1 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors ml-4 shrink-0">
+                                        <button onClick={() => setIsEditingComment(true)} className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300 font-bold text-sm flex items-center gap-1 px-3 py-1 bg-teal-50 dark:bg-teal-900/30 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors ml-4 shrink-0">
                                             <Edit size={16} /> Editar
                                         </button>
                                     )}
@@ -1199,119 +1197,119 @@ const HistorialCaja = () => {
                     {view === 'years' && (
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             {getYears().map(year => (
-                                <button key={year} onClick={() => handleYearClick(year)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-teal-200 hover:bg-teal-50/30 transition-all group flex flex-col items-center gap-3">
-                                    <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <button key={year} onClick={() => handleYearClick(year)} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md hover:border-teal-200 dark:hover:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/10 transition-all group flex flex-col items-center gap-3">
+                                    <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <Folder size={32} fill="currentColor" className="opacity-80" />
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 group-hover:text-teal-700">{year}</span>
+                                    <span className="font-bold text-lg text-slate-700 dark:text-slate-200 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">{year}</span>
                                 </button>
                             ))}
-                            {getYears().length === 0 && <div className="col-span-full text-center py-20 text-slate-400">No hay registros</div>}
+                            {getYears().length === 0 && <div className="col-span-full text-center py-20 text-slate-400 dark:text-slate-500">No hay registros</div>}
                         </div>
                     )}
 
                     {view === 'months' && (
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             {getMonths(selectedYear).map(monthIndex => (
-                                <button key={monthIndex} onClick={() => handleMonthClick(monthIndex)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-teal-200 hover:bg-teal-50/30 transition-all group flex flex-col items-center gap-3">
-                                    <div className="w-16 h-16 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <button key={monthIndex} onClick={() => handleMonthClick(monthIndex)} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md hover:border-teal-200 dark:hover:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/10 transition-all group flex flex-col items-center gap-3">
+                                    <div className="w-16 h-16 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <Folder size={32} fill="currentColor" className="opacity-80" />
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 group-hover:text-teal-700">{MONTH_NAMES[monthIndex]}</span>
+                                    <span className="font-bold text-lg text-slate-700 dark:text-slate-200 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">{MONTH_NAMES[monthIndex]}</span>
                                 </button>
                             ))}
-                            <button onClick={navigateUp} className="flex flex-col items-center justify-center p-6 text-slate-400 hover:text-slate-600 transition-colors"><ArrowLeft size={24} /> Volver</button>
+                            <button onClick={navigateUp} className="flex flex-col items-center justify-center p-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"><ArrowLeft size={24} /> Volver</button>
                         </div>
                     )}
 
                     {view === 'days' && (
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             {getDays(selectedYear, selectedMonth).map(date => (
-                                <button key={date} onClick={() => handleDayClick(date)} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-teal-200 hover:bg-teal-50/30 transition-all group flex flex-col items-center gap-3">
-                                    <div className="w-16 h-16 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <button key={date} onClick={() => handleDayClick(date)} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md hover:border-teal-200 dark:hover:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/10 transition-all group flex flex-col items-center gap-3">
+                                    <div className="w-16 h-16 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <FileText size={32} />
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 group-hover:text-teal-700">{date.split('-')[2]}</span>
+                                    <span className="font-bold text-lg text-slate-700 dark:text-slate-200 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">{date.split('-')[2]}</span>
                                 </button>
                             ))}
-                            <button onClick={navigateUp} className="flex flex-col items-center justify-center p-6 text-slate-400 hover:text-slate-600 transition-colors"><ArrowLeft size={24} /> Volver</button>
+                            <button onClick={navigateUp} className="flex flex-col items-center justify-center p-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"><ArrowLeft size={24} /> Volver</button>
                         </div>
                     )}
 
                     {view === 'table' && (
-                        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse min-w-[2000px] print:min-w-0">
-                                    <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+                                    <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-bold tracking-wider">
                                         <tr>
-                                            <th className={`px-4 py-3 border-b sticky left-0 bg-slate-50 z-10 w-24 ${!isAdmin && 'opacity-30'}`}>Acciones</th>
-                                            <th className="px-4 py-3 border-b">Fecha (Caja)</th>
-                                            <th className="px-4 py-3 border-b">Paciente</th>
-                                            <th className="px-4 py-3 border-b">DNI</th>
-                                            <th className="px-4 py-3 border-b">Obra Social</th>
-                                            <th className="px-4 py-3 border-b text-teal-800 bg-teal-50/30">Prof. 1</th>
-                                            <th className="px-4 py-3 border-b text-teal-800 bg-teal-50/30">Prof. 2</th>
-                                            <th className="px-4 py-3 border-b text-teal-800 bg-teal-50/30">Prof. 3</th>
-                                            <th className="px-4 py-3 border-b text-slate-700">Pago $</th>
-                                            <th className="px-4 py-3 border-b text-teal-700">Pago USD</th>
-                                            <th className="px-4 py-3 border-b bg-teal-50/50 text-teal-900">Liq. P1</th>
-                                            <th className="px-4 py-3 border-b bg-teal-50/50 text-teal-900">Liq. P2</th>
-                                            <th className="px-4 py-3 border-b bg-teal-50/50 text-teal-900">Liq. P3</th>
-                                            <th className="px-4 py-3 border-b bg-purple-50/30 text-purple-900">Anest.</th>
-                                            <th className="px-4 py-3 border-b bg-purple-50/50 text-purple-900">Liq. Anest.</th>
-                                            <th className="px-4 py-3 border-b bg-orange-50/50 text-orange-900">Coat $</th>
-                                            <th className="px-4 py-3 border-b bg-orange-50/50 text-orange-900">Coat USD</th>
+                                            <th className={`px-4 py-3 border-b dark:border-slate-700 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 w-24 ${!isAdmin && 'opacity-30'}`}>Acciones</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700">Fecha (Caja)</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700">Paciente</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700">DNI</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700">Obra Social</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-teal-800 dark:text-teal-400 bg-teal-50/30 dark:bg-teal-900/10">Prof. 1</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-teal-800 dark:text-teal-400 bg-teal-50/30 dark:bg-teal-900/10">Prof. 2</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-teal-800 dark:text-teal-400 bg-teal-50/30 dark:bg-teal-900/10">Prof. 3</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-slate-700 dark:text-slate-300">Pago $</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-teal-700 dark:text-teal-400">Pago USD</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-teal-50/50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-200">Liq. P1</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-teal-50/50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-200">Liq. P2</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-teal-50/50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-200">Liq. P3</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-purple-50/30 dark:bg-purple-900/10 text-purple-900 dark:text-purple-300">Anest.</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-purple-50/50 dark:bg-purple-900/20 text-purple-900 dark:text-purple-200">Liq. Anest.</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-orange-50/50 dark:bg-orange-900/20 text-orange-900 dark:text-orange-200">Coat $</th>
+                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-orange-50/50 dark:bg-orange-900/20 text-orange-900 dark:text-orange-200">Coat USD</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="text-sm divide-y divide-slate-100">
+                                    <tbody className="text-sm divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                                         {tableData.map((item) => {
                                             const isEditing = editId === item.id;
                                             return (
-                                                <tr key={item.id} className={`hover:bg-slate-50/50 transition-colors ${isEditing ? 'bg-teal-50/20' : ''}`}>
-                                                    <td className={`px-2 py-3 border-r sticky left-0 bg-white z-10 ${!isAdmin && 'opacity-30 pointer-events-none'}`}>
-                                                        {isAdmin && (
+                                                <tr key={item.id} className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors ${isEditing ? 'bg-teal-50/20 dark:bg-teal-900/20' : ''}`}>
+                                                    <td className={`px-2 py-3 border-r dark:border-slate-700 sticky left-0 bg-white dark:bg-slate-900 z-10 ${(isReadOnly || (!isAdmin && item.createdBy !== user?.email)) && 'opacity-30 pointer-events-none'}`}>
+                                                        {(!isReadOnly && (isAdmin || item.createdBy === user?.email)) && (
                                                             isEditing ? (
                                                                 <div className="flex gap-1">
-                                                                    <button onClick={handleSave} className="p-1.5 bg-green-100 text-green-600 rounded-lg"><Check size={16} /></button>
-                                                                    <button onClick={handleCancelEdit} className="p-1.5 bg-red-100 text-red-600 rounded-lg"><X size={16} /></button>
+                                                                    <button onClick={handleSave} className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg"><Check size={16} /></button>
+                                                                    <button onClick={handleCancelEdit} className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg"><X size={16} /></button>
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex gap-1">
-                                                                    <button onClick={() => handleEditClick(item)} className="p-1.5 text-teal-400 hover:bg-teal-50 rounded-lg"><Edit2 size={16} /></button>
-                                                                    <button onClick={() => handleDelete(item.id)} className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg"><Trash2 size={16} /></button>
+                                                                    <button onClick={() => handleEditClick(item)} className="p-1.5 text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg"><Edit2 size={16} /></button>
+                                                                    <button onClick={() => handleDelete(item)} className="p-1.5 text-slate-300 dark:text-slate-600 hover:text-red-500 rounded-lg"><Trash2 size={16} /></button>
                                                                 </div>
                                                             )
                                                         )}
                                                     </td>
 
-                                                    <td className="px-4 py-3 font-mono text-xs">{item.fecha}</td>
+                                                    <td className="px-4 py-3 font-mono text-xs dark:text-slate-400">{item.fecha}</td>
 
-                                                    {/* Generic Field Render for Brevity - Real implementation should map all editable fields similar to CajaForm */}
+                                                    {/* Generic Field Render for Brevity */}
                                                     {['paciente', 'dni', 'obra_social'].map(f => (
-                                                        <td key={f} className="px-4 py-3">{isEditing ? <input value={editFormData[f]} onChange={(e) => handleChange(f, e.target.value)} className="w-full bg-white border border-teal-300 rounded px-1" /> : item[f]}</td>
+                                                        <td key={f} className="px-4 py-3">{isEditing ? <input value={editFormData[f]} onChange={(e) => handleChange(f, e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700 rounded px-1 text-slate-900 dark:text-slate-100 focus:outline-none" /> : item[f]}</td>
                                                     ))}
 
                                                     <td className="px-4 py-3">{item.prof_1}</td>
                                                     <td className="px-4 py-3">{item.prof_2}</td>
                                                     <td className="px-4 py-3">{item.prof_3}</td>
 
-                                                    <td className="px-4 py-3 text-right">{isEditing ? <input type="number" value={editFormData.pesos} onChange={(e) => handleChange('pesos', e.target.value)} className="w-20 bg-white border rounded" /> : `$${formatMoney(item.pesos)}`}</td>
-                                                    <td className="px-4 py-3 text-right">{isEditing ? <input type="number" value={editFormData.dolares} onChange={(e) => handleChange('dolares', e.target.value)} className="w-20 bg-white border rounded" /> : `USD ${formatMoney(item.dolares)}`}</td>
+                                                    <td className="px-4 py-3 text-right">{isEditing ? <input type="number" value={editFormData.pesos} onChange={(e) => handleChange('pesos', e.target.value)} className="w-20 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-right px-1" /> : `$${formatMoney(item.pesos)}`}</td>
+                                                    <td className="px-4 py-3 text-right">{isEditing ? <input type="number" value={editFormData.dolares} onChange={(e) => handleChange('dolares', e.target.value)} className="w-20 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-right px-1" /> : `USD ${formatMoney(item.dolares)}`}</td>
 
-                                                    {/* Simplified editing for liq cols for brevity - Added formatMoney wrap */}
+                                                    {/* Simplified editing for liq cols */}
                                                     <td className="px-4 py-3 text-right">
                                                         {isEditing ? (
                                                             <div className="flex flex-col gap-1">
                                                                 <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_1 || 0} onChange={(e) => handleChange('liq_prof_1', e.target.value)} className="w-16 bg-white border rounded text-xs px-1" />
-                                                                    <select value={editFormData.liq_prof_1_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_1_currency', e.target.value)} className="w-12 bg-white border rounded text-[10px]">
+                                                                    <input type="number" value={editFormData.liq_prof_1 || 0} onChange={(e) => handleChange('liq_prof_1', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-xs px-1" />
+                                                                    <select value={editFormData.liq_prof_1_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_1_currency', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
                                                                         <option value="ARS">ARS</option>
                                                                         <option value="USD">USD</option>
                                                                     </select>
                                                                 </div>
                                                                 <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_1_secondary || 0} onChange={(e) => handleChange('liq_prof_1_secondary', e.target.value)} className="w-16 bg-white border rounded text-[10px] px-1" />
-                                                                    <select value={editFormData.liq_prof_1_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_1_currency_secondary', e.target.value)} className="w-12 bg-white border rounded text-[10px]">
+                                                                    <input type="number" value={editFormData.liq_prof_1_secondary || 0} onChange={(e) => handleChange('liq_prof_1_secondary', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px] px-1" />
+                                                                    <select value={editFormData.liq_prof_1_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_1_currency_secondary', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
                                                                         <option value="ARS">ARS</option>
                                                                         <option value="USD">USD</option>
                                                                     </select>
@@ -1328,15 +1326,15 @@ const HistorialCaja = () => {
                                                         {isEditing ? (
                                                             <div className="flex flex-col gap-1">
                                                                 <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_2 || 0} onChange={(e) => handleChange('liq_prof_2', e.target.value)} className="w-16 bg-white border rounded text-xs px-1" />
-                                                                    <select value={editFormData.liq_prof_2_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_2_currency', e.target.value)} className="w-12 bg-white border rounded text-[10px]">
+                                                                    <input type="number" value={editFormData.liq_prof_2 || 0} onChange={(e) => handleChange('liq_prof_2', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-xs px-1" />
+                                                                    <select value={editFormData.liq_prof_2_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_2_currency', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
                                                                         <option value="ARS">ARS</option>
                                                                         <option value="USD">USD</option>
                                                                     </select>
                                                                 </div>
                                                                 <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_2_secondary || 0} onChange={(e) => handleChange('liq_prof_2_secondary', e.target.value)} className="w-16 bg-white border rounded text-[10px] px-1" />
-                                                                    <select value={editFormData.liq_prof_2_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_2_currency_secondary', e.target.value)} className="w-12 bg-white border rounded text-[10px]">
+                                                                    <input type="number" value={editFormData.liq_prof_2_secondary || 0} onChange={(e) => handleChange('liq_prof_2_secondary', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px] px-1" />
+                                                                    <select value={editFormData.liq_prof_2_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_2_currency_secondary', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
                                                                         <option value="ARS">ARS</option>
                                                                         <option value="USD">USD</option>
                                                                     </select>
@@ -1353,15 +1351,15 @@ const HistorialCaja = () => {
                                                         {isEditing ? (
                                                             <div className="flex flex-col gap-1">
                                                                 <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_3 || 0} onChange={(e) => handleChange('liq_prof_3', e.target.value)} className="w-16 bg-white border rounded text-xs px-1" />
-                                                                    <select value={editFormData.liq_prof_3_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_3_currency', e.target.value)} className="w-12 bg-white border rounded text-[10px]">
+                                                                    <input type="number" value={editFormData.liq_prof_3 || 0} onChange={(e) => handleChange('liq_prof_3', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-xs px-1" />
+                                                                    <select value={editFormData.liq_prof_3_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_3_currency', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
                                                                         <option value="ARS">ARS</option>
                                                                         <option value="USD">USD</option>
                                                                     </select>
                                                                 </div>
                                                                 <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_3_secondary || 0} onChange={(e) => handleChange('liq_prof_3_secondary', e.target.value)} className="w-16 bg-white border rounded text-[10px] px-1" />
-                                                                    <select value={editFormData.liq_prof_3_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_3_currency_secondary', e.target.value)} className="w-12 bg-white border rounded text-[10px]">
+                                                                    <input type="number" value={editFormData.liq_prof_3_secondary || 0} onChange={(e) => handleChange('liq_prof_3_secondary', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px] px-1" />
+                                                                    <select value={editFormData.liq_prof_3_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_3_currency_secondary', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
                                                                         <option value="ARS">ARS</option>
                                                                         <option value="USD">USD</option>
                                                                     </select>
@@ -1375,13 +1373,13 @@ const HistorialCaja = () => {
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        {isEditing ? <input value={editFormData.anestesista || ''} onChange={(e) => handleChange('anestesista', e.target.value)} className="w-full bg-white border border-teal-300 rounded px-1" /> : item.anestesista}
+                                                        {isEditing ? <input value={editFormData.anestesista || ''} onChange={(e) => handleChange('anestesista', e.target.value)} className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded px-1" /> : item.anestesista}
                                                     </td>
                                                     <td className="px-4 py-3 text-right">
                                                         {isEditing ? (
                                                             <div className="flex gap-1">
-                                                                <input type="number" value={editFormData.liq_anestesista || 0} onChange={(e) => handleChange('liq_anestesista', e.target.value)} className="w-16 bg-white border rounded text-xs px-1" />
-                                                                <select value={editFormData.liq_anestesista_currency || 'ARS'} onChange={(e) => handleChange('liq_anestesista_currency', e.target.value)} className="w-12 bg-white border rounded text-[10px]">
+                                                                <input type="number" value={editFormData.liq_anestesista || 0} onChange={(e) => handleChange('liq_anestesista', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-xs px-1" />
+                                                                <select value={editFormData.liq_anestesista_currency || 'ARS'} onChange={(e) => handleChange('liq_anestesista_currency', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
                                                                     <option value="ARS">ARS</option>
                                                                     <option value="USD">USD</option>
                                                                 </select>
@@ -1391,8 +1389,8 @@ const HistorialCaja = () => {
                                                         )}
                                                     </td>
 
-                                                    <td className="px-4 py-3 text-right text-orange-800">{isEditing ? <input type="number" value={editFormData.coat_pesos} onChange={(e) => handleChange('coat_pesos', e.target.value)} className="w-20 bg-white border rounded" /> : `$${formatMoney(item.coat_pesos)}`}</td>
-                                                    <td className="px-4 py-3 text-right text-orange-800">{isEditing ? <input type="number" value={editFormData.coat_dolares} onChange={(e) => handleChange('coat_dolares', e.target.value)} className="w-20 bg-white border rounded" /> : `USD ${formatMoney(item.coat_dolares)}`}</td>
+                                                    <td className="px-4 py-3 text-right text-orange-800 dark:text-orange-400 font-medium">{isEditing ? <input type="number" value={editFormData.coat_pesos} onChange={(e) => handleChange('coat_pesos', e.target.value)} className="w-20 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-right px-1" /> : `$${formatMoney(item.coat_pesos)}`}</td>
+                                                    <td className="px-4 py-3 text-right text-orange-800 dark:text-orange-400 font-medium">{isEditing ? <input type="number" value={editFormData.coat_dolares} onChange={(e) => handleChange('coat_dolares', e.target.value)} className="w-20 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-right px-1" /> : `USD ${formatMoney(item.coat_dolares)}`}</td>
                                                 </tr>
                                             );
                                         })}
@@ -1404,7 +1402,7 @@ const HistorialCaja = () => {
                 </div>
             </div> {/* End screen-content */}
             <style>{printStyle}</style>
-            <div className="fixed bottom-1 left-2 text-[10px] text-slate-300 font-mono pointer-events-none z-50 no-print">
+            <div className="fixed bottom-1 left-2 text-[10px] text-slate-300 dark:text-slate-600 font-mono pointer-events-none z-50 no-print">
                 Ultima actualización: 26/01/2026 - 19:53
             </div>
         </div >

@@ -16,4 +16,5 @@ export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const USE_LOCAL_DB = false;
 export const LOCAL_API_URL = '';
+export const isLocalEnv = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 export const isTestEnv = typeof window !== 'undefined' && window.location.hostname === 'cajacx.web.app';

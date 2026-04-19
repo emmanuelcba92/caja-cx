@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import ModalPortal from './common/ModalPortal';
 import {
     Save as SaveIcon, FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash,
     Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search,
     CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle,
-    FileHeart, AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban,
+    AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban,
     TableProperties, Sparkles, Loader2, Lock as LockIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -68,8 +69,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const [aiInputText, setAiInputText] = useState(''); // Raw email text
     const [aiLoading, setAiLoading] = useState(false); // AI processing spinner
     const [aiError, setAiError] = useState(''); // AI error message
-    const [activeTab, setActiveTab] = useState(initialTab); // 'internacion' | 'pedidos'
-    const [pedidos, setPedidos] = useState([]); // List of medical orders (pedidos)
+    const [activeTab, setActiveTab] = useState(initialTab); // 'internacion' | 'control'
+    const [previewOrdenes, setPreviewOrdenes] = useState([]); // Preview for control tab
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
     const [rangeStart, setRangeStart] = useState('');
     const [rangeEnd, setRangeEnd] = useState('');
@@ -159,7 +160,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             const ownerToUse = catalogOwnerUid || viewingUid;
             if (!ownerToUse) return;
             try {
-                const profsAll = await apiService.getCollection("profesionales", { userId: ownerToUse });
+                // "Todos ven todo": ya no filtramos por userId para los profesionales
+                const profsAll = await apiService.getCollection("profesionales");
                 setAllProfesionales(profsAll);
 
                 // Identify if the linked professional is a "Residente"
@@ -186,12 +188,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         const ownerToUse = catalogOwnerUid || viewingUid;
         if (!ownerToUse) return;
         try {
-            const filters = { userId: ownerToUse };
-            if (linkedProfesionalName && !isSuperAdmin && !permissions?.can_view_shared_catalog) {
-                filters.profesional = linkedProfesionalName;
-            }
-
-            const items = await apiService.getCollection("ordenes_internacion", filters);
+            // "Todos ven todo": ya no filtramos por userId ni por profesional vinculado
+            const items = await apiService.getCollection("ordenes_internacion");
 
             items.sort((a, b) => {
                 const dateA = a.fechaCirugia || a.createdAt;
@@ -204,33 +202,26 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         }
     };
 
-    const fetchPedidos = async () => {
-        const ownerToUse = catalogOwnerUid || viewingUid;
-        if (!ownerToUse) return;
-        try {
-            const filters = { userId: ownerToUse };
-            if (linkedProfesionalName && !isSuperAdmin && !permissions?.can_view_shared_catalog) {
-                filters.profesional = linkedProfesionalName;
-            }
-
-            const items = await apiService.getCollection("pedidos_medicos", filters);
-
-            items.sort((a, b) => {
-                const dateA = a.fechaDocumento || a.createdAt;
-                const dateB = b.fechaDocumento || b.createdAt;
-                // Sort descending by date (newest first)
-                return new Date(dateB) - new Date(dateA);
-            });
-            setPedidos(items);
-        } catch (error) {
-            console.error("Error fetching medical orders:", error);
-        }
-    };
-
     useEffect(() => {
         fetchOrdenes();
-        fetchPedidos();
     }, [viewingUid, catalogOwnerUid]);
+
+    // Update preview when dates change in Control tab
+    useEffect(() => {
+        if (activeTab === 'control' && (rangeStart || rangeEnd)) {
+            const start = rangeStart ? new Date(rangeStart) : new Date(0);
+            const end = rangeEnd ? new Date(rangeEnd) : new Date(8640000000000000);
+            
+            const filtered = ordenes.filter(o => {
+                if (o.suspendida) return false;
+                if (!o.fechaCirugia) return false;
+                const d = new Date(o.fechaCirugia);
+                return d >= start && d <= end;
+            }).sort((a, b) => new Date(a.fechaCirugia) - new Date(b.fechaCirugia));
+            
+            setPreviewOrdenes(filtered);
+        }
+    }, [rangeStart, rangeEnd, ordenes, activeTab]);
 
     useEffect(() => {
         if (draftData) {
@@ -244,22 +235,16 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             if (!processedData.edad && draftData.edad) processedData.edad = draftData.edad;
 
             // Practice codes compatibility and padding
-            if (activeTab === 'pedidos') {
-                let practicas = processedData.practicas || [];
-                while (practicas.length < 5) practicas.push('');
-                processedData.practicas = practicas;
-            } else {
-                let codigos = processedData.codigosCirugia;
-                if (!codigos || !Array.isArray(codigos)) {
-                    codigos = processedData.codigoCirugia
-                        ? [{ codigo: processedData.codigoCirugia, nombre: '' }]
-                        : [{ codigo: '', nombre: '' }];
-                }
-                while (codigos.length < 3) {
-                    codigos.push({ codigo: '', nombre: '' });
-                }
-                processedData.codigosCirugia = codigos;
+            let codigos = processedData.codigosCirugia;
+            if (!codigos || !Array.isArray(codigos)) {
+                codigos = processedData.codigoCirugia
+                    ? [{ codigo: processedData.codigoCirugia, nombre: '' }]
+                    : [{ codigo: '', nombre: '' }];
             }
+            while (codigos.length < 3) {
+                codigos.push({ codigo: '', nombre: '' });
+            }
+            processedData.codigosCirugia = codigos;
 
             setFormData(prev => ({
                 ...prev,
@@ -463,14 +448,14 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         return (
             <div className="space-y-6 max-w-4xl mx-auto">
                 {/* Main Form Card */}
-                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-sm border border-slate-100 dark:border-slate-800 space-y-8">
                     {/* Header with Title + AI Button */}
                     <div className="flex items-center justify-between pb-4 border-b border-slate-50">
                         <div className="flex items-center gap-3">
-                            <div className={`p-2 bg-${accentColor}-50 rounded-xl text-${accentColor}-600`}>
+                            <div className={`p-2 bg-${accentColor}-50 dark:bg-${accentColor}-900/20 rounded-xl text-${accentColor}-600 dark:text-${accentColor}-400`}>
                                 {editingId ? <Edit3 size={20} /> : <Plus size={20} />}
                             </div>
-                            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">
+                            <h3 className="text-lg font-black text-slate-800 dark:text-slate-200 uppercase tracking-tight">
                                 {editingId ? 'Editar Documento' : `Nueva ${isPedido ? 'Pedido' : 'Orden'}`}
                             </h3>
                         </div>
@@ -479,8 +464,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 type="button"
                                 onClick={() => { setShowAIInput(!showAIInput); setAiError(''); }}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${showAIInput
-                                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-200'
-                                    : 'bg-gradient-to-r from-violet-50 to-purple-50 text-violet-700 border border-violet-200 hover:shadow-md hover:shadow-violet-100'
+                                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-200 dark:shadow-none'
+                                    : 'bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-800 hover:shadow-md hover:shadow-violet-100 dark:hover:shadow-none'
                                     }`}
                             >
                                 <Sparkles size={16} />
@@ -491,8 +476,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
                     {/* AI Paste Area */}
                     {showAIInput && !isPedido && (
-                        <div className="bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50 p-6 rounded-2xl border border-violet-200 space-y-4 animate-in slide-in-from-top-2 fade-in duration-300">
-                            <div className="flex items-center gap-2 text-sm font-bold text-violet-700">
+                        <div className="bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50 dark:from-violet-950/40 dark:via-purple-950/40 dark:to-indigo-950/40 p-6 rounded-2xl border border-violet-200 dark:border-violet-800 space-y-4 animate-in slide-in-from-top-2 fade-in duration-300">
+                            <div className="flex items-center gap-2 text-sm font-bold text-violet-700 dark:text-violet-300">
                                 <Sparkles size={16} className="text-violet-500" />
                                 Pegá el contenido del email y la IA completará el formulario
                             </div>
@@ -500,11 +485,11 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 value={aiInputText}
                                 onChange={(e) => setAiInputText(e.target.value)}
                                 placeholder={'Pegá acá el texto del email...\n\nEjemplo:\nNombre y Apellido del Profesional: Dr. Pérez\nFecha de la Cirugia: Abr 10, 2026\nNombre y Apellido del Paciente: GONZALEZ JUAN\nObra Social: OSDE\nDNI: 12345678\n...'}
-                                className="w-full px-5 py-4 bg-white border border-violet-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-violet-100 focus:border-violet-400 transition-all min-h-[160px] text-sm font-mono text-slate-700 placeholder:text-slate-400 resize-y"
+                                className="w-full px-5 py-4 bg-white dark:bg-slate-800 border border-violet-200 dark:border-violet-700 rounded-xl focus:outline-none focus:ring-4 focus:ring-violet-100 dark:focus:ring-violet-900 focus:border-violet-400 dark:focus:border-violet-600 transition-all min-h-[160px] text-sm font-mono text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-y"
                                 disabled={aiLoading}
                             />
                             {aiError && (
-                                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">
+                                <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-4 py-2 rounded-lg border border-red-100 dark:border-red-900/50">
                                     <AlertCircle size={14} />
                                     {aiError}
                                 </div>
@@ -521,7 +506,24 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                             // Merge AI result into form, respecting the data structure
                                             setFormData(prev => {
                                                 const merged = { ...prev };
-                                                if (result.profesional) merged.profesional = result.profesional;
+                                                
+                                                // Improved professional matching
+                                                if (result.profesional) {
+                                                    const extracted = result.profesional;
+                                                    const normalizedExtracted = extracted.toLowerCase().replace(/^(dr\.|dra\.|lic\.|dr|dra|lic)\s+/i, '').trim();
+                                                    
+                                                    const match = profesionales.find(p => {
+                                                        const name = p.nombre.toLowerCase();
+                                                        const nameWithoutPrefix = name.replace(/^(dr\.|dra\.|lic\.)\s+/i, '').trim();
+                                                        return name === extracted.toLowerCase() || 
+                                                               nameWithoutPrefix === normalizedExtracted ||
+                                                               (normalizedExtracted.length > 4 && nameWithoutPrefix.includes(normalizedExtracted)) ||
+                                                               (normalizedExtracted.length > 4 && normalizedExtracted.includes(nameWithoutPrefix));
+                                                    });
+                                                    
+                                                    merged.profesional = match ? match.nombre : extracted;
+                                                }
+
                                                 if (result.afiliado) merged.afiliado = result.afiliado.toUpperCase();
                                                 if (result.obraSocial) merged.obraSocial = result.obraSocial;
                                                 if (result.numeroAfiliado) merged.numeroAfiliado = result.numeroAfiliado;
@@ -575,7 +577,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 <button
                                     type="button"
                                     onClick={() => { setShowAIInput(false); setAiInputText(''); setAiError(''); }}
-                                    className="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
+                                    className="px-4 py-2.5 text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                                 >
                                     Cancelar
                                 </button>
@@ -585,8 +587,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
                     {/* Professional Selection */}
                     <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                            <User size={12} className={`text-${accentColor}-500`} /> Profesional
+                        <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                            <User size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Profesional
                         </label>
                         <div className="relative">
                             <input
@@ -601,12 +603,12 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     if (!linkedProfesionalName) setShowProfSuggestions(true);
                                 }}
                                 disabled={!!linkedProfesionalName}
-                                className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} ${linkedProfesionalName ? 'bg-slate-50 cursor-not-allowed font-bold' : ''}`}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} ${linkedProfesionalName ? 'bg-slate-50 dark:bg-slate-900/50 cursor-not-allowed font-bold text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}
                                 placeholder="Escribe para buscar..."
                                 required
                             />
                             {!linkedProfesionalName && showProfSuggestions && (
-                                <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white border border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl shadow-2xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
                                     {profesionales
                                         .filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()))
                                         .map(p => (
@@ -616,9 +618,9 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                     handleInputChange('profesional', p.nombre);
                                                     setShowProfSuggestions(false);
                                                 }}
-                                                className={`px-5 py-3.5 cursor-pointer hover:bg-${accentColor}-50 transition-colors border-b border-slate-50 last:border-0`}
+                                                className={`px-5 py-3.5 cursor-pointer hover:bg-${accentColor}-50 dark:hover:bg-${accentColor}-900/20 transition-colors border-b border-slate-50 dark:border-slate-700 last:border-0`}
                                             >
-                                                <p className="text-sm font-bold text-slate-700">{p.nombre}</p>
+                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{p.nombre}</p>
                                             </div>
                                         ))}
                                 </div>
@@ -629,13 +631,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     {/* Tutor (if active) */}
                     {isResidente && (
                         <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <Stethoscope size={12} className={`text-${accentColor}-500`} /> Tutor a Cargo
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Stethoscope size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Tutor a Cargo
                             </label>
                             <select
                                 value={formData.tutor}
                                 onChange={(e) => handleInputChange('tutor', e.target.value)}
-                                className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass}`}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                                 required={isResidente}
                             >
                                 <option value="">-- Seleccionar Tutor --</option>
@@ -649,27 +651,27 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     {/* Patient Data Row 1: Afiliado | Obra Social */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <User size={12} className={`text-${accentColor}-500`} /> Afiliado
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <User size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Afiliado
                             </label>
                             <input
                                 type="text"
                                 value={formData.afiliado}
                                 onChange={(e) => handleInputChange('afiliado', e.target.value.toUpperCase())}
-                                className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold uppercase ${ringClass}`}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold uppercase ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="APELLIDO NOMBRE"
                                 required
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <Building2 size={12} className={`text-${accentColor}-500`} /> Obra Social
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Building2 size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Obra Social
                             </label>
                             <input
                                 type="text"
                                 value={formData.obraSocial}
                                 onChange={(e) => handleInputChange('obraSocial', e.target.value)}
-                                className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass}`}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="Galeno, OSDE, etc."
                             />
                         </div>
@@ -678,20 +680,20 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     {/* Patient Data Row 2: N Afiliado | DNI | Habitacion */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <Hash size={12} className={`text-${accentColor}-500`} /> N° Afiliado
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Hash size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> N° Afiliado
                             </label>
                             <input
                                 type="text"
                                 value={formData.numeroAfiliado}
                                 onChange={(e) => handleInputChange('numeroAfiliado', e.target.value)}
-                                className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass}`}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="14843"
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <Hash size={12} className={`text-${accentColor}-500`} /> DNI
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Hash size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> DNI
                             </label>
                             <input
                                 type="text"
@@ -700,58 +702,56 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     const val = e.target.value.replace(/\D/g, '');
                                     handleInputChange('dni', val);
                                 }}
-                                className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass}`}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="45836670"
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <Home size={12} className={`text-${accentColor}-500`} /> Habitación
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Home size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Habitación
                             </label>
                             <input
                                 type="text"
                                 value={formData.habitacion}
                                 onChange={(e) => handleInputChange('habitacion', e.target.value.toUpperCase())}
-                                className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all uppercase ${ringClass}`}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all uppercase ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="B, 101, etc."
                             />
                         </div>
                     </div>
 
                     {/* Estudio bajo anestesia toggle */}
-                    {!isPedido && (
-                        <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.estudioBajoAnestesia ? 'border-amber-200 bg-amber-50/50' : 'border-slate-100 bg-slate-50/30'}`}>
-                            <label className="flex items-center gap-4 cursor-pointer group">
-                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.estudioBajoAnestesia ? 'bg-amber-600 text-white shadow-lg shadow-amber-200' : 'bg-white border border-slate-200 text-slate-300'}`}>
-                                    <Stethoscope size={18} />
-                                </div>
-                                <input
-                                    type="checkbox"
-                                    checked={formData.estudioBajoAnestesia}
-                                    onChange={(e) => handleInputChange('estudioBajoAnestesia', e.target.checked)}
-                                    className="hidden"
-                                />
-                                <div className="flex flex-col">
-                                    <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.estudioBajoAnestesia ? 'text-amber-700' : 'text-slate-400 group-hover:text-slate-600'}`}>
-                                        Estudio bajo anestesia
-                                    </span>
-                                    <span className="text-[10px] text-slate-400 font-medium">Cambia el título y omite códigos obligatorios</span>
-                                </div>
-                            </label>
-                        </div>
-                    )}
+                    <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.estudioBajoAnestesia ? 'border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-900/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30'}`}>
+                        <label className="flex items-center gap-4 cursor-pointer group">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.estudioBajoAnestesia ? 'bg-amber-600 text-white shadow-lg shadow-amber-200 dark:shadow-none' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600'}`}>
+                                <Stethoscope size={18} />
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={formData.estudioBajoAnestesia}
+                                onChange={(e) => handleInputChange('estudioBajoAnestesia', e.target.checked)}
+                                className="hidden"
+                            />
+                            <div className="flex flex-col">
+                                <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.estudioBajoAnestesia ? 'text-amber-700 dark:text-amber-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}>
+                                    Estudio bajo anestesia
+                                </span>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Cambia el título y omite códigos obligatorios</span>
+                            </div>
+                        </label>
+                    </div>
 
                     {/* Codes Section */}
-                    {!isPedido && !formData.estudioBajoAnestesia && (
-                        <div className="space-y-4 pt-6 border-t border-slate-50">
+                    {!formData.estudioBajoAnestesia && (
+                        <div className="space-y-4 pt-6 border-t border-slate-50 dark:border-slate-800">
                             <div className="flex items-center justify-between">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <Hash size={12} className={`text-${accentColor}-500`} /> Códigos de Cirugía
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                    <Hash size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Códigos de Cirugía
                                 </label>
                                 <button
                                     type="button"
                                     onClick={addCodigo}
-                                    className={`flex items-center gap-1.5 px-4 py-1.5 bg-${accentColor}-50 text-${accentColor}-700 rounded-xl text-xs font-bold hover:bg-${accentColor}-100 transition-all border border-${accentColor}-100`}
+                                    className={`flex items-center gap-1.5 px-4 py-1.5 bg-${accentColor}-50 dark:bg-${accentColor}-900/20 text-${accentColor}-700 dark:text-${accentColor}-400 rounded-xl text-xs font-bold hover:bg-${accentColor}-100 dark:hover:bg-${accentColor}-900/30 transition-all border border-${accentColor}-100 dark:border-${accentColor}-800`}
                                 >
                                     <Plus size={14} /> Agregar
                                 </button>
@@ -766,7 +766,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 value={cod.codigo}
                                                 onChange={(e) => handleCodigoChangeAndSearch(index, 'codigo', e.target.value)}
                                                 onKeyDown={(e) => handleKeyDown(e, index)}
-                                                className={`w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-mono font-bold text-teal-700`}
+                                                className={`w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-mono font-bold text-teal-700 dark:text-teal-400`}
                                                 placeholder="031301"
                                             />
                                         </div>
@@ -776,7 +776,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 value={cod.nombre}
                                                 onChange={(e) => handleCodigoChangeAndSearch(index, 'nombre', e.target.value)}
                                                 onKeyDown={(e) => handleKeyDown(e, index)}
-                                                className={`w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-medium`}
+                                                className={`w-full px-5 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-medium text-slate-900 dark:text-slate-100`}
                                                 placeholder="Nombre de la cirugía"
                                             />
                                             {activeRow?.index === index && suggestions.length > 0 && (
@@ -785,13 +785,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         <div
                                                             key={i}
                                                             onClick={() => selectSuggestion(s, index)}
-                                                            className={`px-5 py-3.5 cursor-pointer border-b border-slate-100 last:border-0 hover:bg-teal-50 transition-colors`}
+                                                            className={`px-5 py-3.5 cursor-pointer border-b border-slate-100 dark:border-slate-700 last:border-0 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors`}
                                                         >
                                                             <div className="flex items-center gap-3">
-                                                                <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-teal-100 text-teal-700">
+                                                                <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400">
                                                                     {s.codigo}
                                                                 </span>
-                                                                <span className="text-sm font-bold text-slate-700">{s.nombre}</span>
+                                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{s.nombre}</span>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -801,7 +801,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                         <button
                                             type="button"
                                             onClick={() => removeCodigo(index)}
-                                            className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
+                                            className="p-2.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
                                         >
                                             <X size={18} />
                                         </button>
@@ -812,16 +812,16 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     )}
 
                     {/* Practice Names section if "Estudio bajo anestesia" is active */}
-                    {!isPedido && formData.estudioBajoAnestesia && (
-                        <div className="space-y-4 pt-6 border-t border-slate-50">
+                    {formData.estudioBajoAnestesia && (
+                        <div className="space-y-4 pt-6 border-t border-slate-50 dark:border-slate-800">
                             <div className="flex items-center justify-between">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                                     <Hash size={12} className="text-amber-500" /> Prácticas a realizar
                                 </label>
                                 <button
                                     type="button"
                                     onClick={addPracticaAnestesia}
-                                    className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all border border-amber-100"
+                                    className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-xl text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all border border-amber-100 dark:border-amber-800"
                                 >
                                     <Plus size={14} /> Agregar estudio
                                 </button>
@@ -842,7 +842,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         return { ...prev, codigosCirugia: newCodigos };
                                                     });
                                                 }}
-                                                className={`w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-bold uppercase`}
+                                                className={`w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-bold uppercase text-slate-900 dark:text-slate-100`}
                                                 placeholder="Ej: VIDEOFIBROLARINGOSCOPIA..."
                                             />
                                         </div>
@@ -850,7 +850,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                             <button
                                                 type="button"
                                                 onClick={() => removeCodigo(index)}
-                                                className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
+                                                className="p-2.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
                                             >
                                                 <X size={18} />
                                             </button>
@@ -863,195 +863,123 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
                     {/* WhatsApp */}
                     <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                            <Phone size={12} className={`text-${accentColor}-500`} /> Teléfono (WhatsApp)
+                        <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                            <Phone size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Teléfono (WhatsApp)
                         </label>
                         <input
                             type="tel"
                             value={formData.telefono}
                             onChange={(e) => handleInputChange('telefono', e.target.value)}
-                            className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass}`}
+                            className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                             placeholder="3512345678 (sin 0 ni 15)"
                         />
                     </div>
 
-                    {/* Codes Section (Only for Pedidos) */}
-                    {isPedido && (
-                        <div className="space-y-4 pt-6 border-t border-slate-50">
-                            <div className="flex items-center justify-between">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <Hash size={12} className={`text-${accentColor}-500`} /> Prácticas (Rp/)
-                                </label>
-                                <button
-                                    type="button"
-                                    onClick={() => setFormData(prev => ({ ...prev, practicas: [...prev.practicas, ''] }))}
-                                    className={`flex items-center gap-1.5 px-4 py-1.5 bg-${accentColor}-50 text-${accentColor}-700 rounded-xl text-xs font-bold hover:bg-${accentColor}-100 transition-all border border-${accentColor}-100`}
-                                >
-                                    <Plus size={14} /> Agregar
-                                </button>
-                            </div>
-
-                            <div className="space-y-3">
-                                {formData.practicas && formData.practicas.map((practica, index) => (
-                                    <div key={index} className="flex gap-3 items-center group">
-                                        <div className="flex-1 relative">
-                                            <input
-                                                type="text"
-                                                value={practica}
-                                                onChange={(e) => {
-                                                    const newVal = e.target.value;
-                                                    setFormData(prev => {
-                                                        const newPracticas = [...prev.practicas];
-                                                        newPracticas[index] = newVal;
-                                                        return { ...prev, practicas: newPracticas };
-                                                    });
-                                                    setActiveRow({ index, field: 'practica' });
-                                                    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-                                                    searchTimeoutRef.current = setTimeout(() => {
-                                                        handleSearch(newVal, 'nombre', formData.obraSocial);
-                                                    }, 300);
-                                                }}
-                                                onKeyDown={(e) => handleKeyDown(e, index)}
-                                                className={`w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-sm font-bold uppercase`}
-                                                placeholder="Ingrese práctica..."
-                                            />
-                                            {activeRow?.index === index && activeRow?.field === 'practica' && suggestions.length > 0 && (
-                                                <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
-                                                    {suggestions.map((s, i) => (
-                                                        <div
-                                                            key={i}
-                                                            onClick={() => selectPedidoSuggestion(s, index)}
-                                                            className={`px-5 py-3.5 cursor-pointer border-b border-slate-100 last:border-0 hover:bg-pink-50 transition-colors`}
-                                                        >
-                                                            <p className="text-sm font-bold text-slate-800">{s.nombre}</p>
-                                                            {s.codigo && <p className="text-xs text-slate-400">Código: {s.codigo}</p>}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setFormData(prev => ({ ...prev, practicas: prev.practicas.filter((_, i) => i !== index) }))}
-                                            className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
-                                        >
-                                            <X size={18} />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {/* Surgery Details: Anesthesia | Date | Time */}
-                    {!isPedido && (
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-6 border-t border-slate-50">
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <Stethoscope size={12} className={`text-${accentColor}-500`} /> Tipo de Anestesia
-                                </label>
-                                <select
-                                    value={formData.tipoAnestesia}
-                                    onChange={(e) => handleInputChange('tipoAnestesia', e.target.value)}
-                                    className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 ${ringClass}`}
-                                >
-                                    <option value="general">General</option>
-                                    <option value="local">Local</option>
-                                    <option value="regional">Regional</option>
-                                    <option value="sedación">Sedación</option>
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <Calendar size={12} className={`text-${accentColor}-500`} /> Fecha Cirugía
-                                </label>
-                                <input
-                                    type="date"
-                                    value={formData.fechaCirugia}
-                                    onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
-                                    className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold ${ringClass}`}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <Clock size={12} className={`text-${accentColor}-500`} /> Hora
-                                </label>
-                                <input
-                                    type="time"
-                                    value={formData.horaCirugia}
-                                    onChange={(e) => handleInputChange('horaCirugia', e.target.value)}
-                                    className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all font-black ${ringClass}`}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <Calendar size={12} className={`text-${accentColor}-500`} /> Fecha Documento
-                                </label>
-                                <input
-                                    type="date"
-                                    value={formData.fechaDocumento}
-                                    onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
-                                    className={`w-full px-5 py-3.5 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold ${ringClass}`}
-                                />
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-6 border-t border-slate-50 dark:border-slate-800">
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Stethoscope size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Tipo de Anestesia
+                            </label>
+                            <select
+                                value={formData.tipoAnestesia}
+                                onChange={(e) => handleInputChange('tipoAnestesia', e.target.value)}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
+                            >
+                                <option value="general">General</option>
+                                <option value="local">Local</option>
+                                <option value="regional">Regional</option>
+                                <option value="sedación">Sedación</option>
+                            </select>
                         </div>
-                    )}
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Calendar size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Fecha Cirugía
+                            </label>
+                            <input
+                                type="date"
+                                value={formData.fechaCirugia}
+                                onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Clock size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Hora
+                            </label>
+                            <input
+                                type="time"
+                                value={formData.horaCirugia}
+                                onChange={(e) => handleInputChange('horaCirugia', e.target.value)}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-black text-slate-700 dark:text-slate-200 ${ringClass}`}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <Calendar size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Fecha Documento
+                            </label>
+                            <input
+                                type="date"
+                                value={formData.fechaDocumento}
+                                onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
+                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
+                            />
+                        </div>
+                    </div>
 
                     {/* Material Section */}
-                    {!isPedido && (
-                        <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-200 bg-purple-50/50' : 'border-slate-100 bg-slate-50/30'}`}>
-                            <label className="flex items-center gap-4 cursor-pointer group">
-                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.incluyeMaterial ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-white border border-slate-200 text-slate-300'}`}>
-                                    <Package size={18} />
-                                </div>
-                                <input
-                                    type="checkbox"
-                                    checked={formData.incluyeMaterial}
-                                    onChange={(e) => handleInputChange('incluyeMaterial', e.target.checked)}
-                                    className="hidden"
-                                />
-                                <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.incluyeMaterial ? 'text-purple-700' : 'text-slate-400 group-hover:text-slate-600'}`}>
-                                    Incluir Material
-                                </span>
-                            </label>
+                    <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-200 dark:border-purple-900/50 bg-purple-50/50 dark:bg-purple-900/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30'}`}>
+                        <label className="flex items-center gap-4 cursor-pointer group">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.incluyeMaterial ? 'bg-purple-600 text-white shadow-lg shadow-purple-200 dark:shadow-none' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600'}`}>
+                                <Package size={18} />
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={formData.incluyeMaterial}
+                                onChange={(e) => handleInputChange('incluyeMaterial', e.target.checked)}
+                                className="hidden"
+                            />
+                            <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.incluyeMaterial ? 'text-purple-700 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}>
+                                Incluir Material
+                            </span>
+                        </label>
 
-                            {formData.incluyeMaterial && (
-                                <div className="mt-6 animate-in slide-in-from-top-2 fade-in duration-300">
-                                    <label className="block text-[10px] font-black text-purple-400 uppercase tracking-widest mb-2 ml-1">
-                                        Descripción del Material
-                                    </label>
-                                    <textarea
-                                        value={formData.descripcionMaterial}
-                                        onChange={(e) => handleInputChange('descripcionMaterial', e.target.value)}
-                                        className="w-full px-5 py-4 bg-white border border-purple-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-300 transition-all min-h-[120px] shadow-sm text-slate-700 font-medium"
-                                        placeholder="Especifique materiales necesarios..."
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    )}
+                        {formData.incluyeMaterial && (
+                            <div className="mt-6 animate-in slide-in-from-top-2 fade-in duration-300">
+                                <label className="block text-[10px] font-black text-purple-400 dark:text-purple-500 uppercase tracking-widest mb-2 ml-1">
+                                    Descripción del Material
+                                </label>
+                                <textarea
+                                    value={formData.descripcionMaterial}
+                                    onChange={(e) => handleInputChange('descripcionMaterial', e.target.value)}
+                                    className="w-full px-5 py-4 bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-900/50 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-100 dark:focus:ring-purple-900 focus:border-purple-300 dark:focus:border-purple-600 transition-all min-h-[120px] shadow-sm text-slate-700 dark:text-slate-200 font-medium"
+                                    placeholder="Especifique materiales necesarios..."
+                                />
+                            </div>
+                        )}
+                    </div>
 
                     {/* Bottom Row: Diagnosis | Observations */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-50">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-50 dark:border-slate-800">
                         <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <ClipboardList size={12} className={`text-${accentColor}-500`} /> Diagnóstico
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <ClipboardList size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Diagnóstico
                             </label>
                             <textarea
                                 value={formData.diagnostico}
                                 onChange={(e) => handleInputChange('diagnostico', e.target.value)}
-                                className={`w-full px-5 py-4 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all min-h-[100px] ${ringClass} text-sm font-medium`}
+                                className={`w-full px-5 py-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all min-h-[100px] ${ringClass} text-sm font-medium text-slate-700 dark:text-slate-200`}
                                 placeholder="SAHOS, IVN, etc."
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                <StickyNote size={12} className={`text-${accentColor}-500`} /> {isPedido ? 'Observaciones' : 'Anotaciones'}
+                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                <StickyNote size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Anotaciones
                             </label>
                             <textarea
-                                value={isPedido ? formData.observaciones : formData.anotacionCalendario}
-                                onChange={(e) => handleInputChange(isPedido ? 'observaciones' : 'anotacionCalendario', e.target.value)}
-                                className={`w-full px-5 py-4 ${bgInput} rounded-2xl focus:outline-none ring-offset-0 transition-all min-h-[100px] ${ringClass} text-sm font-medium`}
+                                value={formData.anotacionCalendario}
+                                onChange={(e) => handleInputChange('anotacionCalendario', e.target.value)}
+                                className={`w-full px-5 py-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all min-h-[100px] ${ringClass} text-sm font-medium text-slate-700 dark:text-slate-200`}
                                 placeholder="Notas internas..."
                             />
                         </div>
@@ -1062,14 +990,14 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         <button
                             type="button"
                             onClick={resetForm}
-                            className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                            className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
                             disabled={loading}
-                            className={`flex-[2] py-4 bg-${accentColor}-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-${accentColor}-700 transition-all shadow-xl shadow-${accentColor}-200 flex items-center justify-center gap-2 disabled:opacity-50`}
+                            className={`flex-[2] py-4 bg-${accentColor}-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-${accentColor}-700 transition-all shadow-xl shadow-${accentColor}-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50`}
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -1139,16 +1067,6 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
             const term = value.toLowerCase();
 
-            // IF WE ARE IN "PEDIDOS" TAB: Search ONLY in PRACTICAS_MEDICAS
-            if (activeTab === 'pedidos') {
-                const practiceMatches = (PRACTICAS_MEDICAS || []).filter(p =>
-                    p.nombre && p.nombre.toLowerCase().includes(term)
-                );
-                setSuggestions(practiceMatches.slice(0, 15));
-                setHighlightedIndex(0);
-                return;
-            }
-
             // IF WE ARE IN "INTERNACION" TAB: Standard behavior
             const os = (currentOS || formData.obraSocial || '').toLowerCase();
             const isSwissMedical = os.includes('swiss');
@@ -1213,59 +1131,22 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     const selectSuggestion = (suggestion, index) => {
-        // CASE 1: Reference to a Module with children (drill-down)
-        if (suggestion.isModule && suggestion.incluye && suggestion.incluye.length > 0) {
-            const childSurgeries = suggestion.incluye.map(code => {
-                const found = CODIGOS_CIRUGIA.find(c => c.codigo === code);
-                return found || { codigo: code, nombre: 'Consultar Nomenclador' };
-            });
-
-            // Update suggestions to show children and keep dropdown open
-            // We tag them with the parent module so we know how to format the final string
-            setSuggestions(childSurgeries.map(s => ({ ...s, parentModule: suggestion })));
-            return;
-        }
-
-        // CASE 2: Child surgery selected (drill-down complete)
-        if (suggestion.parentModule) {
-            setFormData(prev => {
-                const newCodigos = [...prev.codigosCirugia];
-                newCodigos[index] = {
-                    codigo: suggestion.parentModule.codigo,
-                    nombre: `${suggestion.parentModule.nombre} - ${suggestion.codigo} ${suggestion.nombre}`
-                };
-                return { ...prev, codigosCirugia: newCodigos };
-            });
-        }
-        else if (suggestion.isIOSFA) {
-            setFormData(prev => {
-                const newCodigos = [...prev.codigosCirugia];
-                // Save format: IOSFA_CODE in code field, GENERAL_CODE + NAME in name field
-                newCodigos[index] = {
-                    codigo: suggestion.codigo,
-                    nombre: `${suggestion.codigoGeneral} ${suggestion.nombre}`
-                };
-                return { ...prev, codigosCirugia: newCodigos };
-            });
-        }
-        // CASE 3: Standard selection
-        else {
-            setFormData(prev => {
-                const newCodigos = [...prev.codigosCirugia];
-                newCodigos[index] = { codigo: suggestion.codigo, nombre: suggestion.nombre };
-                return { ...prev, codigosCirugia: newCodigos };
-            });
-        }
-
-        setSuggestions([]);
-        setActiveRow(null);
-    };
-
-    const selectPedidoSuggestion = (suggestion, index) => {
         setFormData(prev => {
-            const newPracticas = [...prev.practicas];
-            newPracticas[index] = suggestion.nombre;
-            return { ...prev, practicas: newPracticas };
+            const newCodigos = [...prev.codigosCirugia];
+            if (activeRow.field === 'codigo') {
+                newCodigos[index] = { 
+                    ...newCodigos[index], 
+                    codigo: suggestion.codigo, 
+                    nombre: suggestion.nombre 
+                };
+            } else {
+                newCodigos[index] = { 
+                    ...newCodigos[index], 
+                    nombre: suggestion.nombre,
+                    codigo: suggestion.codigo || newCodigos[index].codigo
+                };
+            }
+            return { ...prev, codigosCirugia: newCodigos };
         });
         setSuggestions([]);
         setActiveRow(null);
@@ -1282,11 +1163,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             setHighlightedIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            if (activeTab === 'pedidos') {
-                selectPedidoSuggestion(suggestions[highlightedIndex], index);
-            } else {
-                selectSuggestion(suggestions[highlightedIndex], index);
-            }
+            selectSuggestion(suggestions[highlightedIndex], index);
         } else if (e.key === 'Escape') {
             setSuggestions([]);
             setActiveRow(null);
@@ -1350,11 +1227,11 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 orderData.isTest = true;
             }
 
-            const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+            const collectionName = "ordenes_internacion";
 
             if (editingId) {
                 if (isTestEnv) {
-                    const original = activeTab === 'pedidos' ? pedidos.find(p => p.id === editingId) : ordenes.find(o => o.id === editingId);
+                    const original = ordenes.find(o => o.id === editingId);
                     if (original && !original.isTest) {
                         toast.error('No puedes editar registros de producción desde el entorno de pruebas.');
                         setLoading(false);
@@ -1367,51 +1244,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 await apiService.addDocument(collectionName, orderData);
             }
 
-            if (activeTab === 'pedidos') {
-                await fetchPedidos();
-                setPreviewType('pedido');
-            } else {
-                await fetchOrdenes();
-                setPreviewType(orderData.incluyeMaterial && orderData.descripcionMaterial ? 'ambas' : 'internacion');
+            await fetchOrdenes();
+            setPreviewType(orderData.incluyeMaterial && orderData.descripcionMaterial ? 'ambas' : 'internacion');
 
-                // Send Email Notification (ONLY IN CLOUD MODE)
-                if (!editingId && !USE_LOCAL_DB) {
-                    try {
-                        const emailDoc = await getDoc(doc(db, "settings", "notifications"));
-                        if (emailDoc.exists()) {
-                            const { emails, scriptUrl } = emailDoc.data();
-                            if (scriptUrl && emails) {
-                                // ... (Email trigger logic stays same but wrapped in !USE_LOCAL_DB)
-                                const emailBody = `NUEVA INTERNACIÓN REGISTRADA\nPaciente: ${orderData.afiliado}\nProfesional: ${orderData.profesional}`;
-                                fetch(scriptUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ to: emails, subject: `Nueva Internación: ${orderData.afiliado}`, body: emailBody }) })
-                                    .catch(err => console.error("Cloud Email trigger error:", err));
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Failed to trigger cloud email:", e);
-                    }
-                }
-
-                // Internal App Notification (ONLY IN CLOUD MODE)
-                if (isAuditoria && !USE_LOCAL_DB) {
-                    try {
-                        const emailDoc = await getDoc(doc(db, "settings", "notifications"));
-                        if (emailDoc.exists()) {
-                            const { appNotificationUids } = emailDoc.data();
-                            if (appNotificationUids && appNotificationUids.length > 0) {
-                                const batch = writeBatch(db);
-                                appNotificationUids.forEach(uid => {
-                                    const notifRef = doc(collection(db, "notifications"));
-                                    batch.set(notifRef, { userId: uid, title: "Cirugía Auditada", message: `La cirugía de ${orderData.afiliado} ha sido auditada.`, type: 'auditoria', read: false, createdAt: new Date().toISOString() });
-                                });
-                                await batch.commit();
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Failed to trigger app notification:", e);
-                    }
-                }
-            }
+            toast.success(editingId ? "Actualizado" : "Registrado", {
+                icon: '✅',
+                style: { borderRadius: '16px', background: '#333', color: '#fff' }
+            });
 
             setPreviewData(orderData);
             setShowPreview(true);
@@ -1426,67 +1265,42 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     const handleEdit = (orden) => {
-        if (activeTab === 'pedidos') {
-            // Ensure at least 5 rows for practices
-            let practicas = orden.practicas || [];
-            while (practicas.length < 5) practicas.push('');
-
-            setFormData({
-                profesional: orden.profesional || '',
-                afiliado: orden.afiliado || '',
-                obraSocial: orden.obraSocial || '',
-                numeroAfiliado: orden.numeroAfiliado || '',
-                dni: orden.dni || '',
-                edad: orden.edad || '',
-                telefono: orden.telefono || '',
-                habitacion: orden.habitacion || '',
-                tutor: orden.tutor || '',
-                practicas,
-                codigosCirugia: emptyForm.codigosCirugia,
-                diagnostico: orden.diagnostico || '',
-                observaciones: orden.observaciones || '',
-                anotacionCalendario: orden.anotacionCalendario || '',
-                suspendida: orden.suspendida || false,
-                fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
-            });
-        } else {
-            let codigosCirugia = orden.codigosCirugia;
-            if (!codigosCirugia || !Array.isArray(codigosCirugia)) {
-                codigosCirugia = orden.codigoCirugia
-                    ? [{ codigo: orden.codigoCirugia, nombre: '' }]
-                    : [{ codigo: '', nombre: '' }];
-            }
-
-            // Ensure at least 3 rows
-            while (codigosCirugia.length < 3) {
-                codigosCirugia.push({ codigo: '', nombre: '' });
-            }
-
-            setFormData({
-                profesional: orden.profesional || '',
-                afiliado: orden.afiliado || '',
-                obraSocial: orden.obraSocial || '',
-                numeroAfiliado: orden.numeroAfiliado || '',
-                dni: orden.dni || '',
-                edad: orden.edad || '',
-                telefono: orden.telefono || '',
-                habitacion: orden.habitacion || '',
-                tutor: orden.tutor || '',
-                codigosCirugia,
-                practicas: emptyForm.practicas,
-                tipoAnestesia: orden.tipoAnestesia || 'general',
-                fechaCirugia: orden.fechaCirugia || '',
-                horaCirugia: orden.horaCirugia || '',
-                salaCirugia: orden.salaCirugia || '',
-                anotacionCalendario: orden.anotacionCalendario || '',
-                incluyeMaterial: orden.incluyeMaterial || false,
-                descripcionMaterial: orden.descripcionMaterial || '',
-                diagnostico: orden.diagnostico || '',
-                observaciones: orden.observaciones || '',
-                suspendida: orden.suspendida || false,
-                fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
-            });
+        let codigosCirugia = orden.codigosCirugia;
+        if (!codigosCirugia || !Array.isArray(codigosCirugia)) {
+            codigosCirugia = orden.codigoCirugia
+                ? [{ codigo: orden.codigoCirugia, nombre: '' }]
+                : [{ codigo: '', nombre: '' }];
         }
+
+        // Ensure at least 3 rows
+        while (codigosCirugia.length < 3) {
+            codigosCirugia.push({ codigo: '', nombre: '' });
+        }
+
+        setFormData({
+            profesional: orden.profesional || '',
+            afiliado: orden.afiliado || '',
+            obraSocial: orden.obraSocial || '',
+            numeroAfiliado: orden.numeroAfiliado || '',
+            dni: orden.dni || '',
+            edad: orden.edad || '',
+            telefono: orden.telefono || '',
+            habitacion: orden.habitacion || '',
+            tutor: orden.tutor || '',
+            codigosCirugia,
+            practicas: emptyForm.practicas,
+            tipoAnestesia: orden.tipoAnestesia || 'general',
+            fechaCirugia: orden.fechaCirugia || '',
+            horaCirugia: orden.horaCirugia || '',
+            salaCirugia: orden.salaCirugia || '',
+            anotacionCalendario: orden.anotacionCalendario || '',
+            incluyeMaterial: orden.incluyeMaterial || false,
+            descripcionMaterial: orden.descripcionMaterial || '',
+            diagnostico: orden.diagnostico || '',
+            observaciones: orden.observaciones || '',
+            suspendida: orden.suspendida || false,
+            fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
+        });
         setEditingId(orden.id);
         setShowForm(true);
     };
@@ -1509,25 +1323,17 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             return;
         }
         const newStatus = !orden.enviada;
-        const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+        const collectionName = "ordenes_internacion";
 
         // Optimistic update
-        if (activeTab === 'pedidos') {
-            setPedidos(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: newStatus } : o));
-        } else {
-            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: newStatus } : o));
-        }
+        setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: newStatus } : o));
 
         try {
             await apiService.updateDocument(collectionName, orden.id, { enviada: newStatus });
         } catch (error) {
             console.error("Error updating status:", error);
             // Revert on error
-            if (activeTab === 'pedidos') {
-                setPedidos(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: !newStatus } : o));
-            } else {
-                setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: !newStatus } : o));
-            }
+            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, enviada: !newStatus } : o));
             alert("No se pudo actualizar el estado.");
         }
     };
@@ -1538,32 +1344,34 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             return;
         }
         const newValue = !orden[field];
-        const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+        const collectionName = "ordenes_internacion";
 
         // Optimistic update
-        if (activeTab === 'pedidos') {
-            setPedidos(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: newValue } : o));
-        } else {
-            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: newValue } : o));
-        }
+        setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: newValue } : o));
 
         try {
             await apiService.updateDocument(collectionName, orden.id, { [field]: newValue });
         } catch (error) {
             console.error(`Error updating ${field}: `, error);
             // Revert on error
-            if (activeTab === 'pedidos') {
-                setPedidos(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: !newValue } : o));
-            } else {
-                setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: !newValue } : o));
-            }
+            setOrdenes(prev => prev.map(o => o.id === orden.id ? { ...o, [field]: !newValue } : o));
             alert("No se pudo actualizar. Verifica tus permisos.");
         }
     };
 
     const handleDelete = async (id) => {
+        const item = ordenes.find(o => o.id === id);
+        
+        // --- ENFORCE OWN RECORDS POLICY ---
+        const canManageAny = isSuperAdmin || permissions?.can_delete_data;
+        const isOwner = item?.createdBy === currentUser?.email;
+
+        if (!canManageAny && !isOwner) {
+            alert("No tienes permiso para eliminar este registro. Solo puedes eliminar los creados por ti mismo.");
+            return;
+        }
+
         if (isTestEnv) {
-            const item = activeTab === 'pedidos' ? pedidos.find(p => p.id === id) : ordenes.find(o => o.id === id);
             if (item && !item.isTest) {
                 toast.error('No puedes eliminar registros de producción desde el entorno de pruebas.');
                 return;
@@ -1572,17 +1380,11 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         if (!window.confirm("¿Confirmar eliminación definitiva de este documento? No se podrá deshacer.")) return;
 
         setLoading(true);
-        const collectionName = activeTab === 'pedidos' ? "pedidos_medicos" : "ordenes_internacion";
+        const collectionName = "ordenes_internacion";
 
         try {
             await apiService.deleteDocument(collectionName, id);
-
-            // Success: update local state
-            if (activeTab === 'pedidos') {
-                setPedidos(prev => prev.filter(o => o.id !== id));
-            } else {
-                setOrdenes(prev => prev.filter(o => o.id !== id));
-            }
+            setOrdenes(prev => prev.filter(o => o.id !== id));
         } catch (error) {
             console.error("Error deleting order:", error);
             alert(`Error al eliminar: ${error.message || 'Permiso denegado.'} `);
@@ -1705,8 +1507,20 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     // Open consent PDF(s) for printing
-
-
+    const handlePrintConsents = (orden) => {
+        const consents = getApplicableConsents(orden);
+        if (consents.length === 0) {
+            alert("No se encontraron consentimientos específicos para estos códigos.");
+            return;
+        }
+        
+        consents.forEach(consent => {
+            const pdfUrl = orden.edad < 18 ? (consent.menor || consent.adulto) : (consent.adulto || consent.menor);
+            if (pdfUrl) {
+                window.open(pdfUrl, '_blank');
+            }
+        });
+    };
     const renderPrintContent = (type) => {
         // Handle Reporte Semanal
         if (type === 'reporte_semanal') {
@@ -1928,7 +1742,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     }
 
     // Determined logic for filtered and sorted items
-    const listToFilter = activeTab === 'pedidos' ? pedidos : ordenes;
+    const listToFilter = ordenes;
 
     const sortedOrdenes = useMemo(() => {
         const today = new Date();
@@ -1949,6 +1763,22 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         };
 
         const filtered = listToFilter.filter(orden => {
+            // IF CONTROL TAB: Only filter by range
+            if (activeTab === 'control') {
+                if (orden.suspendida) return false;
+                if (!orden.fechaCirugia) return false;
+                
+                const surgDate = orden.fechaCirugia;
+                const start = rangeStart || '0000-00-00';
+                const end = rangeEnd || '9999-99-99';
+                
+                const matchRange = surgDate >= start && surgDate <= end;
+                const matchPaciente = !searchPaciente || orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase());
+                
+                return matchRange && matchPaciente;
+            }
+
+            // IF INTERNACION TAB: Full filters
             const matchProfesional = !filterProfesional || orden.profesional === filterProfesional;
             const matchObraSocial = !filterObraSocial || (orden.obraSocial?.trim().toUpperCase() === filterObraSocial.toUpperCase());
             const matchDate = !filterDate || orden.fechaCirugia === filterDate;
@@ -1982,6 +1812,9 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         });
 
         return filtered.sort((a, b) => {
+            if (activeTab === 'control') {
+                return new Date(a.fechaCirugia) - new Date(b.fechaCirugia);
+            }
             const urgentA = checkUrgency(a);
             const urgentB = checkUrgency(b);
             if (urgentA && !urgentB) return -1;
@@ -1990,7 +1823,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             const dateB = b.fechaCirugia || b.createdAt;
             return new Date(dateB) - new Date(dateA);
         });
-    }, [activeTab, pedidos, ordenes, filterProfesional, filterObraSocial, filterDate, filterStatus, filterAudit, searchPaciente, filterPeriodo]);
+    }, [activeTab, ordenes, filterProfesional, filterObraSocial, filterDate, filterStatus, filterAudit, searchPaciente, filterPeriodo, rangeStart, rangeEnd]);
 
     const checkUrgency = (orden) => {
         if (orden.autorizada) return false;
@@ -2008,62 +1841,69 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="bg-gradient-to-br from-teal-600 to-teal-700 text-white p-6 rounded-2xl shadow-lg">
+            <div className="bg-gradient-to-br from-teal-600 to-teal-700 text-white p-6 rounded-2xl shadow-md">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                         <h2 className="text-2xl font-bold flex items-center gap-3">
-                            {activeTab === 'pedidos' ? <FileHeart size={28} /> : <FileText size={28} />}
-                            {activeTab === 'pedidos' ? 'Pedidos' : 'Órdenes de Internación'}
+                            {activeTab === 'control' ? <Printer size={28} /> : <FileText size={28} />}
+                            {activeTab === 'control' ? 'Control de Cirugías' : 'Órdenes de Internación'}
                         </h2>
                         <p className="text-teal-100 text-sm mt-1">
-                            {canShareOrdenes
-                                ? (activeTab === 'pedidos' ? 'Genera pedidos y recetas.' : 'Crea órdenes de internación y pedidos de material.')
-                                : 'Visualiza el historial de documentos.'}
+                            {activeTab === 'control' 
+                                ? 'Control de facturación e impresión por fechas.' 
+                                : canShareOrdenes 
+                                    ? 'Crea órdenes de internación y pedidos de material.' 
+                                    : 'Visualiza el historial de documentos.'}
                         </p>
                     </div>
                     <div className="flex bg-teal-800/30 p-1 rounded-xl">
                         <button
-                            onClick={() => { if (activeTab !== 'internacion') resetForm(); setActiveTab('internacion'); }}
+                            onClick={() => { resetForm(); setActiveTab('internacion'); }}
                             className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'internacion' ? 'bg-white text-teal-700 shadow-md' : 'text-teal-100 hover:bg-white/10'}`}
                         >
                             Internación
                         </button>
                         <button
-                            onClick={() => { if (activeTab !== 'pedidos') resetForm(); setActiveTab('pedidos'); }}
-                            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'pedidos' ? 'bg-white text-teal-700 shadow-md' : 'text-teal-100 hover:bg-white/10'}`}
+                            onClick={() => { setActiveTab('control'); }}
+                            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'control' ? 'bg-white text-teal-700 shadow-md' : 'text-teal-100 hover:bg-white/10'}`}
                         >
-                            Pedidos
+                            Control
                         </button>
                     </div>
 
                     {!modalMode && canViewOrdenes && (
                         <div className="flex items-center gap-3">
-                            {activeTab === 'internacion' && canShareOrdenes && (
+                            {activeTab === 'control' && (
                                 <>
-                                    <div className="flex items-center gap-1.5 bg-teal-800/40 p-1.5 rounded-xl border border-teal-600/30">
-                                        <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-teal-300 uppercase px-1">Inicio</span>
-                                            <input
-                                                type="date"
-                                                value={rangeStart}
-                                                onChange={(e) => setRangeStart(e.target.value)}
-                                                className="bg-transparent text-white text-[10px] border-0 focus:ring-0 p-0 px-1 w-20 cursor-pointer"
-                                            />
+                                    <div className="flex items-center gap-4 bg-teal-800/40 p-2.5 rounded-2xl border border-teal-600/30 shadow-inner">
+                                        <div className="flex items-center gap-3">
+                                            <Calendar size={18} className="text-teal-300/80" />
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black text-teal-300 uppercase tracking-wider">Inicio</span>
+                                                <input
+                                                    type="date"
+                                                    value={rangeStart}
+                                                    onChange={(e) => setRangeStart(e.target.value)}
+                                                    className="bg-transparent text-white text-sm border-0 focus:ring-0 p-0 w-[110px] cursor-pointer font-bold"
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="w-px h-4 bg-teal-600/30"></div>
-                                        <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-teal-300 uppercase px-1">Fin</span>
-                                            <input
-                                                type="date"
-                                                value={rangeEnd}
-                                                onChange={(e) => setRangeEnd(e.target.value)}
-                                                className="bg-transparent text-white text-[10px] border-0 focus:ring-0 p-0 px-1 w-20 cursor-pointer"
-                                            />
+                                        <div className="w-px h-8 bg-teal-600/30"></div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black text-teal-300 uppercase tracking-wider">Fin</span>
+                                                <input
+                                                    type="date"
+                                                    value={rangeEnd}
+                                                    onChange={(e) => setRangeEnd(e.target.value)}
+                                                    className="bg-transparent text-white text-sm border-0 focus:ring-0 p-0 w-[110px] cursor-pointer font-bold"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                     <button
                                         onClick={handleExportWeeklyExcel}
-                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-teal-800 text-teal-100 rounded-xl font-bold hover:bg-teal-900 transition-all shadow-lg shadow-teal-950/20 border border-teal-600"
+                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-teal-800 text-teal-100 rounded-xl font-bold hover:bg-teal-900 transition-all shadow-md shadow-teal-950/10 border border-teal-600"
                                         title="Descargar Excel con Rango"
                                     >
                                         <TableProperties size={20} />
@@ -2071,21 +1911,23 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     </button>
                                     <button
                                         onClick={handlePrintWeeklyReport}
-                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all shadow-lg shadow-slate-950/20 border border-slate-700"
-                                        title="Imprimir Control con Rango"
+                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all shadow-md shadow-slate-950/10 border border-slate-700"
+                                        title="Imprimir Reporte"
                                     >
                                         <Printer size={20} />
-                                        <span className="hidden sm:inline">Imprimir Control</span>
+                                        <span className="hidden sm:inline">Imprimir Reporte</span>
                                     </button>
                                 </>
                             )}
-                            <button
-                                onClick={() => { resetForm(); setShowForm(true); }}
-                                className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-lg ml-2"
-                            >
-                                <Plus size={20} />
-                                {activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden'}
-                            </button>
+                            {activeTab === 'internacion' && canShareOrdenes && (
+                                <button
+                                    onClick={() => { resetForm(); setShowForm(true); }}
+                                    className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-md ml-2"
+                                >
+                                    <Plus size={20} />
+                                    Nueva Orden
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
@@ -2100,10 +1942,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         exit={{ height: 0, opacity: 0, marginBottom: 0 }}
                         className="overflow-hidden"
                     >
-                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden relative">
+                        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-md border border-slate-100 dark:border-slate-800 overflow-hidden relative">
                             <button
                                 onClick={resetForm}
-                                className="absolute top-6 right-6 p-2 h-10 w-10 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-400 transition-colors z-10"
+                                className="absolute top-6 right-6 p-2 h-10 w-10 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors z-10"
                             >
                                 <X size={20} />
                             </button>
@@ -2120,13 +1962,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             {/* Main Content Area */}
             {modalMode ? (
                 <div className="p-4 h-full flex flex-col">
-                    <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border-4 border-teal-500 animate-in zoom-in-95 duration-300 flex flex-col flex-1 min-h-0">
-                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white z-10 font-sans shrink-0">
-                            <h3 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl overflow-hidden border-4 border-teal-500 animate-in zoom-in-95 duration-300 flex flex-col flex-1 min-h-0">
+                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10 font-sans shrink-0">
+                            <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3">
                                 {editingId ? <Edit3 size={28} className="text-teal-600" /> : <Plus size={28} className="text-teal-600" />}
-                                {editingId ? 'Editar Documento' : (activeTab === 'pedidos' ? 'Nuevo Pedido' : 'Nueva Orden')}
+                                {editingId ? 'Editar Documento' : 'Nueva Orden'}
                             </h3>
-                            <button type="button" onClick={onClose} className="p-3 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                            <button type="button" onClick={onClose} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
                                 <X size={24} />
                             </button>
                         </div>
@@ -2138,117 +1980,136 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     </div>
                 </div>
             ) : (
-                <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 bg-slate-50">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-slate-100 dark:border-slate-800 overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
                         <div className="flex flex-wrap items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
-                                <h3 className="font-bold text-slate-700">Historial de Órdenes</h3>
-                                <div className="flex bg-slate-200/50 p-1 rounded-lg">
+                                <h3 className="font-bold text-slate-700 dark:text-slate-300">Historial de Órdenes</h3>
+                                <div className="flex bg-slate-200/50 dark:bg-slate-800 p-1 rounded-lg">
                                     <button
                                         onClick={() => setViewMode('list')}
-                                        className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                        className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-teal-600 shadow-sm' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
                                         title="Vista de Lista"
                                     >
                                         <List size={18} />
                                     </button>
                                     <button
                                         onClick={() => setViewMode('grid')}
-                                        className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                        className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-teal-600 shadow-sm' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
                                         title="Vista de Mosaico"
                                     >
                                         <LayoutGrid size={18} />
                                     </button>
                                 </div>
                             </div>
-                            <div className="flex flex-wrap items-center gap-3">
-                                {/* Filter by Period */}
-                                <select
-                                    value={filterPeriodo}
-                                    onChange={(e) => setFilterPeriodo(e.target.value)}
-                                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-teal-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                >
-                                    <option value="proximas">Próximas Cirugías</option>
-                                    <option value="realizadas">Cirugías Realizadas (Historial)</option>
-                                    <option value="suspendidas">Cirugías Canceladas</option>
-                                    <option value="todas">Ver Todas</option>
-                                </select>
+                            {activeTab === 'internacion' ? (
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {/* Filter by Period */}
+                                    <select
+                                        value={filterPeriodo}
+                                        onChange={(e) => setFilterPeriodo(e.target.value)}
+                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-teal-700 dark:text-teal-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    >
+                                        <option value="proximas">Próximas Cirugías</option>
+                                        <option value="realizadas">Cirugías Realizadas (Historial)</option>
+                                        <option value="suspendidas">Cirugías Canceladas</option>
+                                        <option value="todas">Ver Todas</option>
+                                    </select>
 
-                                {/* Filter by Date */}
-                                <input
-                                    type="date"
-                                    value={filterDate}
-                                    onChange={(e) => {
-                                        const newDate = e.target.value;
-                                        setFilterDate(newDate);
-                                        if (newDate) {
-                                            const today = new Date();
-                                            today.setHours(0, 0, 0, 0);
-                                            const offset = today.getTimezoneOffset();
-                                            const todayLocal = new Date(today.getTime() - (offset * 60 * 1000));
-                                            const todayStr = todayLocal.toISOString().split('T')[0];
-                                            
-                                            // If selected date is in the past, or if any date is selected, 
-                                            // default to "Ver Todas" to avoid filter conflicts
-                                            if (newDate < todayStr) {
-                                                setFilterPeriodo('todas');
-                                            }
-                                        }
-                                    }}
-                                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                />
-                                {/* Filter by Professional */}
-                                <select
-                                    value={filterProfesional}
-                                    onChange={(e) => setFilterProfesional(e.target.value)}
-                                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                >
-                                    <option value="">Todos los profesionales</option>
-                                    {profesionales.map(p => (
-                                        <option key={p.id} value={p.nombre}>{p.nombre}</option>
-                                    ))}
-                                </select>
-                                {/* Filter by Obra Social */}
-                                <select
-                                    value={filterObraSocial}
-                                    onChange={(e) => setFilterObraSocial(e.target.value)}
-                                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                >
-                                    <option value="">Todas las Obras Sociales</option>
-                                    {[...new Set(listToFilter.map(o => o.obraSocial?.trim().toUpperCase()).filter(Boolean))].sort().map(os => (
-                                        <option key={os} value={os}>{os}</option>
-                                    ))}
-                                </select>
-                                <select
-                                    value={filterStatus}
-                                    onChange={(e) => setFilterStatus(e.target.value)}
-                                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                >
-                                    <option value="">Todos los estados</option>
-                                    <option value="pendientes">Pendientes</option>
-                                    <option value="enviadas">Enviadas</option>
-                                </select>
-                                {/* Filter by Audit Status */}
-                                <select
-                                    value={filterAudit}
-                                    onChange={(e) => setFilterAudit(e.target.value)}
-                                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                >
-                                    <option value="">Auditoría (Todas)</option>
-                                    <option value="pendientes">Pendientes</option>
-                                    <option value="auditadas">Auditadas</option>
-                                </select>
-                                {/* Search by Patient */}
-                                <div className="relative">
-                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    {/* Filter by Date */}
                                     <input
-                                        type="text"
-                                        placeholder="Buscar paciente..."
-                                        value={searchPaciente}
-                                        onChange={(e) => setSearchPaciente(e.target.value)}
-                                        className="pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 w-48"
+                                        type="date"
+                                        value={filterDate}
+                                        onChange={(e) => {
+                                            const newDate = e.target.value;
+                                            setFilterDate(newDate);
+                                            if (newDate) {
+                                                const today = new Date();
+                                                today.setHours(0, 0, 0, 0);
+                                                const offset = today.getTimezoneOffset();
+                                                const todayLocal = new Date(today.getTime() - (offset * 60 * 1000));
+                                                const todayStr = todayLocal.toISOString().split('T')[0];
+                                                
+                                                if (newDate < todayStr) {
+                                                    setFilterPeriodo('todas');
+                                                }
+                                            }
+                                        }}
+                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                                     />
+                                    {/* Filter by Professional */}
+                                    <select
+                                        value={filterProfesional}
+                                        onChange={(e) => setFilterProfesional(e.target.value)}
+                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    >
+                                        <option value="">Todos los profesionales</option>
+                                        {profesionales.map(p => (
+                                            <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                                        ))}
+                                    </select>
+                                    {/* Filter by Obra Social */}
+                                    <select
+                                        value={filterObraSocial}
+                                        onChange={(e) => setFilterObraSocial(e.target.value)}
+                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    >
+                                        <option value="">Todas las Obras Sociales</option>
+                                        {[...new Set(listToFilter.map(o => o.obraSocial?.trim().toUpperCase()).filter(Boolean))].sort().map(os => (
+                                            <option key={os} value={os}>{os}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={filterStatus}
+                                        onChange={(e) => setFilterStatus(e.target.value)}
+                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    >
+                                        <option value="">Todos los estados</option>
+                                        <option value="pendientes">Pendientes</option>
+                                        <option value="enviadas">Enviadas</option>
+                                    </select>
+                                    {/* Filter by Audit Status */}
+                                    <select
+                                        value={filterAudit}
+                                        onChange={(e) => setFilterAudit(e.target.value)}
+                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                    >
+                                        <option value="">Auditoría (Todas)</option>
+                                        <option value="pendientes">Pendientes</option>
+                                        <option value="auditadas">Auditadas</option>
+                                    </select>
+                                    {/* Search by Patient */}
+                                    <div className="relative">
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar paciente..."
+                                            value={searchPaciente}
+                                            onChange={(e) => setSearchPaciente(e.target.value)}
+                                            className="pl-9 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500 w-48"
+                                        />
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    <div className="relative">
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar paciente..."
+                                            value={searchPaciente}
+                                            onChange={(e) => setSearchPaciente(e.target.value)}
+                                            className="pl-9 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500 w-64"
+                                        />
+                                    </div>
+                                    <button 
+                                        onClick={() => { setRangeStart(''); setRangeEnd(''); setSearchPaciente(''); }}
+                                        className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-teal-600 transition-colors"
+                                    >
+                                        Limpiar filtros
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                     {sortedOrdenes.length === 0 ? (
@@ -2258,27 +2119,27 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         </div>
                     ) : (
                         <>
-                            <div className={viewMode === 'list' ? "divide-y divide-slate-100" : "grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-100/30"}>
+                            <div className={viewMode === 'list' ? "divide-y divide-slate-100 dark:divide-slate-800" : "grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-100/30 dark:bg-slate-950"}>
                                 {sortedOrdenes.slice(0, visibleCount).map(orden => {
                                     const isUrgent = checkUrgency(orden);
                                     if (viewMode === 'list') {
                                         return (
                                             <div
                                                 key={orden.id}
-                                                className={`p-4 flex items-center justify-between transition-colors ${orden.suspendida ? 'bg-slate-100 opacity-60 grayscale-[0.8]' :
-                                                    orden.enviada ? 'bg-slate-50 opacity-75 grayscale-[0.5]' :
-                                                        isUrgent ? 'bg-red-50 hover:bg-red-100 border-l-4 border-red-500' : 'hover:bg-slate-50'
+                                                className={`p-4 flex items-center justify-between transition-colors ${orden.suspendida ? 'bg-slate-100 dark:bg-slate-800/50 opacity-60 grayscale-[0.8]' :
+                                                    orden.enviada ? 'bg-slate-50 dark:bg-slate-900/50 opacity-75 grayscale-[0.5]' :
+                                                        isUrgent ? 'bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 border-l-4 border-red-500' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
                                                     } `}
                                             >
                                                 <div className="flex items-center gap-4">
-                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isUrgent ? 'bg-red-100 text-red-600 animate-pulse' :
-                                                        activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600')
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isUrgent ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 animate-pulse' :
+                                                        activeTab === 'pedidos' ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : (orden.incluyeMaterial ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' : 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400')
                                                         } `}>
-                                                        {isUrgent ? <AlertCircle size={20} /> : (orden.enviada ? <CheckCircle2 size={20} /> : (activeTab === 'pedidos' ? <FileHeart size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />)))}
+                                                        {isUrgent ? <AlertCircle size={20} /> : (orden.enviada ? <CheckCircle2 size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />))}
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-2">
-                                                            <p className={`font-bold ${orden.enviada ? 'text-slate-500' : isUrgent ? 'text-red-700' : 'text-slate-800'}`}>
+                                                            <p className={`font-bold ${orden.enviada ? 'text-slate-500 dark:text-slate-400' : isUrgent ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'}`}>
                                                                 {orden.afiliado}
                                                             </p>
                                                             {isUrgent && orden.status !== 'aprobada' && !orden.autorizada ? (
@@ -2286,19 +2147,19 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                                     <AlertCircle size={10} /> Urgente
                                                                 </span>
                                                             ) : orden.status === 'aprobada' ? (
-                                                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                                <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wide rounded-full">
                                                                     Aprobada
                                                                 </span>
                                                             ) : orden.status === 'rechazada' ? (
-                                                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-bold uppercase tracking-wide rounded-full">
                                                                     Rechazada
                                                                 </span>
                                                             ) : orden.enviada ? (
-                                                                <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                                <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wide rounded-full">
                                                                     Enviada
                                                                 </span>
                                                             ) : (
-                                                                <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase tracking-wide rounded-full">
+                                                                <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-[10px] font-bold uppercase tracking-wide rounded-full">
                                                                     Pendiente
                                                                 </span>
                                                             )}
@@ -2308,15 +2169,14 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <p className="text-sm text-slate-500">
-                                                            {orden.profesional} • {orden.obraSocial} • {orden.dni && <span className="font-bold text-slate-700">DNI: {orden.dni} • </span>}Fecha: {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
-                                                            {activeTab === 'pedidos' && <span className="ml-2 font-medium text-pink-600">• Pedido Médico</span>}
-                                                            {orden.habitacion && <span className="ml-2 font-medium text-amber-600">• Hab: {orden.habitacion}</span>}
-                                                            {orden.incluyeMaterial && <span className="ml-2 text-purple-600 font-medium">+ Material</span>}
-                                                            {orden.status === 'auditada' && <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded uppercase tracking-tighter shadow-sm border border-emerald-200">Auditada</span>}
+                                                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                                                            {orden.profesional} • {orden.obraSocial} • {orden.dni && <span className="font-bold text-slate-700 dark:text-slate-300">DNI: {orden.dni} • </span>}Fecha: {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
+                                                            {orden.habitacion && <span className="ml-2 font-medium text-amber-600 dark:text-amber-400">• Hab: {orden.habitacion}</span>}
+                                                            {orden.incluyeMaterial && <span className="ml-2 text-purple-600 dark:text-purple-400 font-medium">+ Material</span>}
+                                                            {orden.status === 'auditada' && <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-black rounded uppercase tracking-tighter shadow-sm border border-emerald-200 dark:border-emerald-800">Auditada</span>}
                                                         </p>
                                                         {orden.observaciones && (
-                                                            <div className="mt-1 p-2 bg-teal-50 border-l-2 border-teal-400 text-xs text-teal-700 italic rounded">
+                                                            <div className="mt-1 p-2 bg-teal-50 dark:bg-teal-900/20 border-l-2 border-teal-400 dark:border-teal-600 text-xs text-teal-700 dark:text-teal-300 italic rounded">
                                                                 <strong>Nota:</strong> {orden.observaciones}
                                                             </div>
                                                         )}
@@ -2328,19 +2188,19 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                                 onClick={() => handleToggleField(orden, 'autorizada')}
                                                                 className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
                                                                     ? 'bg-teal-600 text-white border-teal-700 shadow-sm hover:bg-teal-700'
-                                                                    : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
+                                                                    : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
                                                                     } `}
                                                             >
                                                                 <ShieldCheck size={12} strokeWidth={2.5} />
                                                                 {orden.autorizada ? 'Autorizada' : 'Autorizar'}
                                                             </button>
 
-                                                            {orden.incluyeMaterial && activeTab !== 'pedidos' && (
+                                                            {orden.incluyeMaterial && (
                                                                 <button
                                                                     onClick={() => handleToggleField(orden, 'materialSolicitado')}
                                                                     className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
                                                                         ? 'bg-purple-600 text-white border-purple-700 shadow-sm hover:bg-purple-700'
-                                                                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
+                                                                        : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
                                                                         } `}
                                                                 >
                                                                     <Truck size={12} strokeWidth={2.5} />
@@ -2353,8 +2213,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         <button
                                                             onClick={() => handleToggleStatus(orden)}
                                                             className={`p-2 rounded-lg transition-colors ${orden.enviada
-                                                                ? 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
-                                                                : 'text-slate-400 hover:bg-green-50 hover:text-green-600'
+                                                                ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300'
+                                                                : 'text-slate-400 dark:text-slate-500 hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-600 dark:hover:text-green-400'
                                                                 } `}
                                                             title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
                                                         >
@@ -2363,8 +2223,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         <button
                                                             onClick={() => handleToggleField(orden, 'suspendida')}
                                                             className={`p-2 rounded-lg transition-colors ${orden.suspendida
-                                                                ? 'text-slate-600 bg-slate-200'
-                                                                : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                                                                ? 'text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700'
+                                                                : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300'
                                                                 } `}
                                                             title={orden.suspendida ? "Re-activar cirugía" : "Suspender cirugía"}
                                                         >
@@ -2372,24 +2232,23 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         </button>
                                                         <button
                                                             onClick={() => handleEdit(orden)}
-                                                            className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                                            className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors"
                                                             title="Editar"
                                                         >
                                                             <Edit3 size={18} />
                                                         </button>
                                                         <button
-                                                            onClick={() => handlePreview(orden, activeTab === 'pedidos' ? 'pedido' : 'internacion')}
-                                                            className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                                            onClick={() => handlePreview(orden, 'internacion')}
+                                                            className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors"
                                                             title="Ver Documento"
                                                         >
                                                             <Printer size={18} />
                                                         </button>
                                                         {orden.incluyeMaterial &&
-                                                            orden.descripcionMaterial &&
-                                                            activeTab !== 'pedidos' && (
+                                                            orden.descripcionMaterial && (
                                                                 <button
                                                                     onClick={() => handlePreview(orden, 'material')}
-                                                                    className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                                                    className="p-2 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
                                                                     title="Ver Material"
                                                                 >
                                                                     <Package size={18} />
@@ -2397,7 +2256,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                             )}
                                                         <button
                                                             onClick={() => handlePreview(orden, 'caratula')}
-                                                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                            className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors"
                                                             title="Ver Carátula"
                                                         >
                                                             <Folder size={18} />
@@ -2405,16 +2264,16 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         {orden.telefono && (
                                                             <button
                                                                 onClick={() => setWhatsappModal(orden)}
-                                                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                                className="p-2 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
                                                                 title="Enviar WhatsApp"
                                                             >
                                                                 <MessageCircle size={18} />
                                                             </button>
                                                         )}
-                                                        {isSuperAdmin && (
+                                                        {(isSuperAdmin || permissions?.can_delete_data || (permissions?.can_delete_own && orden.createdBy === currentUser?.email)) && (
                                                             <button
                                                                 onClick={() => handleDelete(orden.id)}
-                                                                className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                                                                className="p-2 text-red-400 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                                                                 title="Eliminar"
                                                             >
                                                                 <Trash2 size={18} />
@@ -2430,17 +2289,17 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     return (
                                         <div
                                             key={orden.id}
-                                            className={`bg-white rounded-2xl border p-5 flex flex-col justify-between transition-all hover:shadow-md ${orden.suspendida ? 'opacity-60 grayscale-[0.6] bg-slate-50 border-slate-200 shadow-inner' :
-                                                orden.enviada ? 'opacity-75 grayscale-[0.3] border-slate-200' :
-                                                    isUrgent ? 'border-red-200 shadow-sm shadow-red-50 ring-1 ring-red-100' : 'border-slate-100'
+                                            className={`bg-white dark:bg-slate-800 rounded-2xl border p-5 flex flex-col justify-between transition-all hover:shadow-md ${orden.suspendida ? 'opacity-60 grayscale-[0.6] bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-inner' :
+                                                orden.enviada ? 'opacity-75 grayscale-[0.3] border-slate-200 dark:border-slate-700' :
+                                                    isUrgent ? 'border-red-200 dark:border-red-900/50 shadow-sm shadow-red-50 dark:shadow-red-900/20 ring-1 ring-red-100 dark:ring-red-900/30' : 'border-slate-100 dark:border-slate-700'
                                                 } `}
                                         >
                                             <div>
                                                 <div className="flex justify-between items-start mb-4">
-                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isUrgent ? 'bg-red-100 text-red-600' :
-                                                        activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600')
+                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isUrgent ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' :
+                                                        activeTab === 'pedidos' ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : (orden.incluyeMaterial ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' : 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400')
                                                         } `}>
-                                                        {isUrgent ? <AlertCircle size={24} /> : (orden.enviada ? <CheckCircle2 size={24} /> : (activeTab === 'pedidos' ? <FileHeart size={24} /> : (orden.incluyeMaterial ? <FileStack size={24} /> : <FileText size={24} />)))}
+                                                        {isUrgent ? <AlertCircle size={24} /> : (orden.enviada ? <CheckCircle2 size={24} /> : (orden.incluyeMaterial ? <FileStack size={24} /> : <FileText size={24} />))}
                                                     </div>
                                                     <div className="flex flex-col items-end gap-1">
                                                         {isUrgent && orden.status !== 'aprobada' && !orden.autorizada ? (
@@ -2468,7 +2327,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                                 Pendiente
                                                             </span>
                                                         )}
-                                                        {orden.status === 'auditada' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded uppercase shadow-sm border border-emerald-200">Auditada</span>}
+                                                        {orden.status === 'auditada' && <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-black rounded uppercase shadow-sm border border-emerald-200 dark:border-emerald-800">Auditada</span>}
                                                         {isTestEnv && !orden.isTest && (
                                                             <span className="px-2 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-lg flex items-center gap-1 mt-1 justify-center">
                                                                 <LockIcon size={10} /> Producción (Solo Lectura)
@@ -2477,31 +2336,31 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                     </div>
                                                 </div>
 
-                                                <h4 className={`text-lg font-bold truncate ${orden.enviada ? 'text-slate-500' : 'text-slate-800'}`}>
+                                                <h4 className={`text-lg font-bold truncate ${orden.enviada ? 'text-slate-500 dark:text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
                                                     {orden.afiliado}
                                                 </h4>
 
                                                 <div className="mt-3 space-y-2">
-                                                    <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
-                                                        <User size={14} className="text-slate-400 shrink-0" />
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
+                                                        <User size={14} className="text-slate-400 dark:text-slate-500 shrink-0" />
                                                         <span className="truncate">{orden.profesional}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
-                                                        <Building2 size={14} className="text-slate-400 shrink-0" />
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
+                                                        <Building2 size={14} className="text-slate-400 dark:text-slate-500 shrink-0" />
                                                         <span className="truncate">{orden.obraSocial}</span>
                                                     </div>
                                                     <div className="grid grid-cols-2 gap-2">
-                                                        <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
-                                                            <Hash size={14} className="text-slate-400 shrink-0" />
+                                                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
+                                                            <Hash size={14} className="text-slate-400 dark:text-slate-500 shrink-0" />
                                                             <span className="font-bold">{orden.dni || '-'}</span>
                                                         </div>
-                                                        <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
-                                                            <Calendar size={14} className="text-slate-400 shrink-0" />
+                                                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
+                                                            <Calendar size={14} className="text-slate-400 dark:text-slate-500 shrink-0" />
                                                             <span>{formatDate(orden.fechaCirugia || orden.fechaDocumento)}</span>
                                                         </div>
                                                     </div>
                                                     {orden.habitacion && (
-                                                        <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 p-2 rounded-lg font-medium">
+                                                        <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg font-medium">
                                                             <Home size={14} className="shrink-0" />
                                                             <span>Habitación: {orden.habitacion}</span>
                                                         </div>
@@ -2509,7 +2368,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 </div>
 
                                                 {orden.observaciones && (
-                                                    <div className="mt-3 p-3 bg-teal-50 border-l-2 border-teal-400 text-xs text-teal-700 italic rounded">
+                                                    <div className="mt-3 p-3 bg-teal-50 dark:bg-teal-900/20 border-l-2 border-teal-400 dark:border-teal-600 text-xs text-teal-700 dark:text-teal-300 italic rounded">
                                                         <strong>Nota:</strong> {orden.observaciones}
                                                     </div>
                                                 )}
@@ -2520,7 +2379,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         onClick={() => handleToggleField(orden, 'autorizada')}
                                                         className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
                                                             ? 'bg-teal-600 text-white border-teal-700 shadow-sm'
-                                                            : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                                            : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                                                             } `}
                                                     >
                                                         <ShieldCheck size={14} />
@@ -2532,7 +2391,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                             onClick={() => handleToggleField(orden, 'materialSolicitado')}
                                                             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
                                                                 ? 'bg-purple-600 text-white border-purple-700 shadow-sm'
-                                                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                                                : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                                                                 } `}
                                                         >
                                                             <Truck size={14} />
@@ -2542,7 +2401,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 </div>
                                             </div>
 
-                                            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
+                                            <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
                                                 <div className="flex gap-1">
                                                     <button
                                                         onClick={() => handleToggleStatus(orden)}
@@ -2572,14 +2431,14 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 <div className="flex gap-1">
                                                     <button
                                                         onClick={() => handlePreview(orden, activeTab === 'pedidos' ? 'pedido' : 'internacion')}
-                                                        className="p-2.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-xl transition-colors"
+                                                        className="p-2.5 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/50 rounded-xl transition-colors"
                                                         title="Imprimir"
                                                     >
                                                         <Printer size={20} />
                                                     </button>
                                                     <button
                                                         onClick={() => handlePreview(orden, 'caratula')}
-                                                        className="p-2.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-xl transition-colors"
+                                                        className="p-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 rounded-xl transition-colors"
                                                         title="Carátula"
                                                     >
                                                         <Folder size={20} />
@@ -2587,13 +2446,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                     {orden.telefono && (
                                                         <button
                                                             onClick={() => setWhatsappModal(orden)}
-                                                            className="p-2.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-xl transition-colors"
+                                                            className="p-2.5 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-xl transition-colors"
                                                             title="WhatsApp"
                                                         >
                                                             <MessageCircle size={20} />
                                                         </button>
                                                     )}
-                                                    {isSuperAdmin && (
+                                                    {(isSuperAdmin || permissions?.can_delete_data || (permissions?.can_delete_own && orden.createdBy === currentUser?.email)) && (
                                                         <button
                                                             onClick={() => handleDelete(orden.id)}
                                                             className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
@@ -2609,14 +2468,14 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 })}
                             </div>
                             {sortedOrdenes.length > visibleCount && (
-                                <div className="p-6 text-center border-t border-slate-100 bg-slate-50">
+                                <div className="p-6 text-center border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
                                     <button
                                         onClick={() => setVisibleCount(prev => prev + 50)}
-                                        className="px-8 py-3 bg-white border border-slate-200 text-teal-600 rounded-xl font-bold hover:bg-teal-50 hover:border-teal-300 transition-all shadow-sm flex items-center gap-2 mx-auto"
+                                        className="px-8 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-teal-600 dark:text-teal-400 rounded-xl font-bold hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:border-teal-300 dark:hover:border-teal-700 transition-all shadow-sm flex items-center gap-2 mx-auto"
                                     >
                                         <Plus size={20} /> Ver más cirugías
                                     </button>
-                                    <p className="text-xs text-slate-400 mt-2 font-medium">Mostrando {visibleCount} de {sortedOrdenes.length} órdenes</p>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">Mostrando {visibleCount} de {sortedOrdenes.length} órdenes</p>
                                 </div>
                             )}
                         </>
@@ -2625,7 +2484,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             )}
             {/* PRINT PREVIEW MODAL */}
             {showPreview && previewData && createPortal(
-                <div className="fixed inset-0 bg-white z-[100] overflow-auto print-orden">
+                <div className="fixed inset-0 bg-slate-900 z-[100] overflow-auto print-orden">
                     <style>{`
                         @media print {
                             @page {
@@ -2663,9 +2522,9 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     `}</style>
                     <div className="p-8 print:p-0">
                         {/* Header Controls */}
-                        <div className="flex justify-between items-center mb-8 no-print border-b pb-4">
+                        <div className="flex justify-between items-center mb-8 no-print border-b border-slate-800 pb-4">
                             <div>
-                                <h2 className="text-2xl font-bold">Vista Previa</h2>
+                                <h2 className="text-2xl font-bold text-slate-100">Vista Previa</h2>
                                 {previewType !== 'reporte_semanal' && (() => {
                                     const hasSurgeryCodes = previewData.codigosCirugia?.some(c => (c.codigo && String(c.codigo).trim() !== '') || (c.nombre && String(c.nombre).trim() !== ''));
                                     const hasPractices = previewData.practicas?.some(p => p && String(p).trim() !== '');
@@ -2681,7 +2540,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                             {/* Primary Doc View (Internacion vs Pedido) */}
                                             <button
                                                 onClick={() => setPreviewType(isPedidoDoc ? 'pedido' : 'internacion')}
-                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${(previewType === 'internacion' || previewType === 'pedido') ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${(previewType === 'internacion' || previewType === 'pedido') ? 'bg-teal-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                                             >
                                                 {isInternacionDoc ? 'Internación' : 'Pedido Médico'}
                                             </button>
@@ -2691,13 +2550,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 <>
                                                     <button
                                                         onClick={() => setPreviewType('material')}
-                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                                                     >
                                                         Material
                                                     </button>
                                                     <button
                                                         onClick={() => setPreviewType('ambas')}
-                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                                                     >
                                                         📄 Ambas (2 pág.)
                                                     </button>
@@ -2709,14 +2568,14 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                 <>
                                                     <button
                                                         onClick={() => setPreviewType('caratula')}
-                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                                                     >
                                                         📂 Carátula
                                                     </button>
 
                                                     <button
                                                         onClick={() => window.open(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`, '_blank')}
-                                                        className="px-3 py-1.5 rounded-lg font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all ml-2"
+                                                        className="px-3 py-1.5 rounded-lg font-bold text-sm bg-slate-800 text-slate-400 hover:bg-slate-700 transition-all ml-2"
                                                     >
                                                         📋 Genérico
                                                     </button>
@@ -2770,7 +2629,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 </button>
                                 <button
                                     onClick={() => setShowPreview(false)}
-                                    className="flex items-center gap-2 px-6 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200"
+                                    className="flex items-center gap-2 px-6 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold hover:bg-slate-700"
                                 >
                                     <X size={20} /> Cerrar
                                 </button>
@@ -2793,26 +2652,28 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
             {/* WHATSAPP MODAL */}
             {whatsappModal && (
-                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                <MessageCircle size={20} className="text-green-600" />
+                <ModalPortal onClose={() => setWhatsappModal(null)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200 overflow-hidden border border-slate-100 dark:border-slate-800">
+                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+                                <MessageCircle size={24} className="text-green-600 dark:text-green-400" />
                                 Enviar WhatsApp
                             </h3>
-                            <button onClick={() => setWhatsappModal(null)} className="p-2 hover:bg-slate-100 rounded-full">
-                                <X size={18} />
+                            <button onClick={() => setWhatsappModal(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                                <X size={20} />
                             </button>
                         </div>
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-slate-600 text-center">
-                                Enviar mensaje a <strong>{whatsappModal.afiliado}</strong>
-                            </p>
-                            <p className="text-xs text-slate-400 text-center">
-                                📱 {whatsappModal.telefono}
-                            </p>
+                        <div className="p-8 space-y-6">
+                            <div className="text-center">
+                                <p className="text-slate-600 dark:text-slate-300">
+                                    Enviar mensaje a <span className="font-bold text-slate-900 dark:text-white">{whatsappModal.afiliado}</span>
+                                </p>
+                                <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
+                                    📱 {whatsappModal.telefono}
+                                </p>
+                            </div>
 
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 <button
                                     onClick={async () => {
                                         const fecha = whatsappModal.fechaCirugia ?
@@ -2824,7 +2685,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                         setCopiedToast(true);
                                         setTimeout(() => setCopiedToast(false), 3000);
                                     }}
-                                    className="w-full p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-bold hover:from-green-600 hover:to-green-700 transition-all flex items-center justify-center gap-3 shadow-lg"
+                                    className="w-full p-5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl font-bold hover:from-green-600 hover:to-emerald-700 transition-all flex items-center justify-center gap-3 shadow-lg shadow-green-900/20"
                                 >
                                     <User size={20} />
                                     <span>Autoriza el Paciente</span>
@@ -2841,7 +2702,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                         setCopiedToast(true);
                                         setTimeout(() => setCopiedToast(false), 3000);
                                     }}
-                                    className="w-full p-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-3 shadow-lg"
+                                    className="w-full p-5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-2xl font-bold hover:from-blue-600 hover:to-indigo-700 transition-all flex items-center justify-center gap-3 shadow-lg shadow-blue-900/20"
                                 >
                                     <Building2 size={20} />
                                     <span>Autoriza la Institución</span>
@@ -2850,13 +2711,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
                             <button
                                 onClick={() => setWhatsappModal(null)}
-                                className="w-full py-2 text-slate-500 text-sm hover:text-slate-700"
+                                className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 transition-colors"
                             >
                                 Cancelar
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalPortal>
             )}
 
             {/* COPIED TO CLIPBOARD TOAST */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase/config';
+import { db, isLocalEnv } from '../firebase/config';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Trash2, Save, X, StickyNote, Pencil, Search, CheckCircle, Circle } from 'lucide-react';
@@ -92,6 +92,10 @@ const NotesView = () => {
     };
 
     const handleDelete = async (id) => {
+        if (isLocalEnv) {
+            alert("🔒 SEGURIDAD: No se permite eliminar notas de la nube desde local.");
+            return;
+        }
         if (!window.confirm("¿Eliminar esta nota?")) return;
         try {
             await deleteDoc(doc(db, "notes", id));
@@ -147,21 +151,21 @@ const NotesView = () => {
 
     if (isEditing) {
         return (
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col h-[calc(100vh-140px)] border border-slate-200">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl overflow-hidden flex flex-col h-[calc(100vh-140px)] border border-slate-200 dark:border-slate-800">
                 {/* Editor Header */}
-                <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
+                <div className="bg-slate-50 dark:bg-slate-900/50 p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
                     <button
                         onClick={() => setIsEditing(false)}
-                        className="text-slate-500 hover:text-slate-700 flex items-center gap-2 font-medium"
+                        className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-2 font-medium transition-colors"
                     >
                         <X size={20} /> Cancelar
                     </button>
-                    <div className="font-bold text-slate-700">
+                    <div className="font-bold text-slate-700 dark:text-slate-200">
                         {currentNote ? 'Editar Nota' : 'Nueva Nota'}
                     </div>
                     <button
                         onClick={handleSave}
-                        className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 transition-all"
+                        className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-teal-200/20 dark:shadow-none transition-all"
                     >
                         <Save size={18} /> Guardar
                     </button>
@@ -174,14 +178,14 @@ const NotesView = () => {
                         placeholder="Título de la nota..."
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        className="text-3xl font-bold text-slate-800 placeholder:text-slate-300 border-none outline-none bg-transparent mb-6 w-full"
+                        className="text-3xl font-bold text-slate-800 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-700 border-none outline-none bg-transparent mb-6 w-full"
                         autoFocus
                     />
                     <textarea
                         placeholder="Empieza a escribir..."
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
-                        className="flex-1 resize-none border-none outline-none bg-transparent text-lg text-slate-600 placeholder:text-slate-300 leading-relaxed"
+                        className="flex-1 resize-none border-none outline-none bg-transparent text-lg text-slate-600 dark:text-slate-300 placeholder:text-slate-300 dark:placeholder:text-slate-700 leading-relaxed"
                     />
                 </div>
             </div>
@@ -192,15 +196,15 @@ const NotesView = () => {
         <div className="h-[calc(100vh-140px)] flex flex-col">
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                         <StickyNote className="text-yellow-500" size={28} />
                         Mis Notas
                     </h2>
-                    <p className="text-slate-400 text-sm">Espacio personal y privado.</p>
+                    <p className="text-slate-400 dark:text-slate-500 text-sm">Espacio personal y privado.</p>
                 </div>
                 <button
                     onClick={startNewNote}
-                    className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-200 transition-all"
+                    className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-teal-200/20 dark:shadow-none transition-all"
                 >
                     <Plus size={20} /> Nueva Nota
                 </button>
@@ -214,7 +218,7 @@ const NotesView = () => {
                     placeholder="Buscar en mis notas..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
             </div>
 
@@ -224,16 +228,16 @@ const NotesView = () => {
                     <div
                         key={note.id}
                         onClick={() => openNote(note)}
-                        className={`${note.isRead !== true ? 'bg-yellow-50 hover:bg-yellow-100 border-yellow-200' : 'bg-white hover:bg-slate-50 border-slate-200'} border rounded-2xl p-5 cursor-pointer transition-all group relative h-64 flex flex-col shadow-sm hover:shadow-md`}
+                        className={`${note.isRead !== true ? 'bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 border-yellow-200 dark:border-yellow-900/40' : 'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-slate-200 dark:border-slate-800'} border rounded-2xl p-5 cursor-pointer transition-all group relative h-64 flex flex-col shadow-sm hover:shadow-md`}
                     >
                         <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-bold text-lg text-slate-800 line-clamp-1">{note.title}</h3>
+                            <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 line-clamp-1">{note.title}</h3>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                     onClick={(e) => toggleRead(e, note)}
                                     className={`p-2 rounded-full transition-colors ${note.isRead !== true 
-                                        ? 'text-blue-500 hover:bg-blue-50' 
-                                        : 'text-slate-400 hover:bg-slate-50'}`}
+                                        ? 'text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30' 
+                                        : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                     title={note.isRead !== true ? "Marcar como leída" : "Marcar como pendiente"}
                                 >
                                     {note.isRead !== true ? <CheckCircle size={16} /> : <Circle size={16} />}
@@ -243,16 +247,16 @@ const NotesView = () => {
                                         e.stopPropagation();
                                         handleDelete(note.id);
                                     }}
-                                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
                                 >
                                     <Trash2 size={16} />
                                 </button>
                             </div>
                         </div>
-                        <p className="text-slate-600 text-sm flex-1 whitespace-pre-wrap line-clamp-6 opacity-80">
+                        <p className="text-slate-600 dark:text-slate-400 text-sm flex-1 whitespace-pre-wrap line-clamp-6 opacity-80">
                             {note.content}
                         </p>
-                        <div className="mt-4 pt-3 border-t border-yellow-200/50 flex justify-between items-center text-xs text-slate-400">
+                        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex justify-between items-center text-xs text-slate-400 dark:text-slate-500">
                             <span>
                                 {note.updatedAt?.seconds
                                     ? new Date(note.updatedAt.seconds * 1000).toLocaleDateString()
@@ -263,7 +267,7 @@ const NotesView = () => {
                 ))}
 
                 {filteredNotes.length === 0 && (
-                    <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
+                    <div className="col-span-full py-12 text-center text-slate-400 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
                         <StickyNote size={48} className="mx-auto mb-4 opacity-20" />
                         <p>No tienes notas guardadas.</p>
                         {searchTerm && <p className="text-sm">Intenta con otra búsqueda.</p>}

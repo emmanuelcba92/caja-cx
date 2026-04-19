@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../firebase/config';
+import { db, isLocalEnv } from '../firebase/config';
 import { collection, query, getDocs, addDoc, deleteDoc, doc, where, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, Download, Upload, Database, FileJson, AlertTriangle } from 'lucide-react';
 
@@ -14,7 +14,7 @@ const AdminView = () => {
     const [profiles, setProfiles] = useState({});
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState('users'); // 'users', 'roles', 'maintenance', 'backup', 'notifications'
+    const [activeTab, setActiveTab] = useState('users'); // 'users', 'maintenance', 'backup', 'notifications'
     const [roles, setRoles] = useState([]);
     const [maintenanceUser, setMaintenanceUser] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -39,6 +39,32 @@ const AdminView = () => {
     // Professionals for linking
     const [allProfessionals, setAllProfessionals] = useState([]);
     const [selectedLinkedProf, setSelectedLinkedProf] = useState('');
+
+    const translatePermission = (key) => {
+        const translations = {
+            can_view_admin: "Ver Admin",
+            can_manage_users: "Gestionar Usuarios",
+            can_view_shared_catalog: "Ver Caja Compartida",
+            can_view_ordenes: "Ver Órdenes",
+            can_share_ordenes: "Compartir Órdenes",
+            can_approve_ordenes: "Aprobar Órdenes",
+            can_delete_data: "Eliminar Datos",
+            can_edit_own: "Editar Propios",
+            can_delete_own: "Eliminar Propios",
+            is_ephemeral: "Cuenta Efímera (24h)",
+            view_global_calendar: "Ver Calendario Global",
+            view_audit: "Ver Auditoría",
+            readonly_caja: "Caja (Solo Lectura)",
+            manage_users: "Administrar Usuarios",
+            view_admin: "Ver Panel Admin",
+            delete_data: "Borrar Datos",
+            share_ordenes: "Enviar Órdenes",
+            view_ordenes: "Ver Órdenes",
+            view_shared_catalog: "Ver Catálogo Compartido",
+            approve_ordenes: "Aprobar Órdenes"
+        };
+        return translations[key] || key.replace(/_/g, ' ');
+    };
 
     const fetchData = async () => {
         setLoading(true);
@@ -77,9 +103,8 @@ const AdminView = () => {
             const rolesSnap = await getDocs(collection(db, "roles"));
             setRoles(rolesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-            // 5. Fetch Professionals (for linking accounts)
-            const ownerToUse = currentUser.uid;
-            const profsSnap = await getDocs(query(collection(db, "profesionales"), where("userId", "==", ownerToUse)));
+            // 5. Fetch Professionals (Global Access)
+            const profsSnap = await getDocs(collection(db, "profesionales"));
             const profsList = profsSnap.docs.map(doc => doc.data().nombre);
             setAllProfessionals([...new Set(profsList)].sort());
 
@@ -209,6 +234,10 @@ const AdminView = () => {
             alert("No puedes eliminar al Super Administrador.");
             return;
         }
+        if (isLocalEnv) {
+            alert("🔒 SEGURIDAD LOCAL: No se permite eliminar autorizaciones de la nube desde el entorno local para evitar pérdida de datos accidental.");
+            return;
+        }
         if (!window.confirm("¿Seguro que quieres quitar la autorización?")) return;
         try {
             await deleteDoc(doc(db, "authorized_emails", id));
@@ -245,6 +274,10 @@ const AdminView = () => {
     };
 
     const handleDeleteRole = async (roleId) => {
+        if (isLocalEnv) {
+            alert("🔒 SEGURIDAD LOCAL: No se permite eliminar roles globales desde el entorno local.");
+            return;
+        }
         if (!window.confirm("¿Eliminar este rol? Los usuarios con este rol podrían perder acceso.")) return;
         try {
             await deleteDoc(doc(db, "roles", roleId));
@@ -276,6 +309,10 @@ const AdminView = () => {
         const email = profiles[uid]?.email || uid;
         if (email === SUPER_ADMIN_EMAIL) {
             alert("No puedes eliminar los datos del Super Administrador.");
+            return;
+        }
+        if (isLocalEnv) {
+            alert("⚠️ BLOQUEO DE SEGURIDAD: Estás en modo LOCAL. El borrado masivo de datos está desactivado para proteger la base de datos de producción.");
             return;
         }
         if (!window.confirm(`⚠️ ADVERTENCIA CRÍTICA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR TODA LA INFORMACIÓN de: ${email}?\n\nEsta acción eliminará registros de Caja, Profesionales, Notas, Permisos de Acceso, Perfil y Configuración.`)) return;
@@ -314,6 +351,10 @@ const AdminView = () => {
             return;
         }
         const email = profiles[maintenanceUser]?.email || maintenanceUser;
+        if (isLocalEnv) {
+            alert("🔒 Acción denegada en LOCAL para proteger el historial de la nube.");
+            return;
+        }
         if (!window.confirm(`⚠️ ADVERTENCIA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR las órdenes de ${email} entre el ${startDate} y el ${endDate}?`)) return;
         setLoading(true);
         try {
@@ -479,35 +520,23 @@ const AdminView = () => {
             <div className="flex flex-wrap gap-4 mb-8">
                 <button
                     onClick={() => setActiveTab('users')}
-                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
                 >
                     Usuarios y Permisos
-                </button>
-                <button
-                    onClick={() => setActiveTab('roles')}
-                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'roles' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                >
-                    Gestión de Roles
                 </button>
                 {isSuperAdmin && (
                     <>
                         <button
                             onClick={() => setActiveTab('maintenance')}
-                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
                         >
                             Mantenimiento
                         </button>
                         <button
                             onClick={() => setActiveTab('backup')}
-                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'backup' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'backup' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
                         >
                             Backup / Migración
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('notifications')}
-                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'notifications' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                        >
-                            Notificaciones
                         </button>
                     </>
                 )}
@@ -516,12 +545,12 @@ const AdminView = () => {
             {activeTab === 'users' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Authorized Emails */}
-                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
                                 <Mail size={24} />
                             </div>
-                            <h3 className="text-xl font-bold">Usuarios Autorizados</h3>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Usuarios Autorizados</h3>
                         </div>
 
                         <form onSubmit={handleAddAuthorized} className="flex flex-col gap-3 mb-8">
@@ -531,14 +560,14 @@ const AdminView = () => {
                                     <input
                                         type="email"
                                         placeholder="nuevo@usuario.com"
-                                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
                                         value={newEmail}
                                         onChange={(e) => setNewEmail(e.target.value)}
                                         required
                                     />
                                 </div>
-                                <select
-                                    className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                                    <select
+                                        className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
                                     value={newRole}
                                     onChange={(e) => setNewRole(e.target.value)}
                                 >
@@ -554,14 +583,14 @@ const AdminView = () => {
 
                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                             {authorizedEmails.map(auth => (
-                                <div key={auth.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl group hover:border-blue-200 transition-all">
+                                <div key={auth.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl group hover:border-blue-200 transition-all">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200">
+                                        <div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200 dark:border-slate-700">
                                             {auth.email[0].toUpperCase()}
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="font-semibold text-slate-700">{auth.email}</span>
-                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{auth.role}</span>
+                                            <span className="font-semibold text-slate-700 dark:text-slate-200">{auth.email}</span>
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">{auth.role}</span>
                                         </div>
                                     </div>
                                     <button onClick={() => handleRemoveAuthorized(auth.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
@@ -573,12 +602,12 @@ const AdminView = () => {
                     </div>
 
                     {/* Active Accounts */}
-                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                                 <Users size={24} />
                             </div>
-                            <h3 className="text-xl font-bold">Cuentas Activas</h3>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Cuentas Activas</h3>
                         </div>
 
                         <div className="relative mb-6">
@@ -586,7 +615,7 @@ const AdminView = () => {
                             <input
                                 type="text"
                                 placeholder="Buscar..."
-                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
@@ -594,12 +623,12 @@ const AdminView = () => {
 
                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                             {filteredDoctors.map(doctor => (
-                                <div key={doctor.uid} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:border-slate-300 transition-all">
+                                <div key={doctor.uid} className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl hover:border-slate-300 dark:hover:border-slate-600 transition-all">
                                     <div className="flex items-center gap-3 overflow-hidden">
                                         <Activity size={18} className="text-blue-500" />
                                         <div className="overflow-hidden">
-                                            <p className="text-sm font-bold text-slate-700 truncate">{doctor.profile?.displayName || doctor.profile?.email || 'Sin Nombre'}</p>
-                                            <p className="text-[10px] text-slate-400">{doctor.count} Registros</p>
+                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{doctor.profile?.displayName || doctor.profile?.email || 'Sin Nombre'}</p>
+                                            <p className="text-[10px] text-slate-400 dark:text-slate-500">{doctor.count} Registros</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -620,27 +649,29 @@ const AdminView = () => {
             ) : activeTab === 'roles' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Create Role */}
-                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-                        <h3 className="text-xl font-bold mb-6">Nuevo Rol</h3>
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+                        <h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Nuevo Rol</h3>
                         <form onSubmit={handleCreateRole} className="space-y-4">
                             <input
                                 type="text"
                                 value={roleName}
                                 onChange={(e) => setRoleName(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
                                 placeholder="Nombre (ej: Secretaria)"
                                 required
                             />
                             <div className="space-y-2">
                                 {Object.keys(rolePermissions).map(perm => (
-                                    <label key={perm} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100">
+                                    <label key={perm} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                                         <input
                                             type="checkbox"
                                             checked={rolePermissions[perm]}
                                             onChange={(e) => setRolePermissions(prev => ({ ...prev, [perm]: e.target.checked }))}
                                             className="w-5 h-5 accent-blue-600"
                                         />
-                                        <span className="text-sm font-medium text-slate-600">{perm.replace(/_/g, ' ')}</span>
+                                        <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                                            {translatePermission(perm)}
+                                        </span>
                                     </label>
                                 ))}
                             </div>
@@ -649,18 +680,20 @@ const AdminView = () => {
                     </div>
 
                     {/* Roles List */}
-                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-                        <h3 className="text-xl font-bold mb-6">Roles Existentes</h3>
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+                        <h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Roles Existentes</h3>
                         <div className="space-y-4">
                             {roles.map(role => (
-                                <div key={role.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50">
+                                <div key={role.id} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800">
                                     <div className="flex items-center justify-between mb-2">
-                                        <h4 className="font-bold text-slate-800">{role.name}</h4>
+                                        <h4 className="font-bold text-slate-800 dark:text-slate-100">{role.name}</h4>
                                         {!role.isSystem && <button onClick={() => handleDeleteRole(role.id)} className="p-2 text-red-500"><Trash2 size={16} /></button>}
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                         {Object.entries(role.permissions || {}).map(([k, v]) => (
-                                            v && <span key={k} className="px-2 py-1 bg-green-100 text-green-700 rounded-md text-[9px] font-bold uppercase">{k.replace('can_', '')}</span>
+                                            v && <span key={k} className="px-2 py-1 bg-green-100 text-green-700 rounded-md text-[9px] font-bold uppercase">
+                                                {translatePermission(k)}
+                                            </span>
                                         ))}
                                     </div>
                                 </div>
@@ -669,20 +702,20 @@ const AdminView = () => {
                     </div>
                 </div>
             ) : activeTab === 'maintenance' ? (
-                <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 max-w-md mx-auto">
-                    <h3 className="text-xl font-bold mb-8">Borrado por Rango</h3>
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md mx-auto">
+                    <h3 className="text-xl font-bold mb-8 text-slate-800 dark:text-white">Borrado por Rango</h3>
                     <div className="space-y-4">
                         <select
                             value={maintenanceUser}
                             onChange={(e) => setMaintenanceUser(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl"
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
                         >
                             <option value="">Seleccionar cuenta...</option>
                             {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
                         </select>
                         <div className="grid grid-cols-2 gap-4">
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
+                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" />
+                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" />
                         </div>
                         <button onClick={handleDeleteByRange} className="w-full py-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-100">
                             Eliminar en Rango
@@ -691,13 +724,13 @@ const AdminView = () => {
                 </div>
             ) : activeTab === 'backup' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="p-8 bg-white rounded-3xl shadow-xl border border-slate-100">
-                        <h3 className="text-xl font-bold mb-4">Exportar Datos</h3>
+                    <div className="p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Exportar Datos</h3>
                         <p className="text-sm text-slate-500 mb-6">Descarga un backup JSON completo de un usuario.</p>
                         <select
                             value={maintenanceUser}
                             onChange={(e) => setMaintenanceUser(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl mb-4"
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl mb-4 text-slate-900 dark:text-white"
                         >
                             <option value="">Seleccionar cuenta...</option>
                             {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
@@ -706,97 +739,13 @@ const AdminView = () => {
                             <Download size={20} /> Exportar JSON
                         </button>
                     </div>
-                    <div className="p-8 bg-white rounded-3xl shadow-xl border border-slate-100">
-                        <h3 className="text-xl font-bold mb-4">Importar Datos</h3>
+                    <div className="p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Importar Datos</h3>
                         <p className="text-sm text-slate-500 mb-6">Carga un backup JSON en una cuenta.</p>
-                        <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-8 hover:bg-emerald-50 transition min-h-[160px] flex flex-col items-center justify-center">
+                        <div className="relative border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-8 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition min-h-[160px] flex flex-col items-center justify-center">
                             <input type="file" onChange={handleImportData} className="absolute inset-0 opacity-0 cursor-pointer" />
-                            <FileJson size={32} className="text-slate-300 mb-2" />
-                            <span className="text-sm font-bold text-slate-400">Seleccionar Archivo</span>
-                        </div>
-                    </div>
-                </div>
-            ) : activeTab === 'notifications' ? (
-                <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 max-w-2xl mx-auto">
-                    <div className="flex items-center gap-3 mb-8">
-                        <Mail className="text-blue-600" size={24} />
-                        <div>
-                            <h3 className="text-xl font-bold">Configuración de Emails</h3>
-                            <p className="text-xs text-slate-400">Destinatarios de alertas de internación</p>
-                        </div>
-                    </div>
-                    <div className="space-y-6">
-                        <div className="p-4 bg-amber-50 rounded-2xl text-amber-800 text-sm italic border border-amber-100">
-                            Separa múltiples correos con comas. Ej: doctor@gmail.com, admin@clinica.com
-                        </div>
-                        <div>
-                            <label className="block text-sm font-bold text-slate-400 mb-2">Destinatarios</label>
-                            <textarea
-                                value={notificationEmails}
-                                onChange={(e) => setNotificationEmails(e.target.value)}
-                                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl min-h-[120px] outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                                placeholder="lista@correos.com"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-bold text-slate-400 mb-2">Google Apps Script URL</label>
-                            <input
-                                type="text"
-                                value={scriptUrl}
-                                onChange={(e) => setScriptUrl(e.target.value)}
-                                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                                placeholder="https://script.google.com/macros/s/.../exec"
-                            />
-                            <p className="text-[10px] text-slate-400 mt-2 px-2">
-                                Pega aquí la URL que obtendrás al publicar tu Google Apps Script.
-                            </p>
-                        </div>
-
-                        <div className="pt-6 border-t border-slate-100">
-                            <div className="flex items-center gap-2 mb-4">
-                                <Activity className="text-emerald-600" size={18} />
-                                <h4 className="font-bold text-slate-700">Notificaciones en la App (Campana)</h4>
-                            </div>
-                            <p className="text-xs text-slate-400 mb-4">
-                                Selecciona los usuarios que verán las alertas de cirugía auditada directamente en la aplicación.
-                            </p>
-                            <div className="max-h-48 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                                {allDoctors.map(doctor => (
-                                    <label key={doctor.uid} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all">
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-slate-400 border border-slate-100">
-                                                {doctor.profile?.displayName?.[0] || '?'}
-                                            </div>
-                                            <div className="overflow-hidden">
-                                                <p className="text-xs font-bold text-slate-700 truncate">{doctor.profile?.displayName || doctor.profile?.email || 'Sin Nombre'}</p>
-                                                <p className="text-[10px] text-slate-400 truncate">{doctor.profile?.email}</p>
-                                            </div>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            checked={appNotificationUids.includes(doctor.uid)}
-                                            onChange={() => toggleNotificationRecipient(doctor.uid)}
-                                            className="w-5 h-5 rounded-lg border-slate-300 text-blue-600 focus:ring-blue-500"
-                                        />
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <button
-                                onClick={handleSaveEmailConfig}
-                                className="py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
-                            >
-                                <Activity size={20} /> Guardar
-                            </button>
-                            <button
-                                onClick={handleTestEmail}
-                                className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 border border-slate-200 flex items-center justify-center gap-2"
-                            >
-                                <Mail size={20} /> Probar Envío
-                            </button>
+                            <FileJson size={32} className="text-slate-300 dark:text-slate-600 mb-2" />
+                            <span className="text-sm font-bold text-slate-400 dark:text-slate-500">Seleccionar Archivo</span>
                         </div>
                     </div>
                 </div>

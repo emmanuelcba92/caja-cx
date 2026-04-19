@@ -12,7 +12,7 @@ import {
     setPersistence,
     browserSessionPersistence
 } from 'firebase/auth';
-import { db } from '../firebase/config';
+import { db, isLocalEnv } from '../firebase/config';
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { getRolePermissions, seedDefaultRoles } from '../services/roleService';
 
@@ -242,6 +242,10 @@ export const AuthProvider = ({ children }) => {
     };
 
     const revokeAccess = async (grantId) => {
+        if (isLocalEnv) {
+            alert("🔒 SEGURIDAD: No se puede revocar acceso desde el entorno local.");
+            return;
+        }
         await deleteDoc(doc(db, "access_grants", grantId));
     };
 
