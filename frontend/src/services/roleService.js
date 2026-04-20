@@ -11,6 +11,7 @@ export const DEFAULT_ROLES = {
             can_view_shared_catalog: true,
             can_view_ordenes: true,
             can_share_ordenes: true,
+            can_view_stats: true,
             can_delete_data: true,
             is_ephemeral: false
         }
@@ -101,4 +102,8 @@ export const getRolePermissions = async (roleName) => {
     // Fallback to default if not found in DB
     const defaultRole = DEFAULT_ROLES[roleName] || DEFAULT_ROLES.secre;
     return defaultRole.permissions;
+};
+export const updateAuthorizedRole = async (recordId, newRole) => {
+    const ref = doc(db, 'authorized_emails', recordId);
+    await setDoc(ref, { role: newRole }, { merge: true });
 };

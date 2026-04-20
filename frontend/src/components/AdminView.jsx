@@ -4,6 +4,7 @@ import { db, isLocalEnv } from '../firebase/config';
 import { collection, query, getDocs, addDoc, deleteDoc, doc, where, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, Download, Upload, Database, FileJson, AlertTriangle, PieChart, ChevronDown, Filter } from 'lucide-react';
 
+
 const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, showAllOption = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -408,6 +409,8 @@ const AdminView = () => {
         }
     };
 
+
+
     const handleCreateRole = async (e) => {
         e.preventDefault();
         const roleId = roleName.toLowerCase().replace(/\s+/g, '_');
@@ -682,6 +685,8 @@ const AdminView = () => {
         }
     };
 
+
+
     const handleTestEmail = async () => {
         if (!scriptUrl || !notificationEmails) {
             alert("Configura primero la URL y al menos un email.");
@@ -796,8 +801,8 @@ const AdminView = () => {
                                         required
                                     />
                                 </div>
-                                    <select
-                                        className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
+                                <select
+                                    className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
                                     value={newRole}
                                     onChange={(e) => setNewRole(e.target.value)}
                                 >
@@ -805,6 +810,7 @@ const AdminView = () => {
                                         <option key={r.id} value={r.id}>{r.name}</option>
                                     ))}
                                 </select>
+
                                 <button type="submit" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100">
                                     Autorizar
                                 </button>
@@ -820,7 +826,15 @@ const AdminView = () => {
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="font-semibold text-slate-700 dark:text-slate-200">{auth.email}</span>
-                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">{auth.role}</span>
+                                            <select
+                                                value={auth.role}
+                                                onChange={(e) => handleUpdateRole(auth.id, e.target.value)}
+                                                className="bg-transparent text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 outline-none border-none cursor-pointer hover:text-blue-500 transition-colors w-fit"
+                                            >
+                                                {roles.map(r => (
+                                                    <option key={r.id} value={r.id} className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 uppercase">{r.name}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
                                     <button onClick={() => handleRemoveAuthorized(auth.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
