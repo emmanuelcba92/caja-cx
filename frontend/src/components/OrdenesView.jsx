@@ -53,6 +53,11 @@ const noop = () => { };
 
 const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftConsumed = noop, modalMode = false, onClose = null, isAuditoria = false }) => {
     const { viewingUid, catalogOwnerUid, isSuperAdmin, permissions, linkedProfesionalName, currentUser } = useAuth();
+
+    // Permissions logic
+    const canViewOrdenes = isSuperAdmin || permissions?.can_view_ordenes;
+    const canShareOrdenes = isSuperAdmin || permissions?.can_share_ordenes;
+    const canEditOrdenes = isSuperAdmin || permissions?.can_edit_data;
     const [profesionales, setProfesionales] = useState([]);
     const [allProfesionales, setAllProfesionales] = useState([]);
     const [isResidente, setIsResidente] = useState(false);
@@ -1296,6 +1301,15 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     const handleEdit = (orden) => {
+        const canManageAny = isSuperAdmin || permissions?.can_edit_data;
+        const canManageOwn = permissions?.can_edit_own;
+        const isOwner = orden?.createdBy === currentUser?.email;
+
+        if (!canManageAny && !(canManageOwn && isOwner)) {
+            alert("No tienes permiso para editar este registro.");
+            return;
+        }
+
         let codigosCirugia = orden.codigosCirugia;
         if (!codigosCirugia || !Array.isArray(codigosCirugia)) {
             codigosCirugia = orden.codigoCirugia
@@ -1349,6 +1363,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     const handleToggleStatus = async (orden) => {
+        if (!canEditOrdenes) {
+            alert("No tienes permiso para realizar esta acción.");
+            return;
+        }
         if (isTestEnv && !orden.isTest) {
             toast.error('No puedes modificar registros de producción desde el entorno de pruebas.');
             return;
@@ -1370,6 +1388,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     };
 
     const handleToggleField = async (orden, field) => {
+        if (!canEditOrdenes) {
+            alert("No tienes permiso para realizar esta acción.");
+            return;
+        }
         if (isTestEnv && !orden.isTest) {
             toast.error('No puedes modificar registros de producción desde el entorno de pruebas.');
             return;
@@ -1395,10 +1417,11 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         
         // --- ENFORCE OWN RECORDS POLICY ---
         const canManageAny = isSuperAdmin || permissions?.can_delete_data;
+        const canManageOwn = permissions?.can_delete_own;
         const isOwner = item?.createdBy === currentUser?.email;
 
-        if (!canManageAny && !isOwner) {
-            alert("No tienes permiso para eliminar este registro. Solo puedes eliminar los creados por ti mismo.");
+        if (!canManageAny && !(canManageOwn && isOwner)) {
+            alert("No tienes permiso para eliminar este registro.");
             return;
         }
 
@@ -1755,11 +1778,6 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             </div>
         );
     };
-
-    // Allow access to Super Admin or users with can_view_ordenes permission (COAT)
-    const canViewOrdenes = isSuperAdmin || permissions?.can_view_ordenes;
-    // Allow creating orders only for Super Admin or users with can_share_ordenes permission
-    const canShareOrdenes = isSuperAdmin || permissions?.can_share_ordenes;
 
     if (!canViewOrdenes) {
         return (
@@ -2215,18 +2233,20 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         {/* Status Toggles */}
                                                         <div className="flex flex-wrap items-center gap-2 mt-2">
 
-                                                            <button
-                                                                onClick={() => handleToggleField(orden, 'autorizada')}
-                                                                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
-                                                                    ? 'bg-teal-600 text-white border-teal-700 shadow-sm hover:bg-teal-700'
-                                                                    : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
-                                                                    } `}
-                                                            >
-                                                                <ShieldCheck size={12} strokeWidth={2.5} />
-                                                                {orden.autorizada ? 'Autorizada' : 'Autorizar'}
-                                                            </button>
+                                                            {canEditOrdenes && (
+                                                                <button
+                                                                    onClick={() => handleToggleField(orden, 'autorizada')}
+                                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
+                                                                        ? 'bg-teal-600 text-white border-teal-700 shadow-sm hover:bg-teal-700'
+                                                                        : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
+                                                                        } `}
+                                                                >
+                                                                    <ShieldCheck size={12} strokeWidth={2.5} />
+                                                                    {orden.autorizada ? 'Autorizada' : 'Autorizar'}
+                                                                </button>
+                                                            )}
 
-                                                            {orden.incluyeMaterial && (
+                                                            {orden.incluyeMaterial && canEditOrdenes && (
                                                                 <button
                                                                     onClick={() => handleToggleField(orden, 'materialSolicitado')}
                                                                     className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
@@ -2241,33 +2261,39 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-1">
-                                                        <button
-                                                            onClick={() => handleToggleStatus(orden)}
-                                                            className={`p-2 rounded-lg transition-colors ${orden.enviada
-                                                                ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300'
-                                                                : 'text-slate-400 dark:text-slate-500 hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-600 dark:hover:text-green-400'
-                                                                } `}
-                                                            title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
-                                                        >
-                                                            {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleToggleField(orden, 'suspendida')}
-                                                            className={`p-2 rounded-lg transition-colors ${orden.suspendida
-                                                                ? 'text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700'
-                                                                : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300'
-                                                                } `}
-                                                            title={orden.suspendida ? "Re-activar cirugía" : "Suspender cirugía"}
-                                                        >
-                                                            <Ban size={18} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleEdit(orden)}
-                                                            className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors"
-                                                            title="Editar"
-                                                        >
-                                                            <Edit3 size={18} />
-                                                        </button>
+                                                        {canEditOrdenes && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => handleToggleStatus(orden)}
+                                                                    className={`p-2 rounded-lg transition-colors ${orden.enviada
+                                                                        ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300'
+                                                                        : 'text-slate-400 dark:text-slate-500 hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-600 dark:hover:text-green-400'
+                                                                        } `}
+                                                                    title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
+                                                                >
+                                                                    {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleToggleField(orden, 'suspendida')}
+                                                                    className={`p-2 rounded-lg transition-colors ${orden.suspendida
+                                                                        ? 'text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700'
+                                                                        : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300'
+                                                                        } `}
+                                                                    title={orden.suspendida ? "Re-activar cirugía" : "Suspender cirugía"}
+                                                                >
+                                                                    <Ban size={18} />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        {(canEditOrdenes || (permissions?.can_edit_own && orden.createdBy === currentUser?.email)) && (
+                                                            <button
+                                                                onClick={() => handleEdit(orden)}
+                                                                className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors"
+                                                                title="Editar"
+                                                            >
+                                                                <Edit3 size={18} />
+                                                            </button>
+                                                        )}
                                                         <button
                                                             onClick={() => handlePreview(orden, 'internacion')}
                                                             className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors"
@@ -2434,30 +2460,36 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
                                             <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
                                                 <div className="flex gap-1">
-                                                    <button
-                                                        onClick={() => handleToggleStatus(orden)}
-                                                        className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"
-                                                        title="Estado"
-                                                    >
-                                                        {orden.enviada ? <ArchiveRestore size={20} /> : <CheckCircle2 size={20} />}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleToggleField(orden, 'suspendida')}
-                                                        className={`p-2.5 rounded-xl transition-colors ${orden.suspendida
-                                                            ? 'text-slate-600 bg-slate-200'
-                                                            : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
-                                                            } `}
-                                                        title={orden.suspendida ? "Re-activar" : "Suspender"}
-                                                    >
-                                                        <Ban size={20} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleEdit(orden)}
-                                                        className="p-2.5 text-teal-600 hover:bg-teal-50 rounded-xl transition-colors"
-                                                        title="Editar"
-                                                    >
-                                                        <Edit3 size={20} />
-                                                    </button>
+                                                    {canEditOrdenes && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleToggleStatus(orden)}
+                                                                className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"
+                                                                title="Estado"
+                                                            >
+                                                                {orden.enviada ? <ArchiveRestore size={20} /> : <CheckCircle2 size={20} />}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleToggleField(orden, 'suspendida')}
+                                                                className={`p-2.5 rounded-xl transition-colors ${orden.suspendida
+                                                                    ? 'text-slate-600 bg-slate-200'
+                                                                    : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                                                                    } `}
+                                                                title={orden.suspendida ? "Re-activar" : "Suspender"}
+                                                            >
+                                                                <Ban size={20} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    {(canEditOrdenes || (permissions?.can_edit_own && orden.createdBy === currentUser?.email)) && (
+                                                        <button
+                                                            onClick={() => handleEdit(orden)}
+                                                            className="p-2.5 text-teal-600 hover:bg-teal-50 rounded-xl transition-colors"
+                                                            title="Editar"
+                                                        >
+                                                            <Edit3 size={20} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <div className="flex gap-1">
                                                     <button

@@ -83,7 +83,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, s
 };
 
 const AdminView = () => {
-    const { switchContext, viewingUid, currentUser, isSuperAdmin } = useAuth();
+    const { switchContext, viewingUid, currentUser, isSuperAdmin, permissions } = useAuth();
     const SUPER_ADMIN_EMAIL = "emmanuel.ag92@gmail.com";
     const [authorizedEmails, setAuthorizedEmails] = useState([]);
     const [newEmail, setNewEmail] = useState('');
@@ -92,7 +92,11 @@ const AdminView = () => {
     const [profiles, setProfiles] = useState({});
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState('users'); // 'users', 'maintenance', 'backup', 'notifications'
+    const [activeTab, setActiveTab] = useState(() => {
+        if (isSuperAdmin || permissions?.can_manage_users) return 'users';
+        if (permissions?.can_view_stats) return 'stats';
+        return 'users';
+    }); // 'users', 'stats', 'maintenance', 'backup', 'notifications'
     const [roles, setRoles] = useState([]);
     const [maintenanceUser, setMaintenanceUser] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -732,20 +736,24 @@ const AdminView = () => {
 
             {/* Tabs */}
             <div className="flex flex-wrap gap-4 mb-8">
-                <button
-                    onClick={() => setActiveTab('users')}
-                    className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-                >
-                    Usuarios y Permisos
-                </button>
+                {(isSuperAdmin || permissions?.can_manage_users) && (
+                    <button
+                        onClick={() => setActiveTab('users')}
+                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                    >
+                        Usuarios y Permisos
+                    </button>
+                )}
+                {(isSuperAdmin || permissions?.can_view_stats) && (
+                    <button
+                        onClick={() => setActiveTab('stats')}
+                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'stats' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                    >
+                        Estadísticas
+                    </button>
+                )}
                 {isSuperAdmin && (
                     <>
-                        <button
-                            onClick={() => setActiveTab('stats')}
-                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'stats' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-                        >
-                            Estadísticas
-                        </button>
                         <button
                             onClick={() => setActiveTab('maintenance')}
                             className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
@@ -762,7 +770,7 @@ const AdminView = () => {
                 )}
             </div>
 
-            {activeTab === 'users' ? (
+            {activeTab === 'users' && (isSuperAdmin || permissions?.can_manage_users) ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Authorized Emails */}
                     <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
@@ -1139,7 +1147,7 @@ const AdminView = () => {
                         </div>
                     </div>
                 </div>
-            ) : activeTab === 'maintenance' ? (
+            ) : activeTab === 'maintenance' && isSuperAdmin ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     {/* Borrado por Rango */}
                     <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
@@ -1178,7 +1186,7 @@ const AdminView = () => {
                         </div>
                     </div>
                 </div>
-            ) : activeTab === 'backup' ? (
+            ) : activeTab === 'backup' && isSuperAdmin ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
                         <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Exportar Datos</h3>
