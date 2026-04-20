@@ -52,7 +52,7 @@ const shortProfName = (fullName) => {
 const noop = () => { };
 
 const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftConsumed = noop, modalMode = false, onClose = null, isAuditoria = false }) => {
-    const { viewingUid, catalogOwnerUid, isSuperAdmin, permissions, linkedProfesionalName } = useAuth();
+    const { viewingUid, catalogOwnerUid, isSuperAdmin, permissions, linkedProfesionalName, currentUser } = useAuth();
     const [profesionales, setProfesionales] = useState([]);
     const [allProfesionales, setAllProfesionales] = useState([]);
     const [isResidente, setIsResidente] = useState(false);
