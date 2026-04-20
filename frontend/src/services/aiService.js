@@ -27,7 +27,7 @@ Te voy a dar el texto de un email y necesito que extraigas los datos y los devue
 REGLAS:
 - "profesional": Intentá hacer match con alguno de estos profesionales del sistema: [${profNames}]. Si no hay match exacto, usá el nombre tal cual viene en el email pero siempre incluí el título (Dr., Dra., etc.) y asegurate de que sea nombre y apellido. NO pongas iniciales o letras sueltas.
 - "afiliado": Nombre del paciente en MAYÚSCULAS.
-- "obraSocial": Nombre de la obra social. Corregí errores de tipeo obvios (ej: "swiss mwdical" → "Swiss Medical", "ospedyc" → "OSPEDYC").
+- "obraSocial": Estandarizá el nombre en MAYÚSCULAS para evitar duplicados. Si dice "APROS", "apross" o "Apros", devolvé SIEMPRE "APROSS". Si es "OSDE", "Osde", devolvé "OSDE". Si es "OMINT", devolvé "OMINT". Si es "SANCOR", devolvé "SANCOR SALUD". Corregí cualquier otro error de tipeo a su versión oficial en mayúsculas (ej: "swiss mwdical" → "SWISS MEDICAL", "ospedyc" → "OSPEDYC").
 - "numeroAfiliado": Número de afiliado si está disponible, sino cadena vacía.
 - "dni": DNI del paciente como string.
 - "edad": Edad del paciente como string.

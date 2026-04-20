@@ -2,7 +2,85 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, isLocalEnv } from '../firebase/config';
 import { collection, query, getDocs, addDoc, deleteDoc, doc, where, updateDoc, setDoc, getDoc } from 'firebase/firestore';
-import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, Download, Upload, Database, FileJson, AlertTriangle, PieChart } from 'lucide-react';
+import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, Download, Upload, Database, FileJson, AlertTriangle, PieChart, ChevronDown, Filter } from 'lucide-react';
+
+const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, showAllOption = false }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    
+    const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()));
+    const selectedLabel = (value === 'all' || !value) ? (showAllOption ? 'Todas las Obras Sociales' : placeholder) : value;
+
+    return (
+        <div className="relative">
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:border-teal-500 dark:hover:border-teal-500 transition-all min-w-[220px] justify-between shadow-sm"
+            >
+                <div className="flex items-center gap-2 truncate">
+                    {Icon && <Icon size={16} className="text-teal-500" />}
+                    <span className="truncate">{selectedLabel}</span>
+                </div>
+                <ChevronDown size={16} className={`transition-transform text-slate-400 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)}></div>
+                    <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-[70] overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                <input
+                                    type="text"
+                                    autoFocus
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Buscar obra social..."
+                                    className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500 text-slate-900 dark:text-white"
+                                />
+                            </div>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                            {showAllOption && (
+                                <button
+                                    onClick={() => {
+                                        onChange('all');
+                                        setIsOpen(false);
+                                        setSearch('');
+                                    }}
+                                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors ${value === 'all' ? 'text-teal-600 font-bold bg-teal-50/50' : 'text-slate-600 dark:text-slate-300'}`}
+                                >
+                                    Todas las Obras Sociales
+                                </button>
+                            )}
+                            {filtered.length > 0 ? (
+                                filtered.map(opt => (
+                                    <button
+                                        key={opt}
+                                        onClick={() => {
+                                            onChange(opt);
+                                            setIsOpen(false);
+                                            setSearch('');
+                                        }}
+                                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors ${value === opt ? 'text-teal-600 font-bold bg-teal-50/50' : 'text-slate-600 dark:text-slate-300'}`}
+                                    >
+                                        {opt}
+                                    </button>
+                                ))
+                            ) : (
+                                <div className="px-4 py-8 text-center">
+                                    <p className="text-xs text-slate-400 italic">No se encontraron resultados</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
 
 const AdminView = () => {
     const { switchContext, viewingUid, currentUser, isSuperAdmin } = useAuth();
@@ -31,6 +109,10 @@ const AdminView = () => {
     const [statsYear, setStatsYear] = useState(new Date().getFullYear().toString());
     const [statsDateStart, setStatsDateStart] = useState('');
     const [statsDateEnd, setStatsDateEnd] = useState('');
+    const [statsByOS, setStatsByOS] = useState({});
+    const [statsOSFilter, setStatsOSFilter] = useState('all');
+    const [availableOS, setAvailableOS] = useState([]);
+    const [selectedOSForCodes, setSelectedOSForCodes] = useState('');
 
     // Role Form State
     const [roleName, setRoleName] = useState('');
@@ -178,8 +260,13 @@ const AdminView = () => {
         let proximas = 0;
         let canceladas = 0;
         const todayStr = new Date().toISOString().split('T')[0];
+        const osStats = {};
+        const osSet = new Set();
 
         allSurgeries.forEach(data => {
+            const os = (data.obraSocial || 'SIN OBRA SOCIAL').trim().toUpperCase();
+            osSet.add(os);
+
             const dateStr = data.fechaCirugia || data.date || data.createdAt || '';
             if (!dateStr) return;
 
@@ -195,20 +282,35 @@ const AdminView = () => {
             }
 
             if (include) {
-                totalCirugias++;
-                if (data.suspendida) {
-                    canceladas++;
-                } else {
-                    if (dateStr < todayStr) {
+                // Filtro global por Obra Social para los contadores
+                if (statsOSFilter === 'all' || os === statsOSFilter) {
+                    totalCirugias++;
+                    if (data.suspendida) {
+                        canceladas++;
+                    } else if (dateStr < todayStr) {
                         realizadas++;
                     } else {
                         proximas++;
                     }
                 }
+
+                // Siempre calculamos el desglose de códigos por OS (independiente del filtro global de contadores)
+                if (!osStats[os]) osStats[os] = {};
+                
+                const codes = data.codigosCirugia || [];
+                codes.forEach(c => {
+                    const codeKey = c.codigo || c.nombre || 'SIN CÓDIGO';
+                    if (codeKey) {
+                        osStats[os][codeKey] = (osStats[os][codeKey] || 0) + 1;
+                    }
+                });
             }
         });
+
         setStats({ totalCirugias, realizadas, proximas, canceladas });
-    }, [allSurgeries, statsFilterType, statsMonth, statsYear, statsDateStart, statsDateEnd]);
+        setStatsByOS(osStats);
+        setAvailableOS(Array.from(osSet).sort());
+    }, [allSurgeries, statsFilterType, statsMonth, statsYear, statsDateStart, statsDateEnd, statsOSFilter]);
 
     const handleUpdateRole = async (id, newRoleValue) => {
         const authRecord = authorizedEmails.find(a => a.id === id);
@@ -431,6 +533,65 @@ const AdminView = () => {
             fetchData();
         } catch (error) {
             alert("Error al eliminar registros: " + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleNormalizeObraSocial = async () => {
+        if (isLocalEnv) {
+            alert("🔒 Acción denegada en LOCAL para proteger el historial de la nube.");
+            return;
+        }
+        if (!window.confirm("¿Seguro que deseas normalizar todas las obras sociales en la base de datos?\n\nEsto unificará variaciones (ej: 'Apros', 'apross' -> 'APROSS', 'Osde' -> 'OSDE') en todas las colecciones para corregir las estadísticas.")) return;
+        
+        setLoading(true);
+        try {
+            const collectionsToNormalize = ['ordenes_internacion', 'pedidos_medicos', 'caja'];
+            let updatedCount = 0;
+            
+            for (const colName of collectionsToNormalize) {
+                const q = query(collection(db, colName));
+                const snap = await getDocs(q);
+                
+                for (const docSnap of snap.docs) {
+                    const data = docSnap.data();
+                    // En ordenes_internacion y pedidos_medicos el campo es 'obraSocial'
+                    // En caja el campo es 'obra_social'
+                    const osField = data.obraSocial !== undefined ? 'obraSocial' : (data.obra_social !== undefined ? 'obra_social' : null);
+                    
+                    if (osField && data[osField]) {
+                        let os = data[osField];
+                        let normalized = os.trim().toUpperCase();
+                        
+                        // Reglas de normalización
+                        if (/^APROS/i.test(normalized)) normalized = "APROSS";
+                        else if (/^OSDE/i.test(normalized)) normalized = "OSDE";
+                        else if (/^OMINT/i.test(normalized)) normalized = "OMINT";
+                        else if (/SANCOR/i.test(normalized)) normalized = "SANCOR SALUD";
+                        else if (/SWISS/i.test(normalized)) normalized = "SWISS MEDICAL";
+                        else if (/OSECAC/i.test(normalized)) normalized = "OSECAC";
+                        else if (/OSPEDY/i.test(normalized)) normalized = "OSPEDYC";
+                        else if (/JER[AÁ]RQUICOS/i.test(normalized)) normalized = "JERARQUICOS SALUD";
+                        else if (/NOBIS/i.test(normalized)) normalized = "NOBIS";
+                        else if (/SIPSSA/i.test(normalized)) normalized = "SIPSSA";
+                        else if (/MET/i.test(normalized)) normalized = "MET MEDICINA PRIVADA";
+                        else if (/PREVENCI[OÓ]N/i.test(normalized)) normalized = "PREVENCION SALUD";
+                        else if (/GALENO/i.test(normalized)) normalized = "GALENO";
+                        else if (/MEDIFE/i.test(normalized)) normalized = "MEDIFE";
+                        else if (/DASPU/i.test(normalized)) normalized = "DASPU";
+                        
+                        if (os !== normalized) {
+                            await updateDoc(docSnap.ref, { [osField]: normalized });
+                            updatedCount++;
+                        }
+                    }
+                }
+            }
+            alert(`¡Normalización completada! Se actualizaron ${updatedCount} registros.`);
+            fetchData();
+        } catch (error) {
+            alert("Error al normalizar: " + error.message);
         } finally {
             setLoading(false);
         }
@@ -783,6 +944,15 @@ const AdminView = () => {
                                     />
                                 </div>
                             )}
+
+                            <SearchableSelect 
+                                options={availableOS}
+                                value={statsOSFilter}
+                                onChange={setStatsOSFilter}
+                                placeholder="Filtrar por Obra Social"
+                                icon={Filter}
+                                showAllOption={true}
+                            />
                         </div>
                     </div>
 
@@ -843,6 +1013,76 @@ const AdminView = () => {
                             <p className="text-center text-slate-500 font-medium py-4">No hay cirugías registradas.</p>
                         )}
                     </div>
+
+                    {/* Codes by OS Table */}
+                    <div className="mt-8 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <Activity className="text-blue-500" size={20} />
+                                <h4 className="text-lg font-bold text-slate-800 dark:text-white">Códigos por Obra Social</h4>
+                            </div>
+                            
+                            <SearchableSelect 
+                                options={availableOS}
+                                value={selectedOSForCodes}
+                                onChange={setSelectedOSForCodes}
+                                placeholder="Elegir Obra Social..."
+                                icon={Search}
+                            />
+                        </div>
+                        
+                        <div className="overflow-x-auto">
+                            {selectedOSForCodes ? (
+                                statsByOS[selectedOSForCodes] ? (
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-slate-50 dark:bg-slate-800/30">
+                                                <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-slate-400">Obra Social</th>
+                                                <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-slate-400">Códigos / Prácticas</th>
+                                                <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-slate-400 text-right">Cant.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                            <tr className="bg-blue-50/20 dark:bg-blue-900/10">
+                                                <td colSpan="2" className="px-6 py-3 font-black text-blue-600 dark:text-blue-400 text-sm">
+                                                    {selectedOSForCodes}
+                                                </td>
+                                                <td className="px-6 py-3 font-black text-blue-600 dark:text-blue-400 text-sm text-right">
+                                                    {Object.values(statsByOS[selectedOSForCodes]).reduce((sum, val) => sum + val, 0)}
+                                                </td>
+                                            </tr>
+                                            {Object.entries(statsByOS[selectedOSForCodes])
+                                                .sort((a, b) => b[1] - a[1])
+                                                .map(([code, count]) => (
+                                                <tr key={code} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                                    <td className="px-6 py-3 pl-12 text-slate-400 text-xs italic">
+                                                        —
+                                                    </td>
+                                                    <td className="px-6 py-3 text-slate-600 dark:text-slate-300 text-sm font-medium">
+                                                        {code}
+                                                    </td>
+                                                    <td className="px-6 py-3 text-slate-900 dark:text-white text-sm font-black text-right">
+                                                        {count}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="p-12 text-center text-slate-500 font-medium">
+                                        No hay datos para {selectedOSForCodes} en este período.
+                                    </div>
+                                )
+                            ) : (
+                                <div className="p-12 text-center">
+                                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 mb-4">
+                                        <Search size={24} />
+                                    </div>
+                                    <p className="text-slate-500 font-medium">Selecciona una Obra Social para ver el desglose de códigos.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             ) : activeTab === 'roles' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -900,24 +1140,42 @@ const AdminView = () => {
                     </div>
                 </div>
             ) : activeTab === 'maintenance' ? (
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md mx-auto">
-                    <h3 className="text-xl font-bold mb-8 text-slate-800 dark:text-white">Borrado por Rango</h3>
-                    <div className="space-y-4">
-                        <select
-                            value={maintenanceUser}
-                            onChange={(e) => setMaintenanceUser(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                        >
-                            <option value="">Seleccionar cuenta...</option>
-                            {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
-                        </select>
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" />
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Borrado por Rango */}
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+                        <h3 className="text-xl font-bold mb-8 text-slate-800 dark:text-white">Borrado por Rango</h3>
+                        <div className="space-y-4">
+                            <select
+                                value={maintenanceUser}
+                                onChange={(e) => setMaintenanceUser(e.target.value)}
+                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                            >
+                                <option value="">Seleccionar cuenta...</option>
+                                {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
+                            </select>
+                            <div className="grid grid-cols-2 gap-4">
+                                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" />
+                                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" />
+                            </div>
+                            <button onClick={handleDeleteByRange} className="w-full py-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-100">
+                                Eliminar en Rango
+                            </button>
                         </div>
-                        <button onClick={handleDeleteByRange} className="w-full py-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-100">
-                            Eliminar en Rango
-                        </button>
+                    </div>
+
+                    {/* Herramientas Globales */}
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Herramientas Globales</h3>
+                        <p className="text-sm text-slate-500 mb-6">Mantenimiento masivo de datos en toda la aplicación.</p>
+                        <div className="space-y-4">
+                            <div className="p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl">
+                                <h4 className="font-bold text-slate-800 dark:text-slate-100 mb-2">Estandarizar Obras Sociales</h4>
+                                <p className="text-xs text-slate-500 mb-4">Corrige errores de tipeo y mayúsculas en todas las obras sociales guardadas para mejorar las estadísticas.</p>
+                                <button onClick={handleNormalizeObraSocial} className="w-full py-3 bg-slate-800 text-white dark:bg-slate-700 dark:hover:bg-slate-600 rounded-xl font-bold hover:bg-slate-900 shadow-lg transition-all">
+                                    Normalizar Datos
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             ) : activeTab === 'backup' ? (
