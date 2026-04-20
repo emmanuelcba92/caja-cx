@@ -15,7 +15,7 @@ export const DEFAULT_ROLES = {
             is_ephemeral: false
         }
     },
-    secretaria: {
+    secre: {
         name: 'Secretaria',
         isSystem: true,
         permissions: {
@@ -30,8 +30,8 @@ export const DEFAULT_ROLES = {
             is_ephemeral: false
         }
     },
-    directora: {
-        name: 'Directora Médica',
+    direccion_medica: {
+        name: 'Dirección Médica',
         isSystem: true,
         permissions: {
             can_view_admin: true,
@@ -51,8 +51,8 @@ export const seedDefaultRoles = async () => {
     try {
         const rolesCol = collection(db, 'roles');
 
-        // Delete deprecated 'doctor' role if it exists
-        const deprecatedRoles = ['doctor'];
+        // Delete deprecated roles
+        const deprecatedRoles = ['doctor', 'secretaria', 'directora', 'user'];
         for (const deprecatedRole of deprecatedRoles) {
             if (isLocalEnv) continue;
             const deprecatedRef = doc(rolesCol, deprecatedRole);
@@ -86,8 +86,8 @@ export const getRoles = async () => {
 };
 
 export const getRolePermissions = async (roleName) => {
-    if (!roleName) return DEFAULT_ROLES.user.permissions;
-    // Handle legacy/fallback if role doesn't exist in DB yet (or just read from DB)
+    if (!roleName) return DEFAULT_ROLES.secre.permissions;
+    
     try {
         const roleRef = doc(db, 'roles', roleName);
         const roleSnap = await getDoc(roleRef);
@@ -98,7 +98,7 @@ export const getRolePermissions = async (roleName) => {
         console.error("Error fetching permissions for", roleName, e);
     }
 
-    // Fallback to default if not found in DB (e.g. before seeding finishes)
-    const defaultRole = DEFAULT_ROLES[roleName] || DEFAULT_ROLES.user;
+    // Fallback to default if not found in DB
+    const defaultRole = DEFAULT_ROLES[roleName] || DEFAULT_ROLES.secre;
     return defaultRole.permissions;
 };

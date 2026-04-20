@@ -127,6 +127,7 @@ const AdminView = () => {
         can_view_ordenes: false,
         can_share_ordenes: false,
         can_approve_ordenes: false,
+        can_view_stats: false,
         can_delete_data: false,
         is_ephemeral: false
     });
@@ -143,6 +144,7 @@ const AdminView = () => {
             can_view_ordenes: "Ver Órdenes",
             can_share_ordenes: "Compartir Órdenes",
             can_approve_ordenes: "Aprobar Órdenes",
+            can_view_stats: "Ver Estadísticas",
             can_delete_data: "Eliminar Datos",
             can_edit_own: "Editar Propios",
             can_delete_own: "Eliminar Propios",

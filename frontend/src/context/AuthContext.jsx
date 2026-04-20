@@ -117,6 +117,7 @@ export const AuthProvider = ({ children }) => {
                             can_view_shared_catalog: false, // Super admin sees their own catalog naturally
                             can_view_ordenes: true,
                             can_share_ordenes: true,
+                            can_view_stats: true,
                             can_delete_data: true,
                             is_ephemeral: false
                         });
