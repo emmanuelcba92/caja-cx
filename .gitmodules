@@ -1,0 +1,3 @@
+[submodule "cajacx_mobile"]
+	path = cajacx_mobile
+	url = https://github.com/emmanuelcba92/cajacx_mobile.git
