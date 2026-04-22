@@ -6,6 +6,7 @@ import { apiService } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import MoneyInput from './MoneyInput';
 import ModalPortal from './common/ModalPortal';
+import { scrollToTop } from '../utils/navigation';
 
 
 const CajaForm = () => {
@@ -437,6 +438,7 @@ const CajaForm = () => {
 
             localStorage.removeItem('cajaDiariaEntries');
             fetchHistory();
+            scrollToTop();
             alert("Operación guardada correctamente.");
         } catch (error) {
             console.error("Error saving operation:", error);
@@ -456,7 +458,7 @@ const CajaForm = () => {
         } else if (historyAction === 'edit' && historyToEdit) {
             // LOAD FOR EDIT: Keep the Firestore ID so we update instead of duplicate
             setEntries([{ ...historyToEdit }]);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            scrollToTop();
             alert("Cargado en el formulario para editar.");
         }
     };
@@ -535,7 +537,7 @@ const CajaForm = () => {
             if (action === 'delete') handleDeleteHistory(item.id);
             else {
                 setEntries([{ ...item }]);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                scrollToTop();
             }
         } else {
             setShowHistoryPinModal(true);

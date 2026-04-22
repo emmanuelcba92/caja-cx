@@ -3,9 +3,38 @@
 @tailwind utilities;
 
 @layer base {
+    :root {
+        --bg-page: #f1f1eb;
+        --bg-card: #ffffff;
+        --bg-secondary: #e2e2da;
+        --text-main: #2d2d2a;
+        --text-sub: #71716a;
+        --border-main: #d8d8d1;
+        --hover-main: rgba(37, 99, 235, 0.08);
+    }
+
+    :root.dark,
+    body.dark,
+    .dark {
+        --bg-page: #020617; /* Deep Slate 950 */
+        --bg-card: #0f172a; /* Slate 900 */
+        --bg-secondary: #1e293b; /* Slate 800 */
+        --text-main: #f8fafc; /* Slate 50 */
+        --text-sub: #94a3b8; /* Slate 400 */
+        --border-main: #334155; /* Slate 700 - more visible */
+        --hover-main: rgba(59, 130, 246, 0.15);
+        color-scheme: dark;
+    }
+
     body {
-        @apply bg-slate-50;
+        background-color: var(--bg-page);
+        color: var(--text-main);
         font-family: Arial, sans-serif;
+        transition: background-color 0.3s, color 0.3s;
+    }
+
+    .dark body {
+        background-color: var(--bg-page) !important;
     }
 }
 
@@ -109,55 +138,27 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 /* --- LEGACY BROWSER FIXES (Chrome < 111 / Windows 7) --- */
+/* We use these to ensure colors work even if the browser doesn't support modern CSS features */
 @supports not (color: oklch(0% 0 0)) {
     :root {
-        --fallback-blue-600: #008c95;
-        --fallback-blue-700: #00796b;
-        --fallback-amber-500: #f39200;
-        --fallback-amber-600: #e65100;
+        --fallback-blue-600: #2563eb;
+        --fallback-blue-700: #1d4ed8;
+        --fallback-amber-500: #f59e0b;
+        --fallback-amber-600: #d97706;
         --fallback-emerald-500: #10b981;
         --fallback-emerald-600: #059669;
-        --fallback-slate-50: #f8fafc;
-        --fallback-slate-100: #f1f5f9;
-        --fallback-slate-800: #1e293b;
     }
 
-    /* Forzar colores sólidos si el navegador no entiende el sistema moderno */
-    .bg-blue-600 {
-        background-color: var(--fallback-blue-600) !important;
-    }
-
-    .bg-blue-700 {
-        background-color: var(--fallback-blue-700) !important;
-    }
-
-    .text-blue-600 {
-        color: var(--fallback-blue-600) !important;
-    }
-
-    .bg-amber-500 {
-        background-color: var(--fallback-amber-500) !important;
-    }
-
-    .bg-amber-600 {
-        background-color: var(--fallback-amber-600) !important;
-    }
-
-    .bg-emerald-500 {
-        background-color: var(--fallback-emerald-500) !important;
-    }
-
-    .bg-emerald-600 {
-        background-color: var(--fallback-emerald-600) !important;
-    }
-
-    .bg-slate-50 {
-        background-color: var(--fallback-slate-50) !important;
-    }
-
-    .bg-slate-100 {
-        background-color: var(--fallback-slate-100) !important;
-    }
+    /* Solid color fallbacks for common buttons and text */
+    .bg-blue-600 { background-color: var(--fallback-blue-600) !important; }
+    .bg-blue-700 { background-color: var(--fallback-blue-700) !important; }
+    .text-blue-600 { color: var(--fallback-blue-600) !important; }
+    .bg-amber-500 { background-color: var(--fallback-amber-500) !important; }
+    .bg-amber-600 { background-color: var(--fallback-amber-600) !important; }
+    .bg-emerald-500 { background-color: var(--fallback-emerald-500) !important; }
+    .bg-emerald-600 { background-color: var(--fallback-emerald-600) !important; }
+    
+    /* Do NOT set background-color fallbacks here for white/slate as they conflict with Dark Mode overrides */
 }
 
 /* Removed backdrop-blur for performance on legacy hardware */
@@ -172,7 +173,140 @@ input[type="number"]::-webkit-outer-spin-button {
 .dark .backdrop-blur-md,
 .dark .backdrop-blur-lg,
 .dark .backdrop-blur-xl {
-    background-color: rgba(15, 23, 42, 0.98) !important;
+    background-color: rgba(18, 18, 18, 0.98) !important;
+}
+
+/* Force neutral dark mode for legacy screens using Informes COAT palette */
+.dark {
+    --tw-bg-opacity: 1 !important;
+    background-color: var(--bg-page) !important;
+    color: var(--text-main) !important;
+}
+
+/* Aggressive background overrides to eliminate residual white areas */
+/* This ensures that even hardcoded Tailwind classes are forced to the dark theme */
+.dark .bg-white,
+.dark .bg-gray-50,
+.dark .bg-zinc-50,
+.dark .bg-neutral-50,
+.dark [class*="bg-white"],
+.dark [class*="bg-white/"] {
+    background-color: var(--bg-card) !important;
+}
+
+/* 50 and 100 are usually page backgrounds, so map them to bg-page */
+.dark .bg-slate-50,
+.dark .bg-slate-100,
+.dark .bg-gray-100,
+.dark .bg-zinc-100,
+.dark .bg-neutral-100,
+.dark [class*="bg-slate-50"],
+.dark [class*="bg-gray-50"],
+.dark [class*="bg-slate-100"],
+.dark [class*="bg-gray-100"],
+.dark [class*="bg-zinc-50"] {
+    background-color: var(--bg-page) !important;
+}
+
+.dark .bg-slate-950,
+.dark .bg-gray-950,
+.dark .bg-zinc-950,
+.dark [class*="bg-slate-950"] {
+    background-color: var(--bg-page) !important;
+}
+
+.dark .bg-slate-900,
+.dark .bg-gray-900,
+.dark .bg-zinc-900,
+.dark [class*="bg-slate-900"] {
+    background-color: var(--bg-card) !important; /* Headers and Cards often use 900 */
+}
+
+.dark .bg-slate-800, 
+.dark .bg-slate-700,
+.dark .bg-slate-600,
+.dark .bg-gray-800,
+.dark .bg-gray-700,
+.dark .bg-gray-600,
+.dark .bg-zinc-800,
+.dark .bg-zinc-700,
+.dark .bg-slate-200,
+.dark .bg-gray-200,
+.dark .bg-slate-300,
+.dark .bg-gray-300,
+.dark .bg-slate-400,
+.dark .bg-gray-400,
+.dark .bg-slate-500,
+.dark .bg-gray-500,
+.dark [class*="bg-slate-800/"],
+.dark [class*="bg-slate-700/"],
+.dark [class*="bg-slate-600/"],
+.dark [class*="bg-slate-50/"],
+.dark [class*="bg-slate-100/"],
+.dark [class*="bg-slate-200/"],
+.dark [class*="bg-slate-300/"],
+.dark [class*="bg-slate-400/"],
+.dark [class*="bg-gray-50/"],
+.dark [class*="bg-gray-100/"],
+.dark [class*="bg-gray-200/"],
+.dark [class*="bg-gray-300/"],
+.dark [class*="bg-gray-400/"],
+.dark [class*="bg-emerald-50"],
+.dark [class*="bg-blue-50"],
+.dark [class*="bg-amber-50"],
+.dark [class*="bg-orange-50"],
+.dark [class*="bg-red-50"],
+.dark [class*="bg-purple-50"],
+.dark [class*="bg-teal-50"],
+.dark .bg-amber-100,
+.dark .bg-emerald-100,
+.dark .bg-blue-100 {
+    background-color: var(--bg-secondary) !important;
+}
+
+/* Specific component overrides */
+.dark aside,
+.dark header,
+.dark .card,
+.dark .bg-white.p-8 {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-main) !important;
+}
+
+/* Force visible borders in dark mode */
+.dark .border-slate-800, 
+.dark .border-slate-700, 
+.dark .border-slate-200,
+.dark .border,
+.dark .border-slate-100 {
+    border-color: var(--border-main) !important;
+}
+
+/* Input and Select specific styling for Dark Mode */
+.dark input, 
+.dark select, 
+.dark textarea {
+    background-color: var(--bg-secondary) !important;
+    border: 1px solid var(--border-main) !important;
+    color: var(--text-main) !important;
+}
+
+.dark input::placeholder {
+    color: var(--text-sub) !important;
+}
+
+/* Card and container contrast */
+.dark .shadow-xl, .dark .shadow-lg, .dark .shadow-md, .dark .shadow-sm {
+    border: 1px solid var(--border-main) !important;
+    box-shadow: none !important;
+}
+
+.dark .text-slate-400, .dark .text-slate-500, .dark .text-slate-600, .dark .text-gray-400, .dark .text-gray-500, .dark .text-zinc-400, .dark .text-zinc-500, .dark .text-neutral-400, .dark .text-neutral-500 {
+    color: var(--text-sub) !important;
+}
+
+.dark .text-slate-900, .dark .text-slate-800, .dark .text-slate-700, .dark .text-gray-900, .dark .text-gray-800, .dark .text-gray-700, .dark .text-zinc-900, .dark .text-zinc-800, .dark .text-zinc-700, .dark .text-neutral-900, .dark .text-neutral-800, .dark .text-neutral-700 {
+    color: var(--text-main) !important;
 }
 
 /* 🚀 PERFORMANCE HARDENING: Conditional Legacy Mode */
@@ -197,11 +331,11 @@ input[type="number"]::-webkit-outer-spin-button {
 
     /* Specific border colors for Light/Dark themes */
     .bg-white {
-        border-color: #e2e8f0 !important; /* slate-200 */
+        border-color: var(--border-main) !important;
     }
     
     .dark .bg-slate-900, .dark .bg-slate-800 {
-        border-color: #334155 !important; /* slate-700 */
+        border-color: var(--border-main) !important;
     }
 
     /* Fix for buttons and interactive elements */
@@ -218,21 +352,22 @@ input[type="number"]::-webkit-outer-spin-button {
 
 /* Custom Scrollbar for Dark Mode */
 .dark ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
 }
 
 .dark ::-webkit-scrollbar-track {
-    background: #0f172a;
+    background: #121212;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-    background: #334155;
+    background: #404040;
     border-radius: 10px;
+    border: 2px solid #121212;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+    background: #505050;
 }
 
 /* Evitar problemas con gradientes complejos */

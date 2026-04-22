@@ -5,6 +5,7 @@ import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc
 import { isLocalEnv } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import ModalPortal from './common/ModalPortal';
+import { scrollToTop } from '../utils/navigation';
 // Dynamic import used for exceljs
 // Helper function to wait for Firestore writes to propagate
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -111,6 +112,7 @@ const HistorialCaja = () => {
             setShowAddModal(false);
             setNewEntry({});
             fetchHistory(); // Refresh list
+            scrollToTop();
         } catch (error) {
             console.error(error);
             alert("Error de conexión al guardar.");

@@ -13,6 +13,7 @@ import { collection, addDoc, updateDoc, doc, getDocs, deleteDoc, query, where, g
 import apiService from '../services/apiService';
 import { parseEmailToOrder } from '../services/aiService';
 import { useAuth } from '../context/AuthContext';
+import { scrollToTop } from '../utils/navigation';
 import { createPortal } from 'react-dom';
 import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
@@ -279,6 +280,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 setEditingId(draftData.id);
             }
             setShowForm(true);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
 
             lastInitializedKey.current = currentKey;
             onDraftConsumed();
@@ -1310,6 +1312,9 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             return;
         }
 
+        // Scroll to top automatically when editing
+        scrollToTop();
+
         let codigosCirugia = orden.codigosCirugia;
         if (!codigosCirugia || !Array.isArray(codigosCirugia)) {
             codigosCirugia = orden.codigoCirugia
@@ -1348,6 +1353,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         });
         setEditingId(orden.id);
         setShowForm(true);
+        scrollToTop();
     };
 
     const handlePreview = (orden, type = 'internacion') => {
