@@ -38,26 +38,12 @@ function AuthenticatedApp() {
   const { isAuthorized, isSuperAdmin, userRole, permissions } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
   const [notesCount, setNotesCount] = useState(0);
-
-  // Theme Management
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('theme');
-    return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  });
-
-  const [lowPerfMode, setLowPerfMode] = useState(() => {
-    return localStorage.getItem('low_perf_mode') === 'true';
-  });
+  const [lowPerfMode, setLowPerfMode] = useState(() => localStorage.getItem('low_perf_mode') === 'true');
 
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [darkMode]);
+    document.documentElement.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+  }, []);
 
   useEffect(() => {
     if (lowPerfMode) {
@@ -225,7 +211,7 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="h-screen font-sans text-slate-900 dark:text-slate-100 flex bg-slate-100 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
+    <div className="h-screen font-sans text-slate-900 flex bg-slate-50 transition-colors duration-300 overflow-hidden">
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -236,13 +222,13 @@ function AuthenticatedApp() {
       )}
 
       {/* Redesigned Sidebar (Fixed Width, Vertical Icons) */}
-      <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} fixed md:relative h-screen w-[85px] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shadow-md md:shadow-none transition-all duration-300 z-30`}>
+      <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} fixed md:relative h-screen w-[85px] bg-white border-r border-slate-200 flex flex-col shadow-md md:shadow-none transition-all duration-300 z-30`}>
         
         {/* Sidebar Logo */}
         <div className="py-6 flex flex-col items-center flex-shrink-0">
           <div className="flex flex-col items-center gap-1">
             <img src="/c_logo.svg" alt="Logo" className="w-10 h-10 rounded-xl shadow-md shadow-blue-500/10" />
-            <span className="text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter mt-1">CIRUGÍAS</span>
+            <span className="text-[8px] font-black text-blue-600 uppercase tracking-tighter mt-1">CIRUGÍAS</span>
           </div>
         </div>
 
@@ -264,7 +250,7 @@ function AuthenticatedApp() {
                 }}
                 className={`w-16 h-16 flex flex-col items-center justify-center rounded-2xl transition-all group relative ${activeModuleId === mod.id
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-400/20'
-                  : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-700 dark:hover:text-slate-200'
+                  : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'
                   }`}
                 title={mod.label}
               >
@@ -288,16 +274,7 @@ function AuthenticatedApp() {
         </div>
 
         {/* Sidebar Footer (Theme, User, Logout) */}
-        <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex flex-col items-center gap-4 py-6">
-          
-          {/* Theme Toggle */}
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 transition-all shadow-inner"
-            title={darkMode ? 'Modo Claro' : 'Modo Oscuro'}
-          >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
+        <div className="p-3 border-t border-slate-100 flex flex-col items-center gap-4 py-6">
 
           {/* User Profile */}
           <div className="w-full flex justify-center">
@@ -311,7 +288,7 @@ function AuthenticatedApp() {
           {/* Logout Icon */}
           <button
             onClick={logout}
-            className="w-10 h-10 flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all"
+            className="w-10 h-10 flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 transition-all"
             title="Cerrar Sesión"
           >
             <LogOut size={20} />
@@ -320,32 +297,32 @@ function AuthenticatedApp() {
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 shadow-sm z-10 transition-colors duration-300">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10 transition-colors duration-300">
           <div className="flex items-center gap-6">
             <button
               onClick={() => setSidebarOpen(true)}
-              className={`md:hidden mr-2 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              className={`md:hidden mr-2 p-2 rounded-lg hover:bg-slate-100 transition-colors ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
             >
-              <Menu size={24} className="text-slate-600 dark:text-slate-400" />
+              <Menu size={24} className="text-slate-600" />
             </button>
             
             <div className="flex items-baseline gap-2 shrink-0">
-              <span className="text-sm md:text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
+              <span className="text-sm md:text-xl font-black text-slate-900 uppercase tracking-tight">
                 {filteredNav.find(m => m.id === activeModuleId)?.tabs.find(t => t.id === activeTab)?.label || activeTab}
               </span>
             </div>
 
             {/* Sub-navigation Tabs for grouped modules */}
             {filteredNav.find(m => m.id === activeModuleId)?.tabs.length > 1 && (
-              <div className="flex items-center bg-slate-100 dark:bg-slate-800/50 p-1 rounded-xl ml-2 md:ml-4 overflow-x-auto no-scrollbar max-w-[150px] sm:max-w-[300px] md:max-w-none">
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl ml-2 md:ml-4 overflow-x-auto no-scrollbar max-w-[150px] sm:max-w-[300px] md:max-w-none">
                 {filteredNav.find(m => m.id === activeModuleId).tabs.map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={`px-3 md:px-4 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${
                       activeTab === tab.id
-                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
                     }`}
                   >
                     {tab.label}
@@ -359,7 +336,7 @@ function AuthenticatedApp() {
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto p-8 bg-slate-100 dark:bg-slate-950 transition-colors duration-300">
+        <section className="flex-1 overflow-y-auto p-8 bg-slate-50 transition-colors duration-300">
           <div className={`mx-auto space-y-6 transition-all duration-300 ${sidebarOpen ? 'max-w-7xl' : 'max-w-[1600px]'}`}>
             <Suspense fallback={
               <div className="flex flex-col items-center justify-center p-20 gap-4 text-slate-400">
@@ -395,13 +372,13 @@ function AuthenticatedApp() {
         {/* HISTORIAL DE CAMBIOS MODAL */}
         {showNextFeatures && (
           <ModalPortal onClose={() => setShowNextFeatures(false)}>
-            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl w-full max-w-lg border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-xl w-full max-w-lg border border-slate-100 animate-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Historial de Cambios 📓</h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
+                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Historial de Cambios 📓</h3>
+                  <p className="text-xs text-slate-400 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
                 </div>
-                <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
                   <Menu size={20} className="rotate-45" />
                 </button>
               </div>
@@ -410,24 +387,24 @@ function AuthenticatedApp() {
                 <div className="space-y-3">
                   <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">19 de Enero, 2026</h4>
                   <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900 dark:text-slate-200">Compatibilidad W7:</strong>
+                        <strong className="text-slate-900">Compatibilidad W7:</strong>
                         <p className="text-xs opacity-70">Añadidos fallbacks de colores y estilos para soportar Chrome 109 y navegadores antiguos.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900 dark:text-slate-200">Diseño Responsivo:</strong>
+                        <strong className="text-slate-900">Diseño Responsivo:</strong>
                         <p className="text-xs opacity-70">Menú de botones adaptativo en Liquidaciones y mejoras de visualización en móviles.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900 dark:text-slate-200">URL Corta:</strong>
+                        <strong className="text-slate-900">URL Corta:</strong>
                         <p className="text-xs opacity-70">Migración al nuevo dominio corto: cajacx.web.app.</p>
                       </div>
                     </li>
@@ -437,31 +414,31 @@ function AuthenticatedApp() {
                 <div className="space-y-3">
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-l-2 border-slate-300 pl-3">18 de Enero, 2026</h4>
                   <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900 dark:text-slate-200">Sistema de Fechas Seguro:</strong>
+                        <strong className="text-slate-900">Sistema de Fechas Seguro:</strong>
                         <p className="text-xs opacity-70">Implementación de escudos contra errores de renderizado por fechas inválidas.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900 dark:text-slate-200">Deducciones Detalladas:</strong>
+                        <strong className="text-slate-900">Deducciones Detalladas:</strong>
                         <p className="text-xs opacity-70">Añadida fecha individual a cada ítem de "Agregar Detalle".</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900 dark:text-slate-200">Liquidación Multi-profesional:</strong>
+                        <strong className="text-slate-900">Liquidación Multi-profesional:</strong>
                         <p className="text-xs opacity-70">Nueva funcionalidad para dividir honorarios manuales entre múltiples médicos.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-start gap-3 text-sm text-slate-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900 dark:text-slate-200">Recibos Dinámicos:</strong>
+                        <strong className="text-slate-900">Recibos Dinámicos:</strong>
                         <p className="text-xs opacity-70">La fecha del recibo ahora coincide con el periodo de liquidación seleccionado.</p>
                       </div>
                     </li>
@@ -471,7 +448,7 @@ function AuthenticatedApp() {
 
               <button
                 onClick={() => setShowNextFeatures(false)}
-                className="w-full mt-8 py-4 bg-slate-900 dark:bg-blue-600 text-white font-black rounded-2xl hover:opacity-90 transition-opacity uppercase text-xs tracking-widest shadow-md shadow-slate-200 dark:shadow-none"
+                className="w-full mt-8 py-4 bg-slate-900 text-white font-black rounded-2xl hover:opacity-90 transition-opacity uppercase text-xs tracking-widest shadow-md shadow-slate-200"
               >
                 Cerrar Registro
               </button>

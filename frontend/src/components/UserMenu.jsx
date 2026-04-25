@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import ModalPortal from './common/ModalPortal';
 import {
-    User, Settings, LogOut, Moon, Sun, ChevronDown,
+    User, Settings, LogOut, ChevronDown,
     Shield, Mail, Key, Users, Check, Zap
 } from 'lucide-react';
 import { updatePassword, updateEmail, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
@@ -108,7 +108,7 @@ const UserMenu = ({ isCollapsed = false, lowPerfMode, setLowPerfMode }) => {
             {/* Trigger Button - Circle Avatar */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm group ${isOpen ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm group ${isOpen ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 title="Cuenta de Usuario"
             >
                 <span className="text-xs font-black tracking-tighter group-hover:scale-110 transition-transform">{userInitials}</span>

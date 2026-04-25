@@ -148,15 +148,19 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     }
     body { background: white !important; overflow: visible !important; }
     #root { height: 0 !important; overflow: hidden !important; }
-    .page-break {
-        display: block !important;
-        page-break-after: always !important;
-        break-after: page !important;
-        height: 0;
-        width: 100%;
-        clear: both;
-        visibility: hidden;
-    }
+}
+/* Force light mode for preview on screen and for html2canvas/PDF */
+.print-orden #preview-content, 
+.print-orden #preview-content * {
+    background-color: white !important;
+    color: black !important;
+    border-color: #cbd5e1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-scheme: light !important;
+}
+.print-orden #preview-content img {
+    background-color: transparent !important;
 }
 `;
 
@@ -2587,6 +2591,18 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 -webkit-print-color-adjust: exact;
                                 print-color-adjust: exact;
                             }
+                        }
+                        /* Force light mode for preview on screen and for html2canvas/PDF */
+                        .print-orden #preview-content, 
+                        .print-orden #preview-content * {
+                            background-color: white !important;
+                            color: black !important;
+                            border-color: #cbd5e1 !important;
+                            -webkit-print-color-adjust: exact !important;
+                            print-color-adjust: exact !important;
+                        }
+                        .print-orden #preview-content img {
+                            background-color: transparent !important;
                         }
                     `}</style>
                     <div className="p-8 print:p-0">

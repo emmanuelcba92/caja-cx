@@ -37,7 +37,18 @@ const LiquidacionView = () => {
             height: auto;
             z-index: 9999;
             background: white !important;
+            color: black !important;
             transform-origin: top left;
+        }
+        .print-portal * {
+            color: black !important;
+            background-color: transparent !important;
+            border-color: #000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        .print-portal img {
+            background-color: transparent !important;
         }
         @media only screen and (max-width: 768px) {
             .print-portal {
@@ -64,6 +75,17 @@ const LiquidacionView = () => {
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       }
       .print-portal { display: none; }
+      
+      /* Force light mode for receipts and settlements on screen preview too */
+      .force-light-preview, .force-light-preview * {
+          background-color: white !important;
+          color: black !important;
+          border-color: #cbd5e1 !important;
+          color-scheme: light !important;
+      }
+      .force-light-preview img {
+          background-color: transparent !important;
+      }
     `;
 
     // Helper for Currency
@@ -1425,7 +1447,7 @@ const LiquidacionView = () => {
             )}
 
             {showReceipt ? (
-                <div className="bg-white dark:bg-slate-900 min-h-screen p-8 print:hidden animate-in fade-in duration-300 relative">
+                <div className="bg-white min-h-screen p-8 print:hidden animate-in fade-in duration-300 relative force-light-preview">
                     <div className="flex gap-4 mb-8 border-b border-slate-100 dark:border-slate-800 pb-4">
                         <button onClick={() => setShowReceipt(false)} className="flex items-center gap-2 px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 font-bold transition-colors">
                             <Search size={16} /> Volver a Liquidación
@@ -1435,7 +1457,7 @@ const LiquidacionView = () => {
                         </button>
                     </div>
 
-                    <div className="max-w-3xl mx-auto border border-slate-200 dark:border-slate-800 shadow-sm p-12 bg-white dark:bg-slate-900">
+                    <div className="max-w-3xl mx-auto border border-slate-200 shadow-sm p-12 bg-white">
                         <div className="mb-8">
                             <img src="/coat_logo.png" alt="COAT" className="h-20 object-contain mx-auto" />
                         </div>

@@ -25,6 +25,19 @@ const HistorialCaja = () => {
       @media print {
         @page { size: landscape; margin: 10mm; }
         .no-print { display: none !important; }
+        body { background: white !important; color: black !important; color-scheme: light !important; }
+        * {
+            color: black !important;
+            background-color: transparent !important;
+            border-color: #ccc !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        /* Specific overrides for common dark headers in this app */
+        .bg-slate-900, .bg-black, .bg-slate-800, .text-white {
+            background-color: #f1f5f9 !important;
+            color: black !important;
+        }
       }
     `;
 

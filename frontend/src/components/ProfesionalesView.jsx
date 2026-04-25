@@ -76,10 +76,17 @@ const ProfesionalesView = () => {
                 top: 0;
                 left: 0;
                 width: 100%;
-                background: white;
-                color: black;
+                background: white !important;
+                color: black !important;
             }
-            body { background: white !important; }
+            .print-portal-matrix * {
+                color: black !important;
+                background-color: transparent !important;
+                border-color: black !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            body { background: white !important; color: black !important; color-scheme: light !important; }
         }
     `;
 
@@ -733,7 +740,7 @@ const ProfesionalesView = () => {
 
             {/* MATRIX PRINT MODAL */}
             {showMatrixModal && matrixData && createPortal(
-                <div className="fixed inset-0 bg-white z-[100] overflow-auto print-portal-matrix">
+                <div className="fixed inset-0 bg-white z-[100] overflow-auto print-portal-matrix force-light-preview">
                     <style>{printStyle}</style>
                     <div className="p-8 print:p-0">
                         {/* Header Controls (No Print) */}
