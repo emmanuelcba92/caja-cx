@@ -64,12 +64,18 @@ const PacientesView = (props) => {
         try {
             // We use the DNI as the document ID to prevent duplicates and ensure consistency
             const patientId = formData.dni;
-            await apiService.addDocument('pacientes', { 
+            const patientData = { 
                 ...formData, 
                 id: patientId,
-                lastUpdate: new Date().toISOString(),
-                createdAt: editingId ? undefined : new Date().toISOString()
-            });
+                lastUpdate: new Date().toISOString()
+            };
+            
+            // Only add createdAt if it's a new patient
+            if (!editingId) {
+                patientData.createdAt = new Date().toISOString();
+            }
+
+            await apiService.addDocument('pacientes', patientData);
             
             toast.success(editingId ? "Paciente actualizado" : "Paciente registrado");
             setShowForm(false);
