@@ -7,7 +7,7 @@ import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth"
 import { 
     collection, getDocs, doc, setDoc, updateDoc, deleteDoc, 
     query, where, orderBy, addDoc, getDoc, writeBatch,
-    getCountFromServer 
+    getCountFromServer, limit
 } from "firebase/firestore";
 import { 
     Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, 
