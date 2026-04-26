@@ -650,9 +650,31 @@ const CajaForm = ({ lowPerfMode = false }) => {
                                                 <input
                                                     className="input-premium py-2 text-sm"
                                                     value={entry.dni}
-                                                    onChange={(e) => {
+                                                    onChange={async (e) => {
                                                         const val = e.target.value.replace(/\D/g, '');
                                                         updateEntry(entry.id, 'dni', val);
+                                                        
+                                                        // Auto-fill logic when DNI has 7-8 digits
+                                                        if (val.length >= 7 && val.length <= 9) {
+                                                            try {
+                                                                const docSnap = await getDoc(doc(db, "pacientes", val));
+                                                                if (docSnap.exists()) {
+                                                                    const data = docSnap.data();
+                                                                    // Update patient and obra_social if they are empty
+                                                                    setEntries(prev => prev.map(item => 
+                                                                        item.id === entry.id 
+                                                                        ? { 
+                                                                            ...item, 
+                                                                            paciente: item.paciente || data.nombre || '', 
+                                                                            obra_social: item.obra_social || data.obraSocial || '' 
+                                                                          }
+                                                                        : item
+                                                                    ));
+                                                                }
+                                                            } catch (err) {
+                                                                console.warn("Error looking up patient by DNI:", err);
+                                                            }
+                                                        }
                                                     }}
                                                     placeholder="Sin puntos..."
                                                 />

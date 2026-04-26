@@ -2919,13 +2919,30 @@ const OrdenesView = (props) => {
                                 </p>
                             </div>
 
-                            <div className="pt-2">
+                            <div className="pt-2 space-y-3">
                                 <button
                                     onClick={async () => {
                                         const fecha = whatsappModal.fechaCirugia ?
                                             new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
                                             : 'sin fecha';
-                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n * ${whatsappModal.afiliado}* tiene agendada una cirugía el día * ${fecha}* con * ${whatsappModal.profesional}*.En el caso de su obra social, la autorización la gestionamos nosotros.\n\nPara poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.`;
+                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*.\n\nLe informamos que en el caso de su obra social, la autorización debe ser gestionada personalmente por el paciente ante la misma. Cualquier duda quedamos a su disposición.`;
+                                        await navigator.clipboard.writeText(mensaje);
+                                        setWhatsappModal(null);
+                                        setCopiedToast(true);
+                                        setTimeout(() => setCopiedToast(false), 3000);
+                                    }}
+                                    className="w-full py-4 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 group"
+                                >
+                                    <User size={16} className="group-hover:scale-110 transition-transform" />
+                                    Copiar Mensaje Paciente
+                                </button>
+
+                                <button
+                                    onClick={async () => {
+                                        const fecha = whatsappModal.fechaCirugia ?
+                                            new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+                                            : 'sin fecha';
+                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*.\n\nEn el caso de su obra social, la autorización la gestionamos nosotros.\n\nPara poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.`;
                                         await navigator.clipboard.writeText(mensaje);
                                         setWhatsappModal(null);
                                         setCopiedToast(true);
