@@ -294,7 +294,8 @@ const AdminView = () => {
                 const cajaCount = await getCountFromServer(collection(db, "caja"));
                 usage.collections.caja.count = cajaCount.data().count;
                 const cajaSample = await getDocs(query(collection(db, "caja"), limit(10)));
-                const avgSize = estimateSize(cajaSample.docs.map(d => d.data())) / 10;
+                const actualSampleSize = cajaSample.docs.length;
+                const avgSize = actualSampleSize > 0 ? estimateSize(cajaSample.docs.map(d => d.data())) / actualSampleSize : 0;
                 usage.collections.caja.size = avgSize * usage.collections.caja.count;
             } catch (e) { console.error("Error counting/estimating caja:", e); }
 
@@ -325,7 +326,8 @@ const AdminView = () => {
                 const patientsCount = await getCountFromServer(collection(db, "pacientes"));
                 usage.collections.pacientes.count = patientsCount.data().count;
                 const patientsSample = await getDocs(query(collection(db, "pacientes"), limit(10)));
-                const avgSize = estimateSize(patientsSample.docs.map(d => d.data())) / 10;
+                const actualSampleSize = patientsSample.docs.length;
+                const avgSize = actualSampleSize > 0 ? estimateSize(patientsSample.docs.map(d => d.data())) / actualSampleSize : 0;
                 usage.collections.pacientes.size = avgSize * usage.collections.pacientes.count;
             } catch (e) { console.error("Error counting/estimating pacientes:", e); }
 
@@ -982,10 +984,11 @@ const AdminView = () => {
                                         <span className="text-slate-500 font-bold">{(firestoreUsage.collections.profesionales.size || 0).toFixed(1)} KB</span>
                                     </div>
                                 </div>
-                                <div className="flex justify-between items-center text-[10px] font-bold">
-                                    <span className="text-slate-400 uppercase tracking-widest">PACIENTES</span>
+                                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                                    <span className="text-slate-400">Pacientes</span>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-slate-400">{firestoreUsage.collections.pacientes.count} Docs</span>
+                                        <span className="text-slate-300">{firestoreUsage.collections.pacientes.count} Docs</span>
+                                        <span className="text-slate-500 font-bold">{(firestoreUsage.collections.pacientes.size || 0).toFixed(1)} KB</span>
                                     </div>
                                 </div>
                                 <p className="text-[10px] text-slate-500 leading-relaxed italic">
