@@ -6,12 +6,16 @@
   "targets": {
     "caja-de-cirugia": {
       "hosting": {
-        "live": ["cajacx"]
+        "live": [
+          "cajacx"
+        ]
       }
     },
     "cajacx-test": {
       "hosting": {
-        "test": ["cajacx-test"]
+        "test": [
+          "cajacx-test"
+        ]
       }
     }
   },

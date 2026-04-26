@@ -24,3 +24,7 @@ build/
 # Archives
 *.rar
 *.zip
+
+# Local Assets (Patient Data/Professional Signatures)
+frontend/public/consentimientos/
+frontend/public/firmas/

@@ -4,7 +4,7 @@ import {
     Save as SaveIcon, FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash,
     Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search,
     CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle,
-    AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban,
+    AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban, Filter,
     TableProperties, Sparkles, Loader2, Lock as LockIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom';
 import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
 import { toast } from 'react-hot-toast';
+import { generateOrdenPDF } from '../utils/pdfGenerator';
 // Dynamic import used for html2pdf
 
 // Map professional names to their signature image files
@@ -52,7 +53,19 @@ const shortProfName = (fullName) => {
 
 const noop = () => { };
 
-const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftConsumed = noop, modalMode = false, onClose = null, isAuditoria = false }) => {
+const OrdenesView = (props) => {
+    const { 
+        initialTab = 'internacion', 
+        draftData = null, 
+        onDraftConsumed = noop, 
+        modalMode = false, 
+        onClose = null, 
+        isAuditoria = false, 
+        lowPerfMode = false 
+    } = props;
+    
+    // Safety check for legacy browsers
+    const isLowPerf = (lowPerfMode || false);
     const { viewingUid, catalogOwnerUid, isSuperAdmin, permissions, linkedProfesionalName, currentUser } = useAuth();
 
     // Permissions logic
@@ -77,6 +90,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const [aiError, setAiError] = useState(''); // AI error message
     const [activeTab, setActiveTab] = useState(initialTab); // 'internacion' | 'control'
     const [previewOrdenes, setPreviewOrdenes] = useState([]); // Preview for control tab
+    const [selectedConsent, setSelectedConsent] = useState(null); // 'caratula', 'generico', or {code, type}
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
     const [rangeStart, setRangeStart] = useState('');
     const [rangeEnd, setRangeEnd] = useState('');
@@ -89,15 +103,73 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const [filterStatus, setFilterStatus] = useState('');
     const [filterAudit, setFilterAudit] = useState(''); // 'auditadas' | 'pendientes' | ''
     const [searchPaciente, setSearchPaciente] = useState('');
-    const [visibleCount, setVisibleCount] = useState(30); // Limite inicial de items
+    const [visibleCount, setVisibleCount] = useState(15); // Limite inicial de items
 
     // Autocomplete State
     const [suggestions, setSuggestions] = useState([]);
     const [showProfSuggestions, setShowProfSuggestions] = useState(false);
     const [activeRow, setActiveRow] = useState(null); // { index: 0, field: 'codigo' | 'nombre' }
     const [highlightedIndex, setHighlightedIndex] = useState(0);
+    const [dynamicConsents, setDynamicConsents] = useState({});
 
     const searchTimeoutRef = useRef(null);
+
+    // Fetch dynamic assets from Firestore
+    const [storageFiles, setStorageFiles] = useState([]);
+
+    useEffect(() => {
+        const fetchStorageFiles = async () => {
+            try {
+                const querySnapshot = await getDocs(collection(db, 'storage_files'));
+                const files = [];
+                querySnapshot.forEach(doc => {
+                    files.push({ id: doc.id, ...doc.data() });
+                });
+                setStorageFiles(files);
+            } catch (error) {
+                console.error("Error fetching storage files from Firestore:", error);
+            }
+        };
+        fetchStorageFiles();
+    }, []);
+
+    // State for PDF library (Firebase Storage URLs)
+    const [consentPdfs, setConsentPdfs] = useState({});
+
+    // 2. Fetch consent mappings + PDF library from Firestore
+    useEffect(() => {
+        const fetchConsents = async () => {
+            try {
+                const [mappingsSnap, pdfsSnap] = await Promise.all([
+                    getDocs(collection(db, 'consent_mappings')),
+                    getDocs(collection(db, 'consentimientos')),
+                ]);
+
+                // Build PDF lookup: { id -> { nombre, url } }
+                const pdfMap = {};
+                pdfsSnap.docs.forEach(d => {
+                    pdfMap[d.id] = { nombre: d.data().nombre, url: d.data().url };
+                });
+                setConsentPdfs(pdfMap);
+
+                // Build mappings: { code -> { nombre, adulto: url, menor: url } }
+                const mappingsMap = {};
+                mappingsSnap.docs.forEach(docSnap => {
+                    const m = docSnap.data();
+                    mappingsMap[m.code] = {
+                        nombre: m.name,
+                        adulto: m.adultoId ? (pdfMap[m.adultoId]?.url || null) : null,
+                        menor: m.menorId ? (pdfMap[m.menorId]?.url || null) : null,
+                    };
+                });
+                setDynamicConsents(mappingsMap);
+            } catch (err) {
+                console.error("Error fetching consent data from Firebase:", err);
+            }
+        };
+        fetchConsents();
+    }, []);
+
     const lastInitializedKey = useRef('');
 
 
@@ -419,36 +491,95 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
+    const handleDniBlur = async (dni) => {
+        if (!dni || dni.length < 7) return;
+        
+        try {
+            const q = query(collection(db, 'pacientes'), where('dni', '==', dni));
+            const querySnapshot = await getDocs(q);
+            
+            if (!querySnapshot.empty) {
+                const pacienteData = querySnapshot.docs[0].data();
+                // Autofill existing form data with patient record
+                setFormData(prev => ({
+                    ...prev,
+                    afiliado: pacienteData.nombre || prev.afiliado,
+                    obraSocial: pacienteData.obraSocial || prev.obraSocial,
+                    numeroAfiliado: pacienteData.numeroAfiliado || prev.numeroAfiliado,
+                    telefono: pacienteData.telefono || prev.telefono,
+                    edad: pacienteData.edad || prev.edad
+                }));
+                toast.success('Paciente encontrado: datos completados', { icon: '👤', duration: 2000 });
+            }
+        } catch (error) {
+            console.error("Error searching patient by DNI:", error);
+        }
+    };
+
     const handleDownloadPDF = async () => {
-        const element = document.getElementById('preview-content');
-        if (!element) {
-            console.error('Element preview-content not found');
+        const typeToGen = selectedConsent || previewType;
+
+        if (typeToGen === 'reporte_semanal') {
+            const element = document.getElementById('preview-content');
+            if (!element) return;
+            const opt = {
+                margin: 0,
+                filename: `Reporte_${previewData.fechaInicio}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            const html2pdf = (await import('html2pdf.js')).default || await import('html2pdf.js');
+            html2pdf().from(element).set(opt).save();
+        } else if (typeToGen === 'generico') {
+            const url = getConsentUrl('generico');
+            if (url) window.open(url, '_blank');
+        } else if (typeof typeToGen === 'object' && typeToGen !== null) {
+            // It's a specific consent object {code, isMinor}
+            const url = getConsentUrl('especifico', typeToGen.code, typeToGen.isMinor);
+            if (url) window.open(url, '_blank');
+        } else {
+            setLoading(true);
+            const profData = getProfesionalData(previewData.profesional);
+            const enrichedData = {
+                ...previewData,
+                firmaUrl: getSignatureUrl(previewData.profesional),
+                profesionalData: profData
+            };
+            await generateOrdenPDF(enrichedData, typeToGen, 'save');
+            setLoading(false);
+        }
+    };
+
+    const handlePrint = async () => {
+        const typeToGen = selectedConsent || previewType;
+
+        if (typeToGen === 'generico') {
+            const url = getConsentUrl('generico');
+            if (url) window.open(url, '_blank');
             return;
         }
 
-        let pdfFilename = 'documento.pdf';
-        if (previewType === 'reporte_semanal') {
-            pdfFilename = `Control_Facturacion_${previewData.fechaInicio}_al_${previewData.fechaFin}`.replace(/\//g, '-') + '.pdf';
-        } else if (previewType === 'caratula') {
-            pdfFilename = `Caratula_${previewData.afiliado || 'Paciente'}.pdf`;
-        } else {
-            pdfFilename = `Orden_${previewData.afiliado || 'Paciente'}_${previewData.fechaCirugia || previewData.fechaDocumento || ''}.pdf`;
+        if (typeof typeToGen === 'object' && typeToGen !== null) {
+            const url = getConsentUrl('especifico', typeToGen.code, typeToGen.isMinor);
+            if (url) window.open(url, '_blank');
+            return;
         }
 
-        const opt = {
-            margin: 0,
-            filename: pdfFilename,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, windowHeight: element.scrollHeight },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-        };
-
-        const html2pdf = (await import('html2pdf.js')).default || await import('html2pdf.js');
-        html2pdf().from(element).set(opt).save();
+        if (typeToGen === 'reporte_semanal') {
+            window.print();
+        } else {
+            setLoading(true);
+            const profData = getProfesionalData(previewData.profesional);
+            const enrichedData = {
+                ...previewData,
+                firmaUrl: getSignatureUrl(previewData.profesional),
+                profesionalData: profData
+            };
+            await generateOrdenPDF(enrichedData, typeToGen, 'print');
+            setLoading(false);
+        }
     };
-
-
 
     const addCodigo = () => {
         setFormData(prev => ({
@@ -488,16 +619,16 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         const bgInput = 'bg-white border border-slate-300';
 
         return (
-            <div className="space-y-6 max-w-4xl mx-auto">
+            <div className="space-y-4 max-w-5xl mx-auto">
                 {/* Main Form Card */}
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-sm border border-slate-100 dark:border-slate-800 space-y-8">
+                <div className="bg-white dark:bg-slate-950 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800/50 space-y-5">
                     {/* Header with Title + AI Button */}
-                    <div className="flex items-center justify-between pb-4 border-b border-slate-50">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-50 dark:border-slate-800/50">
                         <div className="flex items-center gap-3">
-                            <div className={`p-2 bg-${accentColor}-50 dark:bg-${accentColor}-900/20 rounded-xl text-${accentColor}-600 dark:text-${accentColor}-400`}>
-                                {editingId ? <Edit3 size={20} /> : <Plus size={20} />}
+                            <div className={`p-1.5 bg-${accentColor}-50 dark:bg-${accentColor}-900/20 rounded-lg text-${accentColor}-600 dark:text-${accentColor}-400`}>
+                                {editingId ? <Edit3 size={18} /> : <Plus size={18} />}
                             </div>
-                            <h3 className="text-lg font-black text-slate-800 dark:text-slate-200 uppercase tracking-tight">
+                            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-tight">
                                 {editingId ? 'Editar Documento' : `Nueva ${isPedido ? 'Pedido' : 'Orden'}`}
                             </h3>
                         </div>
@@ -505,127 +636,148 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             <button
                                 type="button"
                                 onClick={() => { setShowAIInput(!showAIInput); setAiError(''); }}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${showAIInput
-                                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-200 dark:shadow-none'
-                                    : 'bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-800 hover:shadow-md hover:shadow-violet-100 dark:hover:shadow-none'
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black transition-all uppercase tracking-widest ${showAIInput
+                                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/20'
+                                    : 'bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border border-violet-100 dark:border-violet-800 hover:bg-violet-100'
                                     }`}
                             >
-                                <Sparkles size={16} />
-                                Auto-completar con IA
+                                <Sparkles size={14} />
+                                IA Auto-fill
                             </button>
                         )}
                     </div>
 
-                    {/* AI Paste Area */}
+                    {/* AI Paste Area - Premium Redesign */}
                     {showAIInput && !isPedido && (
-                        <div className="bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50 dark:from-violet-950/40 dark:via-purple-950/40 dark:to-indigo-950/40 p-6 rounded-2xl border border-violet-200 dark:border-violet-800 space-y-4 animate-in slide-in-from-top-2 fade-in duration-300">
-                            <div className="flex items-center gap-2 text-sm font-bold text-violet-700 dark:text-violet-300">
-                                <Sparkles size={16} className="text-violet-500" />
-                                Pegá el contenido del email y la IA completará el formulario
-                            </div>
-                            <textarea
-                                value={aiInputText}
-                                onChange={(e) => setAiInputText(e.target.value)}
-                                placeholder={'Pegá acá el texto del email...\n\nEjemplo:\nNombre y Apellido del Profesional: Dr. Pérez\nFecha de la Cirugia: Abr 10, 2026\nNombre y Apellido del Paciente: GONZALEZ JUAN\nObra Social: OSDE\nDNI: 12345678\n...'}
-                                className="w-full px-5 py-4 bg-white dark:bg-slate-800 border border-violet-200 dark:border-violet-700 rounded-xl focus:outline-none focus:ring-4 focus:ring-violet-100 dark:focus:ring-violet-900 focus:border-violet-400 dark:focus:border-violet-600 transition-all min-h-[160px] text-sm font-mono text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-y"
-                                disabled={aiLoading}
-                            />
-                            {aiError && (
-                                <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-4 py-2 rounded-lg border border-red-100 dark:border-red-900/50">
-                                    <AlertCircle size={14} />
-                                    {aiError}
+                        <div className="relative overflow-hidden animate-in slide-in-from-top-2 fade-in duration-300">
+                            <div className="relative bg-slate-50 dark:bg-slate-900/50 border border-violet-100 dark:border-violet-900/30 p-5 rounded-2xl shadow-xl">
+                                <div className="flex items-center justify-between mb-5">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                                            <Sparkles size={20} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xs font-black text-slate-900 dark:text-white tracking-tight uppercase">
+                                                Asistente IA <span className="text-violet-500">PARSER</span>
+                                            </h3>
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-tighter">
+                                                Pega el email de la cirugía para procesar
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 px-2 py-1 bg-violet-100/50 dark:bg-violet-900/30 rounded-lg border border-violet-200 dark:border-violet-800">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-violet-500"></div>
+                                        <span className="text-[8px] font-black text-violet-600 dark:text-violet-400 uppercase tracking-widest">Active</span>
+                                    </div>
                                 </div>
-                            )}
-                            <div className="flex items-center gap-3">
-                                <button
-                                    type="button"
-                                    disabled={!aiInputText.trim() || aiLoading}
-                                    onClick={async () => {
-                                        setAiLoading(true);
-                                        setAiError('');
-                                        try {
-                                            const result = await parseEmailToOrder(aiInputText, profesionales);
-                                            // Merge AI result into form, respecting the data structure
-                                            setFormData(prev => {
-                                                const merged = { ...prev };
-                                                
-                                                // Improved professional matching
-                                                if (result.profesional) {
-                                                    const extracted = result.profesional;
-                                                    const normalizedExtracted = extracted.toLowerCase().replace(/^(dr\.|dra\.|lic\.|dr|dra|lic)\s+/i, '').trim();
-                                                    
-                                                    const match = profesionales.find(p => {
-                                                        const name = p.nombre.toLowerCase();
-                                                        const nameWithoutPrefix = name.replace(/^(dr\.|dra\.|lic\.)\s+/i, '').trim();
-                                                        return name === extracted.toLowerCase() || 
-                                                               nameWithoutPrefix === normalizedExtracted ||
-                                                               (normalizedExtracted.length > 4 && nameWithoutPrefix.includes(normalizedExtracted)) ||
-                                                               (normalizedExtracted.length > 4 && normalizedExtracted.includes(nameWithoutPrefix));
-                                                    });
-                                                    
-                                                    merged.profesional = match ? match.nombre : extracted;
-                                                }
 
-                                                if (result.afiliado) merged.afiliado = result.afiliado.toUpperCase();
-                                                if (result.obraSocial) merged.obraSocial = result.obraSocial;
-                                                if (result.numeroAfiliado) merged.numeroAfiliado = result.numeroAfiliado;
-                                                if (result.dni) merged.dni = result.dni;
-                                                if (result.edad) merged.edad = String(result.edad);
-                                                if (result.telefono) merged.telefono = result.telefono;
-                                                if (result.tutor) merged.tutor = result.tutor;
-                                                if (result.diagnostico) merged.diagnostico = result.diagnostico;
-                                                if (result.habitacion) merged.habitacion = result.habitacion;
-                                                if (result.tipoAnestesia) merged.tipoAnestesia = result.tipoAnestesia;
-                                                if (result.fechaCirugia) merged.fechaCirugia = result.fechaCirugia;
-                                                if (result.horaCirugia) merged.horaCirugia = result.horaCirugia;
-                                                if (result.salaCirugia) merged.salaCirugia = result.salaCirugia;
-                                                if (result.anotacionCalendario) merged.anotacionCalendario = result.anotacionCalendario;
+                                <div className="relative">
+                                    <textarea
+                                        value={aiInputText}
+                                        onChange={(e) => setAiInputText(e.target.value)}
+                                        placeholder={'Pega el texto del email aquí...'}
+                                        className="w-full px-4 py-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-violet-500/50 transition-all text-xs font-mono text-slate-700 dark:text-slate-300 min-h-[120px] shadow-inner"
+                                        disabled={aiLoading}
+                                    />
+                                </div>
 
-                                                if (result.codigosCirugia && result.codigosCirugia.length > 0) {
-                                                    const codes = result.codigosCirugia.map(c => ({
-                                                        codigo: c.codigo || '',
-                                                        nombre: c.nombre || ''
-                                                    }));
-                                                    while (codes.length < 3) codes.push({ codigo: '', nombre: '' });
-                                                    merged.codigosCirugia = codes;
-                                                }
-                                                if (result.incluyeMaterial) {
-                                                    merged.incluyeMaterial = true;
-                                                    merged.descripcionMaterial = result.descripcionMaterial || '';
-                                                }
-                                                return merged;
-                                            });
-                                            setShowAIInput(false);
-                                            setAiInputText('');
-                                            alert("¡Formulario auto-completado con éxito!");
-                                        } catch (err) {
-                                            console.error('AI parse error:', err);
-                                            setAiError(err.message || 'Error al procesar con IA');
-                                        } finally {
-                                            setAiLoading(false);
-                                        }
-                                    }}
-                                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${!aiInputText.trim() || aiLoading
-                                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                        : 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300'
-                                        }`}
-                                >
-                                    {aiLoading ? (
-                                        <><Loader2 size={16} className="animate-spin" /> Procesando...</>
-                                    ) : (
-                                        <><Sparkles size={16} /> Procesar con IA</>
-                                    )}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { setShowAIInput(false); setAiInputText(''); setAiError(''); }}
-                                    className="px-4 py-2.5 text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-                                >
-                                    Cancelar
-                                </button>
+                                {aiError && (
+                                    <div className="mt-3 flex items-center gap-2 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50/50 dark:bg-red-950/20 px-4 py-3 rounded-xl border border-red-100 dark:border-red-900/30 animate-in shake duration-500">
+                                        <AlertCircle size={16} />
+                                        {aiError}
+                                    </div>
+                                )}
+
+                                <div className="flex items-center justify-end gap-3 mt-5">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowAIInput(false); setAiInputText(''); setAiError(''); }}
+                                        className="px-4 py-2 text-[10px] font-black text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-widest"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!aiInputText.trim() || aiLoading}
+                                        onClick={async () => {
+                                            setAiLoading(true);
+                                            setAiError('');
+                                            try {
+                                                const result = await parseEmailToOrder(aiInputText, profesionales);
+                                                setFormData(prev => {
+                                                    const merged = { ...prev };
+                                                    if (result.profesional) {
+                                                        const getSignature = (profName) => {
+                                                            if (!profName) return null;
+                                                            return dynamicSignatures[profName] || dynamicSignatures[profName.toUpperCase()];
+                                                        };
+                                                        const signatureUrl = getSignature(result.profesional);
+                                                        const extracted = result.profesional;
+                                                        const normalizedExtracted = extracted.toLowerCase().replace(/^(dr\.|dra\.|lic\.|dr|dra|lic)\s+/i, '').trim();
+                                                        const match = profesionales.find(p => {
+                                                            const name = p.nombre.toLowerCase();
+                                                            const nameWithoutPrefix = name.replace(/^(dr\.|dra\.|lic\.)\s+/i, '').trim();
+                                                            return name === extracted.toLowerCase() || 
+                                                                   nameWithoutPrefix === normalizedExtracted ||
+                                                                   (normalizedExtracted.length > 4 && nameWithoutPrefix.includes(normalizedExtracted)) ||
+                                                                   (normalizedExtracted.length > 4 && normalizedExtracted.includes(nameWithoutPrefix));
+                                                        });
+                                                        merged.profesional = match ? match.nombre : extracted;
+                                                    }
+                                                    if (result.afiliado) merged.afiliado = result.afiliado.toUpperCase();
+                                                    if (result.obraSocial) merged.obraSocial = result.obraSocial;
+                                                    if (result.numeroAfiliado) merged.numeroAfiliado = result.numeroAfiliado;
+                                                    if (result.dni) merged.dni = result.dni;
+                                                    if (result.edad) merged.edad = String(result.edad);
+                                                    if (result.telefono) merged.telefono = result.telefono;
+                                                    if (result.tutor) merged.tutor = result.tutor;
+                                                    if (result.diagnostico) merged.diagnostico = result.diagnostico;
+                                                    if (result.habitacion) merged.habitacion = result.habitacion;
+                                                    if (result.tipoAnestesia) merged.tipoAnestesia = result.tipoAnestesia;
+                                                    if (result.fechaCirugia) merged.fechaCirugia = result.fechaCirugia;
+                                                    if (result.horaCirugia) merged.horaCirugia = result.horaCirugia;
+                                                    if (result.salaCirugia) merged.salaCirugia = result.salaCirugia;
+                                                    if (result.anotacionCalendario) merged.anotacionCalendario = result.anotacionCalendario;
+                                                    if (result.codigosCirugia && result.codigosCirugia.length > 0) {
+                                                        const codes = result.codigosCirugia.map(c => ({
+                                                            codigo: c.codigo || '',
+                                                            nombre: c.nombre || ''
+                                                        }));
+                                                        while (codes.length < 3) codes.push({ codigo: '', nombre: '' });
+                                                        merged.codigosCirugia = codes;
+                                                    }
+                                                    if (result.incluyeMaterial) {
+                                                        merged.incluyeMaterial = true;
+                                                        merged.descripcionMaterial = result.descripcionMaterial || '';
+                                                    }
+                                                    return merged;
+                                                });
+                                                setShowAIInput(false);
+                                                setAiInputText('');
+                                                toast.success("¡Formulario auto-completado!");
+                                            } catch (err) {
+                                                console.error('AI parse error:', err);
+                                                setAiError(err.message || 'Error al procesar con IA');
+                                            } finally {
+                                                setAiLoading(false);
+                                            }
+                                        }}
+                                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!aiInputText.trim() || aiLoading
+                                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                            : 'bg-violet-600 text-white shadow-lg shadow-violet-500/20 hover:bg-violet-700 active:scale-95'
+                                            }`}
+                                    >
+                                        {aiLoading ? (
+                                            <><Loader2 size={14} className="animate-spin" /> Procesando...</>
+                                        ) : (
+                                            <><Sparkles size={14} /> Procesar con IA</>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
+
 
                     {/* Professional Selection */}
                     <div className="space-y-2">
@@ -645,12 +797,12 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     if (!linkedProfesionalName) setShowProfSuggestions(true);
                                 }}
                                 disabled={!!linkedProfesionalName}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} ${linkedProfesionalName ? 'bg-slate-50 dark:bg-slate-900/50 cursor-not-allowed font-bold text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all ${ringClass} ${linkedProfesionalName ? 'bg-slate-50 dark:bg-slate-900/50 cursor-not-allowed font-bold text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}
                                 placeholder="Escribe para buscar..."
                                 required
                             />
                             {!linkedProfesionalName && showProfSuggestions && (
-                                <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl shadow-2xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="absolute z-50 top-full mt-1 left-0 w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl shadow-2xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
                                     {profesionales
                                         .filter(p => p.nombre.toLowerCase().includes(formData.profesional.toLowerCase()))
                                         .map(p => (
@@ -679,7 +831,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                             <select
                                 value={formData.tutor}
                                 onChange={(e) => handleInputChange('tutor', e.target.value)}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                                 required={isResidente}
                             >
                                 <option value="">-- Seleccionar Tutor --</option>
@@ -700,7 +852,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 type="text"
                                 value={formData.afiliado}
                                 onChange={(e) => handleInputChange('afiliado', e.target.value.toUpperCase())}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold uppercase ${ringClass} text-slate-900 dark:text-slate-100`}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all font-bold uppercase ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="APELLIDO NOMBRE"
                                 required
                             />
@@ -713,7 +865,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 type="text"
                                 value={formData.obraSocial}
                                 onChange={(e) => handleInputChange('obraSocial', e.target.value)}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="Galeno, OSDE, etc."
                             />
                         </div>
@@ -729,7 +881,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 type="text"
                                 value={formData.numeroAfiliado}
                                 onChange={(e) => handleInputChange('numeroAfiliado', e.target.value)}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="14843"
                             />
                         </div>
@@ -744,7 +896,14 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                     const val = e.target.value.replace(/\D/g, '');
                                     handleInputChange('dni', val);
                                 }}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
+                                onBlur={() => handleDniBlur(formData.dni)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleDniBlur(formData.dni);
+                                    }
+                                }}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="45836670"
                             />
                         </div>
@@ -756,7 +915,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 type="text"
                                 value={formData.habitacion}
                                 onChange={(e) => handleInputChange('habitacion', e.target.value.toUpperCase())}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all uppercase ${ringClass} text-slate-900 dark:text-slate-100`}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all uppercase ${ringClass} text-slate-900 dark:text-slate-100`}
                                 placeholder="B, 101, etc."
                             />
                         </div>
@@ -934,7 +1093,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 <option value="sedación">Sedación</option>
                             </select>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                             <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                                 <Calendar size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Fecha Cirugía
                             </label>
@@ -942,10 +1101,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 type="date"
                                 value={formData.fechaCirugia}
                                 onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
+                                className={`w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
                             />
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                             <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                                 <Clock size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Hora
                             </label>
@@ -953,10 +1112,10 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 type="time"
                                 value={formData.horaCirugia}
                                 onChange={(e) => handleInputChange('horaCirugia', e.target.value)}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-black text-slate-700 dark:text-slate-200 ${ringClass}`}
+                                className={`w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all font-black text-slate-700 dark:text-slate-200 ${ringClass}`}
                             />
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                             <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                                 <Calendar size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Fecha Documento
                             </label>
@@ -964,16 +1123,16 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 type="date"
                                 value={formData.fechaDocumento}
                                 onChange={(e) => handleInputChange('fechaDocumento', e.target.value)}
-                                className={`w-full px-5 py-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
+                                className={`w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
                             />
                         </div>
                     </div>
 
                     {/* Material Section */}
-                    <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-200 dark:border-purple-900/50 bg-purple-50/50 dark:bg-purple-900/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30'}`}>
-                        <label className="flex items-center gap-4 cursor-pointer group">
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.incluyeMaterial ? 'bg-purple-600 text-white shadow-lg shadow-purple-200 dark:shadow-none' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600'}`}>
-                                <Package size={18} />
+                    <div className={`p-4 rounded-xl border-2 transition-all ${formData.incluyeMaterial ? 'border-purple-200 dark:border-purple-900/50 bg-purple-50/50 dark:bg-purple-900/20' : 'border-slate-100 dark:border-slate-800/50 bg-slate-50/30 dark:bg-slate-900/30'}`}>
+                        <label className="flex items-center gap-3 cursor-pointer group">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${formData.incluyeMaterial ? 'bg-purple-600 text-white shadow-lg shadow-purple-200 dark:shadow-none' : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-600'}`}>
+                                <Package size={16} />
                             </div>
                             <input
                                 type="checkbox"
@@ -981,20 +1140,20 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                 onChange={(e) => handleInputChange('incluyeMaterial', e.target.checked)}
                                 className="hidden"
                             />
-                            <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.incluyeMaterial ? 'text-purple-700 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}>
+                            <span className={`font-black text-xs uppercase tracking-tight transition-colors ${formData.incluyeMaterial ? 'text-purple-700 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}>
                                 Incluir Material
                             </span>
                         </label>
 
                         {formData.incluyeMaterial && (
-                            <div className="mt-6 animate-in slide-in-from-top-2 fade-in duration-300">
-                                <label className="block text-[10px] font-black text-purple-400 dark:text-purple-500 uppercase tracking-widest mb-2 ml-1">
+                            <div className="mt-4 animate-in slide-in-from-top-2 fade-in duration-300">
+                                <label className="block text-[10px] font-black text-purple-400 dark:text-purple-500 uppercase tracking-widest mb-1.5 ml-1">
                                     Descripción del Material
                                 </label>
                                 <textarea
                                     value={formData.descripcionMaterial}
                                     onChange={(e) => handleInputChange('descripcionMaterial', e.target.value)}
-                                    className="w-full px-5 py-4 bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-900/50 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-100 dark:focus:ring-purple-900 focus:border-purple-300 dark:focus:border-purple-600 transition-all min-h-[120px] shadow-sm text-slate-700 dark:text-slate-200 font-medium"
+                                    className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/50 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 dark:focus:ring-purple-900/10 transition-all min-h-[100px] shadow-sm text-slate-700 dark:text-slate-200 text-sm"
                                     placeholder="Especifique materiales necesarios..."
                                 />
                             </div>
@@ -1002,50 +1161,50 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     </div>
 
                     {/* Bottom Row: Diagnosis | Observations */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-50 dark:border-slate-800">
-                        <div className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-slate-50 dark:border-slate-800/50">
+                        <div className="space-y-1.5">
                             <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                                 <ClipboardList size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Diagnóstico
                             </label>
                             <textarea
                                 value={formData.diagnostico}
                                 onChange={(e) => handleInputChange('diagnostico', e.target.value)}
-                                className={`w-full px-5 py-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all min-h-[100px] ${ringClass} text-sm font-medium text-slate-700 dark:text-slate-200`}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all min-h-[80px] ${ringClass} text-xs font-medium text-slate-700 dark:text-slate-200`}
                                 placeholder="SAHOS, IVN, etc."
                             />
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                             <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                                 <StickyNote size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Anotaciones
                             </label>
                             <textarea
                                 value={formData.anotacionCalendario}
                                 onChange={(e) => handleInputChange('anotacionCalendario', e.target.value)}
-                                className={`w-full px-5 py-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none ring-offset-0 transition-all min-h-[100px] ${ringClass} text-sm font-medium text-slate-700 dark:text-slate-200`}
+                                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all min-h-[80px] ${ringClass} text-xs font-medium text-slate-700 dark:text-slate-200`}
                                 placeholder="Notas internas..."
                             />
                         </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-4 pt-4">
+                    <div className="flex items-center gap-3 pt-3">
                         <button
                             type="button"
                             onClick={resetForm}
-                            className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                            className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
                             disabled={loading}
-                            className={`flex-[2] py-4 bg-${accentColor}-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-${accentColor}-700 transition-all shadow-xl shadow-${accentColor}-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50`}
+                            className={`flex-[2] py-3 bg-${accentColor}-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-${accentColor}-700 transition-all shadow-xl shadow-${accentColor}-500/20 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50`}
                         >
                             {loading ? (
-                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    <SaveIcon size={18} />
+                                    <SaveIcon size={16} />
                                     Crear Documento
                                 </>
                             )}
@@ -1109,9 +1268,9 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
             const term = value.toLowerCase();
 
-            // IF WE ARE IN "INTERNACION" TAB: Standard behavior
-            const os = (currentOS || formData.obraSocial || '').toLowerCase();
-            const isSwissMedical = os.includes('swiss');
+            // IF WE ARE IN "INTERNACION"
+            const os = (currentOS || formData.obraSocial || '').toLowerCase().trim();
+            const isSwissMedical = os.includes('swiss') || os.includes('medical') || os.includes('sm') || os.includes('suiza');
             const isIOSFA = os.includes('iosfa');
 
             // Search in General Codes
@@ -1123,7 +1282,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 }
             }).map(surgery => {
                 // REVERSE LOOKUP: Only check for SM Modules if the patient belongs to Swiss Medical
-                if (isSwissMedical && MODULOS_SM) {
+                if ((isSwissMedical || !os) && MODULOS_SM) {
                     const parentModule = MODULOS_SM.find(m => m.incluye && m.incluye.includes(surgery.codigo));
                     if (parentModule) {
                         return { ...surgery, parentModule };
@@ -1132,24 +1291,23 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 return surgery;
             });
 
-            // Search in Swiss Medical Modules (Only if Swiss Medical)
+            // Search in Swiss Medical Modules (Always searchable, but priority if Swiss Medical)
             let smMatches = [];
-            if (isSwissMedical && MODULOS_SM) {
+            if ((isSwissMedical || !os || term.startsWith('03')) && MODULOS_SM) {
                 smMatches = MODULOS_SM.filter(c => {
                     if (field === 'codigo') {
                         return c.codigo && c.codigo.toString().startsWith(term);
                     } else {
                         return c.nombre && c.nombre.toLowerCase().includes(term);
                     }
-                }).map(m => ({ ...m, isModule: true }));
+                }).map(m => ({ ...m, isModule: true, nombre: `${m.nombre} (Swiss Medical)` }));
             }
 
-            // Search in IOSFA Codes (Only if IOSFA)
+            // 3. Search in IOSFA Codes (Only if IOSFA)
             let iosfaMatches = [];
             if (isIOSFA && Array.isArray(CODIGOS_IOSFA)) {
                 iosfaMatches = CODIGOS_IOSFA.filter(c => {
                     const codeMatch = c.codigo && c.codigo.toString().toLowerCase().startsWith(term);
-                    // Remove dots for comparison (e.g. 03.13.01 matches 031301)
                     const cleanGeneral = c.codigoGeneral ? c.codigoGeneral.replace(/\./g, '') : '';
                     const generalCodeMatch = cleanGeneral.startsWith(term);
                     const nameMatch = c.nombre && c.nombre.toLowerCase().includes(term);
@@ -1157,13 +1315,27 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 }).map(c => ({
                     ...c,
                     isIOSFA: true,
-                    // Display label helper
                     displayLabel: `${c.codigo} (${c.codigoGeneral}) - ${c.nombre}`
                 }));
             }
 
-            // Combine: IOSFA -> Modules -> General
-            const combined = [...iosfaMatches, ...smMatches, ...generalMatches].slice(0, 15);
+            // 4. Search in Dynamic Mappings (Admin created)
+            const dynamicMatches = Object.entries(dynamicConsents)
+                .filter(([code, data]) => {
+                    if (field === 'codigo') {
+                        return code.startsWith(term);
+                    } else {
+                        return data.nombre && data.nombre.toLowerCase().includes(term);
+                    }
+                })
+                .map(([code, data]) => ({
+                    codigo: code,
+                    nombre: data.nombre,
+                    isDynamic: true
+                }));
+
+            // Combine: Dynamic -> IOSFA -> Modules -> General
+            const combined = [...dynamicMatches, ...iosfaMatches, ...smMatches, ...generalMatches].slice(0, 15);
             setSuggestions(combined);
             setHighlightedIndex(0);
         } catch (error) {
@@ -1175,17 +1347,32 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const selectSuggestion = (suggestion, index) => {
         setFormData(prev => {
             const newCodigos = [...prev.codigosCirugia];
+            
+            let finalCode = suggestion.codigo;
+            let finalNombre = suggestion.nombre;
+
+            // LOGICA ESPECIAL PARA MODULOS DE SWISS MEDICAL
+            // Si la sugerencia tiene un modulo padre (detectado en handleSearch)
+            if (suggestion.parentModule) {
+                finalCode = suggestion.parentModule.codigo;
+                // Formato: MODULO X ORL - 03XXXX NOMBRE CIRUGIA
+                finalNombre = `${suggestion.parentModule.nombre} - ${suggestion.codigo} ${suggestion.nombre}`;
+            } else if (suggestion.isModule) {
+                // Si seleccionó el módulo directamente, limpiamos el "(Swiss Medical)" del label de búsqueda
+                finalNombre = suggestion.nombre.replace(' (Swiss Medical)', '');
+            }
+
             if (activeRow.field === 'codigo') {
                 newCodigos[index] = { 
                     ...newCodigos[index], 
-                    codigo: suggestion.codigo, 
-                    nombre: suggestion.nombre 
+                    codigo: finalCode, 
+                    nombre: finalNombre 
                 };
             } else {
                 newCodigos[index] = { 
                     ...newCodigos[index], 
-                    nombre: suggestion.nombre,
-                    codigo: suggestion.codigo || newCodigos[index].codigo
+                    nombre: finalNombre,
+                    codigo: finalCode || newCodigos[index].codigo
                 };
             }
             return { ...prev, codigosCirugia: newCodigos };
@@ -1284,6 +1471,32 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             } else {
                 orderData.createdAt = new Date().toISOString();
                 await apiService.addDocument(collectionName, orderData);
+            }
+
+            // --- SYNC PATIENT DATA ---
+            if (orderData.dni && orderData.afiliado) {
+                const patientData = {
+                    dni: orderData.dni,
+                    nombre: orderData.afiliado,
+                    obraSocial: orderData.obraSocial,
+                    numeroAfiliado: orderData.numeroAfiliado,
+                    telefono: orderData.telefono,
+                    email: orderData.email || '',
+                    lastUpdate: new Date().toISOString()
+                };
+                
+                // We use dni as id for patients to avoid duplicates
+                try {
+                    const existingPatient = await apiService.getDocument('pacientes', orderData.dni);
+                    if (existingPatient) {
+                        await apiService.updateDocument('pacientes', orderData.dni, patientData);
+                    } else {
+                        await apiService.addDocument('pacientes', { ...patientData, id: orderData.dni });
+                    }
+                } catch (pError) {
+                    console.error("Error syncing patient:", pError);
+                    // Non-blocking error for the main order saving
+                }
             }
 
             await fetchOrdenes();
@@ -1475,10 +1688,44 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
     const getSignatureUrl = (profesionalName) => {
         if (!profesionalName) return '';
 
-        // Try direct map match first
+        // 0. Check professional data from Firestore first
+        const profData = getProfesionalData(profesionalName);
+        if (profData.firmaUrl) return profData.firmaUrl;
+        if (profData.firma) return profData.firma;
+
+        // 1. Try dynamic signatures from Firestore state (storageFiles)
+        const sigFile = storageFiles.find(f => {
+            if (f.type !== 'signature') return false;
+            
+            const profClean = profesionalName.toLowerCase()
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9]/g, '');
+            
+            // Match by name in DB
+            if (f.name) {
+                const nameClean = f.name.toLowerCase()
+                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                    .replace(/[^a-z0-9]/g, '');
+                if (profClean.includes(nameClean) || nameClean.includes(profClean)) return true;
+            }
+
+            // Match by filename/url
+            if (f.url) {
+                const urlParts = f.url.split('/');
+                const filename = urlParts[urlParts.length - 1].toLowerCase().replace(/\.[^/.]+$/, "");
+                const fileClean = filename.replace(/_/g, '');
+                if (profClean.includes(fileClean) || fileClean.includes(profClean)) return true;
+            }
+
+            return false;
+        });
+
+        if (sigFile) return sigFile.url;
+
+        // 2. Try direct map match
         if (FIRMAS_MAP[profesionalName]) return `/firmas/${FIRMAS_MAP[profesionalName]}`;
 
-        // Handle names like "Dr Paredes Ariel" -> "dr_paredes.png"
+        // 3. Fallback logic
         const cleanName = profesionalName
             .toLowerCase()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -1491,7 +1738,6 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         const prefixes = ['dr', 'dra', 'lic'];
         if (parts.length >= 2 && prefixes.includes(parts[0])) {
             const shorthand = `${parts[0]}_${parts[1]}`;
-            // Search in filenames we know exist in public/firmas
             const knownFiles = [
                 'dr_bruera', 'dr_curet', 'dr_hernandorena', 'dr_hoyos', 'dr_jasin',
                 'dr_paredes', 'dr_romero_orellano', 'dr_zernotti',
@@ -1507,8 +1753,27 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         return `/firmas/${filename}.png`;
     };
 
+    // Returns the Firebase Storage URL for a given consent selection
+    const getConsentUrl = (type, surgeryCode = null, isMinor = false) => {
+        if (type === 'generico') {
+            // Generic: first PDF in the library that matches 'genérico' or 'generico' in name
+            const genericPdf = Object.values(consentPdfs).find(p =>
+                p.nombre.toLowerCase().includes('gen')
+            );
+            return genericPdf?.url || null;
+        }
+        if (type === 'especifico' && surgeryCode) {
+            const consent = dynamicConsents[surgeryCode];
+            if (consent) {
+                return isMinor ? (consent.menor || consent.adulto) : (consent.adulto || consent.menor);
+            }
+        }
+        return null;
+    };
+
+
     const getProfesionalData = (profesionalName) => {
-        return profesionales.find(p => p.nombre === profesionalName) || {};
+        return allProfesionales.find(p => p.nombre === profesionalName) || {};
     };
 
     // Get applicable consents based on order codes
@@ -1522,69 +1787,88 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         const resolvedCodes = orden.codigosCirugia.map(item => {
             if (!item.codigo) return null;
 
-            // 1. Direct match
-            if (CONSENTIMIENTOS_MAP[item.codigo]) return item.codigo;
+            // 1. BUSCAR CÓDIGO DE 6 DÍGITOS EN EL NOMBRE (Prioridad absoluta para Swiss Medical y otros)
+            // Cuando elegimos una cirugía de un módulo, el nombre queda como "MODULO X - 03XXXX CIRUGIA"
+            if (item.nombre) {
+                const codeMatch = item.nombre.match(/\b(03\d{4})\b/);
+                const extractedCode = codeMatch ? codeMatch[1] : null;
+                
+                if (extractedCode && (dynamicConsents[extractedCode] || CONSENTIMIENTOS_MAP[extractedCode])) {
+                    return extractedCode;
+                }
+            }
 
-            // 2. IOSFA lookup
+            // 2. Coincidencia directa (si el código ya es de 6 dígitos o si hay un mapeo específico para el módulo)
+            if (dynamicConsents[item.codigo] || CONSENTIMIENTOS_MAP[item.codigo]) return item.codigo;
+
+            // 3. Búsqueda en IOSFA (fallback)
             const iosfaMatch = CODIGOS_IOSFA.find(c => c.codigo === item.codigo);
-            if (iosfaMatch && CONSENTIMIENTOS_MAP[iosfaMatch.codigoGeneral]) {
+            if (iosfaMatch && (dynamicConsents[iosfaMatch.codigoGeneral] || CONSENTIMIENTOS_MAP[iosfaMatch.codigoGeneral])) {
                 return iosfaMatch.codigoGeneral;
             }
 
-            // 3. Name Regex Search (for Swiss Medical modules like "MODULO 1 ... 031301 ...")
-            // Search for patterns like "03XXXX" in the name
-            if (item.nombre) {
-                const codeMatch = item.nombre.match(/\b(03\d{4})\b/);
-                if (codeMatch && CONSENTIMIENTOS_MAP[codeMatch[1]]) {
-                    return codeMatch[1];
-                }
-            }
-
-            return item.codigo; // Return original if no better resolution found
+            return item.codigo;
         }).filter(Boolean);
 
         const usedCodes = new Set();
+        const normalizedResolved = resolvedCodes.map(c => String(c).trim().toLowerCase());
 
-        // First check for COMBO consents (require multiple codes together)
-        CONSENTIMIENTOS_COMBO.forEach(combo => {
-            const hasAllCodes = combo.codigos.every(code => resolvedCodes.includes(code));
-            if (hasAllCodes && !addedNames.has(combo.nombre)) {
-                addedNames.add(combo.nombre);
-                consents.push(combo);
-                // Mark these codes as used so they don't show individual consents
-                combo.codigos.forEach(code => usedCodes.add(code));
-            }
-        });
-
-        // Then check individual consents using resolved codes
-        resolvedCodes.forEach(code => {
-            if (CONSENTIMIENTOS_MAP[code] && !usedCodes.has(code)) {
-                const consent = CONSENTIMIENTOS_MAP[code];
-                // Only add if it has at least one PDF and hasn't been added
-                if ((consent.adulto || consent.menor) && !addedNames.has(consent.nombre)) {
-                    addedNames.add(consent.nombre);
-                    consents.push(consent);
+        // 1. Check for DYNAMIC COMBO consents (keys like "030202 + 030207" in Firestore)
+        Object.entries(dynamicConsents).forEach(([keyCode, data]) => {
+            if (keyCode.includes('+')) {
+                const requiredCodes = keyCode.split('+').map(c => c.trim().toLowerCase());
+                const hasAllCodes = requiredCodes.every(code => normalizedResolved.includes(code));
+                
+                if (hasAllCodes && !addedNames.has(data.nombre)) {
+                    // Check if it has at least one PDF assigned
+                    if (data.adulto || data.menor) {
+                        addedNames.add(data.nombre);
+                        consents.push({ ...data, code: keyCode });
+                        requiredCodes.forEach(code => usedCodes.add(code));
+                    }
                 }
             }
         });
-        return consents;
+
+        // 2. Check for STATIC COMBO consents
+        CONSENTIMIENTOS_COMBO.forEach(combo => {
+            const comboCodes = combo.codigos.map(c => String(c).trim().toLowerCase());
+            const hasAllCodes = comboCodes.every(code => normalizedResolved.includes(code));
+            if (hasAllCodes && !addedNames.has(combo.nombre)) {
+                addedNames.add(combo.nombre);
+                consents.push(combo);
+                comboCodes.forEach(code => usedCodes.add(code));
+            }
+        });
+
+        // Then check individual consents
+        resolvedCodes.forEach(code => {
+            const consent = dynamicConsents[code] || CONSENTIMIENTOS_MAP[code];
+            if (consent && !usedCodes.has(code)) {
+                if ((consent.adulto || consent.menor) && !addedNames.has(consent.nombre)) {
+                    addedNames.add(consent.nombre);
+                    consents.push({ ...consent, code }); // Keep the code for the UI
+                }
+            }
+        });
+        // 4. ORDEN ALFABÉTICO FINAL
+        return consents.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
     };
 
-    // Open consent PDF(s) for printing
+    // Open consent PDF(s) for printing — uses Firebase Storage URLs
     const handlePrintConsents = (orden) => {
         const consents = getApplicableConsents(orden);
         if (consents.length === 0) {
             alert("No se encontraron consentimientos específicos para estos códigos.");
             return;
         }
-        
         consents.forEach(consent => {
-            const pdfUrl = orden.edad < 18 ? (consent.menor || consent.adulto) : (consent.adulto || consent.menor);
-            if (pdfUrl) {
-                window.open(pdfUrl, '_blank');
-            }
+            const url = orden.edad < 18 ? (consent.menor || consent.adulto) : (consent.adulto || consent.menor);
+            if (url) window.open(url, '_blank');
         });
     };
+
+
     const renderPrintContent = (type) => {
         // Handle Reporte Semanal
         if (type === 'reporte_semanal') {
@@ -1701,15 +1985,23 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                         </div>
                     </div>
 
-                    {/* Footer: Signature */}
-                    <div className="absolute bottom-32 left-16 right-16">
-                        <div className="flex justify-end pr-8">
+                    {/* Footer: Signature at bottom right */}
+                    <div className="absolute bottom-24 right-16 text-center">
+                        <div className="flex flex-col items-center">
                             <img
                                 src={getSignatureUrl(previewData.profesional)}
                                 alt={`Firma`}
-                                className="h-32 object-contain"
+                                className="h-28 object-contain mb-1"
                                 onError={(e) => { e.target.style.display = 'none'; }}
                             />
+                            <div className="text-[8pt] font-black uppercase leading-tight" style={{fontFamily: '"Arial Black", Arial, sans-serif'}}>
+                                <p>{previewData.profesional}</p>
+                                <p>{getProfesionalData(previewData.profesional).especialidad || 'Médico'}</p>
+                                <p>
+                                    MP {getProfesionalData(previewData.profesional).mp || '—'}
+                                    {getProfesionalData(previewData.profesional).me && ` - ME ${getProfesionalData(previewData.profesional).me}`}
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1744,47 +2036,94 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     </p>
                 </div>
 
-                <h1 className="text-center text-[12pt] font-bold mb-10 tracking-wide" style={{ color: '#000' }}>
+                <h1 className="text-center text-[12pt] font-bold mb-10 tracking-wide uppercase" style={{ color: '#000' }}>
                     {title}
                 </h1>
 
-                <div className="space-y-2 text-[11pt] leading-relaxed" style={{ color: '#000' }}>
-                    <p><span className="font-bold">Afiliado:</span> {previewData.afiliado}</p>
-                    <p><span className="font-bold">Obra social:</span> {previewData.obraSocial}</p>
+                <div className="space-y-3 text-[11pt] leading-relaxed" style={{ color: '#000' }}>
+                    <p><span className="font-bold">Afiliado:</span> {previewData.afiliado?.toUpperCase()}</p>
+                    <p><span className="font-bold">Obra social:</span> {previewData.obraSocial?.toUpperCase()}</p>
                     <p><span className="font-bold">Número de afiliado:</span> {previewData.numeroAfiliado}</p>
                     {previewData.dni && <p><span className="font-bold">DNI:</span> {previewData.dni}</p>}
 
                     {isInternacion ? (
-                        <div className="pt-4 flex gap-2">
+                        <div className="pt-2 flex gap-2">
                             <span className="font-bold shrink-0">{isEstudio ? 'Estudio a realizar:' : 'Códigos de cirugía:'}</span>
                             {previewData.codigosCirugia && previewData.codigosCirugia.length > 0 ? (
                                 <div className="space-y-0.5">
                                     {previewData.codigosCirugia.map((cod, idx) => (
-                                        <p key={idx} className="leading-tight">{isEstudio ? '' : cod.codigo}{cod.nombre ? ` ${cod.nombre} ` : ''}</p>
+                                        <p key={idx} className="leading-tight">{isEstudio ? '' : cod.codigo}{cod.nombre ? ` ${cod.nombre.toUpperCase()} ` : ''}</p>
                                     ))}
                                 </div>
                             ) : <span className="">-</span>}
                         </div>
                     ) : (
-                        <p className="pt-4 whitespace-pre-wrap">{previewData.descripcionMaterial}</p>
+                        <p className="pt-2 whitespace-pre-wrap">{previewData.descripcionMaterial}</p>
                     )}
 
-                    <p className="pt-4"><span className="font-bold">Tipo de anestesia:</span> {previewData.tipoAnestesia}</p>
-                    <p className="pt-4"><span className="font-bold">Fecha de cirugía:</span> {formatDate(previewData.fechaCirugia)}</p>
-                    <p className="pt-4"><span className="font-bold">Material:</span> {previewData.incluyeMaterial ? 'sí' : 'no'}</p>
-                    <p className="pt-4"><span className="font-bold">Diagnóstico:</span> {previewData.diagnostico}</p>
+                    <p className="pt-2"><span className="font-bold">Tipo de anestesia:</span> {previewData.tipoAnestesia}</p>
+                    <p className="pt-2"><span className="font-bold">Fecha de cirugía:</span> {formatDate(previewData.fechaCirugia)}</p>
+                    
+                    {isInternacion && <p className="pt-2"><span className="font-bold">Material:</span> {previewData.incluyeMaterial ? 'si' : 'no'}</p>}
+                    
+                    <p className="pt-2"><span className="font-bold">Diagnóstico:</span> {previewData.diagnostico}</p>
                 </div>
 
-                <div className="absolute bottom-24 left-16 right-16 flex justify-end">
-                    <div className="text-center">
+                {/* Footer: Signature at bottom right */}
+                <div className="absolute bottom-24 right-16 text-center">
+                    <div className="flex flex-col items-center">
                         <img
                             src={getSignatureUrl(previewData.profesional)}
-                            alt={`Firma ${previewData.profesional} `}
-                            className="h-32 object-contain mx-auto"
+                            alt={`Firma`}
+                            className="h-28 object-contain mb-1"
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
+                        <div className="text-[8pt] font-black uppercase leading-tight" style={{fontFamily: '"Arial Black", Arial, sans-serif'}}>
+                            <p>{previewData.profesional}</p>
+                            <p>{getProfesionalData(previewData.profesional).especialidad || 'Médico'}</p>
+                            <p>
+                                MP {getProfesionalData(previewData.profesional).mp || '—'}
+                                {getProfesionalData(previewData.profesional).me && ` - ME ${getProfesionalData(previewData.profesional).me}`}
+                            </p>
+                        </div>
                     </div>
                 </div>
+            </div>
+        );
+    };
+
+
+
+    const renderSelectedConsent = () => {
+        if (!selectedConsent) return null;
+        
+        // Caratula is generated by code, not a PDF
+        if (selectedConsent === 'caratula') {
+            return renderPrintContent('caratula');
+        }
+
+        let url = '';
+        if (selectedConsent === 'generico') url = getConsentUrl('generico');
+        else url = getConsentUrl('especifico', selectedConsent.code, selectedConsent.isMinor);
+
+        if (!url) return (
+            <div className="w-[210mm] h-[297mm] mx-auto bg-white shadow-2xl flex items-center justify-center">
+                <div className="text-center p-10 border-2 border-dashed border-slate-200 rounded-3xl">
+                    <AlertCircle size={48} className="mx-auto text-slate-300 mb-4" />
+                    <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Documento no disponible</p>
+                    <p className="text-[10px] text-slate-400 mt-2">No se encontró el archivo PDF para este consentimiento</p>
+                </div>
+            </div>
+        );
+
+        return (
+            <div className="w-[210mm] h-[297mm] mx-auto bg-white shadow-2xl overflow-hidden">
+                <iframe 
+                    src={`${url}#toolbar=0&navpanes=0&scrollbar=0`} 
+                    className="w-full h-full border-none" 
+                    title="Consentimiento" 
+                    onError={(e) => console.error("Iframe error:", e)}
+                />
             </div>
         );
     };
@@ -1818,7 +2157,7 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             surgDate.setHours(0, 0, 0, 0);
             const diffTime = surgDate - today;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays <= 14;
+            return diffDays <= 15;
         };
 
         const filtered = listToFilter.filter(orden => {
@@ -1871,15 +2210,16 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         });
 
         return filtered.sort((a, b) => {
-            if (activeTab === 'control') {
-                return new Date(a.fechaCirugia) - new Date(b.fechaCirugia);
-            }
             const urgentA = checkUrgency(a);
             const urgentB = checkUrgency(b);
+            
+            // Prioridad 1: Urgentes primero
             if (urgentA && !urgentB) return -1;
             if (!urgentA && urgentB) return 1;
-            const dateA = a.fechaCirugia || a.createdAt;
-            const dateB = b.fechaCirugia || b.createdAt;
+
+            // Prioridad 2: Fecha (más recientes primero)
+            const dateA = a.fechaCirugia || a.createdAt || a.fechaDocumento;
+            const dateB = b.fechaCirugia || b.createdAt || b.fechaDocumento;
             return new Date(dateB) - new Date(dateA);
         });
     }, [activeTab, ordenes, filterProfesional, filterObraSocial, filterDate, filterStatus, filterAudit, searchPaciente, filterPeriodo, rangeStart, rangeEnd]);
@@ -1894,103 +2234,116 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
         surgDate.setHours(0, 0, 0, 0);
         const diffTime = surgDate - today;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays <= 14;
+        return diffDays <= 15;
     };
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="bg-gradient-to-br from-teal-600 to-teal-700 text-white p-6 rounded-2xl shadow-md">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                        <h2 className="text-2xl font-bold flex items-center gap-3">
-                            {activeTab === 'control' ? <Printer size={28} /> : <FileText size={28} />}
-                            {activeTab === 'control' ? 'Control de Cirugías' : 'Órdenes de Internación'}
-                        </h2>
-                        <p className="text-teal-100 text-sm mt-1">
-                            {activeTab === 'control' 
-                                ? 'Control de facturación e impresión por fechas.' 
-                                : canShareOrdenes 
-                                    ? 'Crea órdenes de internación y pedidos de material.' 
-                                    : 'Visualiza el historial de documentos.'}
-                        </p>
-                    </div>
-                    <div className="flex bg-teal-800/30 p-1 rounded-xl">
-                        <button
-                            onClick={() => { resetForm(); setActiveTab('internacion'); }}
-                            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'internacion' ? 'bg-white text-teal-700 shadow-md' : 'text-teal-100 hover:bg-white/10'}`}
-                        >
-                            Internación
-                        </button>
-                        <button
-                            onClick={() => { setActiveTab('control'); }}
-                            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'control' ? 'bg-white text-teal-700 shadow-md' : 'text-teal-100 hover:bg-white/10'}`}
-                        >
-                            Control
-                        </button>
-                    </div>
+        <>
+            <div className="space-y-8">
+            {/* Master Header - Rediseño Compacto */}
+            <div className="relative overflow-hidden rounded-3xl shadow-xl shadow-teal-500/5">
+                {/* Decorative gradients */}
+                <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-teal-400/10 rounded-full blur-[80px]"></div>
+                
+                <div className="relative bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-800 text-white p-5 md:p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-6">
+                        <div className="flex items-center gap-6">
+                            <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-xl border border-white/20 flex items-center justify-center shadow-inner group transition-all duration-500 hover:scale-105 hover:bg-white/20">
+                                {activeTab === 'control' ? (
+                                    <Printer size={32} className="text-white drop-shadow-md" />
+                                ) : (
+                                    <FileText size={32} className="text-white drop-shadow-md" />
+                                )}
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-black tracking-tight drop-shadow-md">
+                                    {activeTab === 'control' ? 'Control Quirúrgico' : 'Gestión de Órdenes'}
+                                </h2>
+                                <p className="text-teal-50/70 text-sm mt-1 font-medium tracking-wide">
+                                    {activeTab === 'control' 
+                                        ? 'Auditoría de facturación e impresiones semanales.' 
+                                        : 'Consola central de internaciones y materiales.'}
+                                </p>
+                            </div>
+                        </div>
 
-                    {!modalMode && canViewOrdenes && (
-                        <div className="flex items-center gap-3">
-                            {activeTab === 'control' && (
-                                <>
-                                    <div className="flex items-center gap-4 bg-teal-800/40 p-2.5 rounded-2xl border border-teal-600/30 shadow-inner">
-                                        <div className="flex items-center gap-3">
-                                            <Calendar size={18} className="text-teal-300/80" />
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-teal-300 uppercase tracking-wider">Inicio</span>
-                                                <input
-                                                    type="date"
-                                                    value={rangeStart}
-                                                    onChange={(e) => setRangeStart(e.target.value)}
-                                                    className="bg-transparent text-white text-sm border-0 focus:ring-0 p-0 w-[110px] cursor-pointer font-bold"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="w-px h-8 bg-teal-600/30"></div>
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-teal-300 uppercase tracking-wider">Fin</span>
-                                                <input
-                                                    type="date"
-                                                    value={rangeEnd}
-                                                    onChange={(e) => setRangeEnd(e.target.value)}
-                                                    className="bg-transparent text-white text-sm border-0 focus:ring-0 p-0 w-[110px] cursor-pointer font-bold"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={handleExportWeeklyExcel}
-                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-teal-800 text-teal-100 rounded-xl font-bold hover:bg-teal-900 transition-all shadow-md shadow-teal-950/10 border border-teal-600"
-                                        title="Descargar Excel con Rango"
-                                    >
-                                        <TableProperties size={20} />
-                                        <span className="hidden sm:inline">Excel</span>
-                                    </button>
-                                    <button
-                                        onClick={handlePrintWeeklyReport}
-                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all shadow-md shadow-slate-950/10 border border-slate-700"
-                                        title="Imprimir Reporte"
-                                    >
-                                        <Printer size={20} />
-                                        <span className="hidden sm:inline">Imprimir Reporte</span>
-                                    </button>
-                                </>
-                            )}
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                            <div className="flex bg-black/20 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-xl">
+                                <button
+                                    onClick={() => { resetForm(); setActiveTab('internacion'); }}
+                                    className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-500 ${activeTab === 'internacion' ? 'bg-white text-teal-800 shadow-xl scale-105' : 'text-teal-50 hover:bg-white/10'}`}
+                                >
+                                    Internación
+                                </button>
+                                <button
+                                    onClick={() => { setActiveTab('control'); }}
+                                    className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-500 ${activeTab === 'control' ? 'bg-white text-teal-800 shadow-xl scale-105' : 'text-teal-50 hover:bg-white/10'}`}
+                                >
+                                    Control
+                                </button>
+                            </div>
+
                             {activeTab === 'internacion' && canShareOrdenes && (
                                 <button
                                     onClick={() => { resetForm(); setShowForm(true); }}
-                                    className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 rounded-xl font-bold hover:bg-teal-50 transition-all shadow-md ml-2"
+                                    className="flex items-center gap-2 px-6 py-2.5 bg-white text-teal-900 rounded-xl font-black uppercase tracking-[0.15em] text-[9px] hover:shadow-lg hover:-translate-y-0.5 transition-all active:scale-95 shadow-md group"
                                 >
-                                    <Plus size={20} />
+                                    <Plus size={16} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-500" />
                                     Nueva Orden
                                 </button>
                             )}
                         </div>
+                    </div>
+
+                    {/* Quick Filters / Period in Header if Control */}
+                    {activeTab === 'control' && (
+                        <div className="mt-8 flex flex-wrap items-center gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                            <div className="flex items-center gap-6 bg-white/10 backdrop-blur-xl px-6 py-4 rounded-2xl border border-white/20 shadow-xl">
+                                <div className="flex items-center gap-4">
+                                    <Calendar size={20} className="text-teal-200" />
+                                    <div className="flex flex-col">
+                                        <span className="text-[9px] font-black text-teal-200 uppercase tracking-[0.1em]">Inicio</span>
+                                        <input
+                                            type="date"
+                                            value={rangeStart}
+                                            onChange={(e) => setRangeStart(e.target.value)}
+                                            className="bg-transparent text-white text-sm border-0 focus:ring-0 p-0 w-[120px] cursor-pointer font-bold"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="w-px h-8 bg-white/10"></div>
+                                <div className="flex flex-col">
+                                    <span className="text-[9px] font-black text-teal-200 uppercase tracking-[0.1em]">Fin</span>
+                                    <input
+                                        type="date"
+                                        value={rangeEnd}
+                                        onChange={(e) => setRangeEnd(e.target.value)}
+                                        className="bg-transparent text-white text-sm border-0 focus:ring-0 p-0 w-[120px] cursor-pointer font-bold"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={handleExportWeeklyExcel}
+                                    className="flex items-center gap-3 px-6 py-3.5 bg-emerald-500/20 backdrop-blur-xl text-emerald-50 rounded-xl font-black uppercase tracking-[0.1em] text-[10px] hover:bg-emerald-500/40 transition-all border border-emerald-400/30"
+                                >
+                                    <TableProperties size={18} />
+                                    Excel
+                                </button>
+                                <button
+                                    onClick={handlePrintWeeklyReport}
+                                    className="flex items-center gap-3 px-6 py-3.5 bg-white/10 backdrop-blur-xl text-white rounded-xl font-black uppercase tracking-[0.1em] text-[10px] hover:bg-white/20 transition-all border border-white/20"
+                                >
+                                    <Printer size={18} />
+                                    Reporte
+                                </button>
+                            </div>
+                        </div>
                     )}
                 </div>
             </div>
+
 
             {/* INLINE FORM (Opens from the top) */}
             <AnimatePresence>
@@ -2020,535 +2373,382 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
 
             {/* Main Content Area */}
             {modalMode ? (
-                <div className="p-4 h-full flex flex-col">
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl overflow-hidden border-4 border-teal-500 animate-in zoom-in-95 duration-300 flex flex-col flex-1 min-h-0">
-                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10 font-sans shrink-0">
-                            <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-                                {editingId ? <Edit3 size={28} className="text-teal-600" /> : <Plus size={28} className="text-teal-600" />}
-                                {editingId ? 'Editar Documento' : 'Nueva Orden'}
-                            </h3>
-                            <button type="button" onClick={onClose} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
-                                <X size={24} />
+                <div className="p-6 h-full flex flex-col">
+                    <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-[3.5rem] shadow-3xl overflow-hidden border border-white/20 dark:border-slate-800/50 animate-in zoom-in-95 duration-500 flex flex-col flex-1 min-h-0">
+                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10 shrink-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md">
+                            <div className="flex items-center gap-6">
+                                <div className={`w-14 h-14 rounded-[1.8rem] ${editingId ? 'bg-teal-600' : 'bg-emerald-600'} flex items-center justify-center text-white shadow-2xl shadow-teal-500/20`}>
+                                    {editingId ? <Edit3 size={32} /> : <Plus size={32} />}
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                                        {editingId ? 'Editar Documento' : 'Nueva Orden'}
+                                    </h3>
+                                    <p className="text-slate-500 dark:text-slate-400 font-medium text-lg mt-1 tracking-wide">Actualice los datos quirúrgicos con precisión.</p>
+                                </div>
+                            </div>
+                            <button type="button" onClick={onClose} className="p-5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-all active:scale-90 hover:rotate-90">
+                                <X size={32} />
                             </button>
                         </div>
-                        <div className="overflow-y-auto flex-1">
-                            <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="p-8 space-y-8">
+                        <div className="overflow-y-auto flex-1 custom-scrollbar">
+                            <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="p-8 space-y-10">
                                 {renderFormFields()}
                             </form>
                         </div>
                     </div>
                 </div>
             ) : (
-                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-slate-100 dark:border-slate-800 overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                            <div className="flex items-center gap-4">
-                                <h3 className="font-bold text-slate-700 dark:text-slate-300">Historial de Órdenes</h3>
-                                <div className="flex bg-slate-200/50 dark:bg-slate-800 p-1 rounded-lg">
-                                    <button
-                                        onClick={() => setViewMode('list')}
-                                        className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-teal-600 shadow-sm' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
-                                        title="Vista de Lista"
-                                    >
-                                        <List size={18} />
-                                    </button>
-                                    <button
-                                        onClick={() => setViewMode('grid')}
-                                        className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-teal-600 shadow-sm' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
-                                        title="Vista de Mosaico"
-                                    >
-                                        <LayoutGrid size={18} />
-                                    </button>
+                <div className="relative">
+                    {/* Filters Dashboard - Rediseño Compacto */}
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-lg overflow-hidden mb-6">
+                        <div className="p-5">
+                            <div className="flex flex-wrap items-center justify-between gap-6">
+                                <div className="flex items-center gap-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-1.5 h-6 bg-teal-500 rounded-full"></div>
+                                        <h3 className="font-black text-lg text-slate-900 dark:text-slate-100 tracking-tight">Historial</h3>
+                                    </div>
+                                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                                        <button
+                                            onClick={() => setViewMode('list')}
+                                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all font-black text-[10px] uppercase tracking-[0.1em] ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-teal-700 shadow-sm' : 'text-slate-400'}`}
+                                        >
+                                            <List size={14} /> Lista
+                                        </button>
+                                        <button
+                                            onClick={() => setViewMode('grid')}
+                                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all font-black text-[10px] uppercase tracking-[0.1em] ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-teal-700 shadow-sm' : 'text-slate-400'}`}
+                                        >
+                                            <LayoutGrid size={14} /> Grid
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-4">
+                                    {/* Advanced Search Bar */}
+                                    <div className="relative group/search">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                            <Search size={16} className="text-slate-400" />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="Paciente o DNI..."
+                                            value={searchPaciente}
+                                            onChange={(e) => setSearchPaciente(e.target.value)}
+                                            className="pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-teal-500/5 transition-all w-64 shadow-inner"
+                                        />
+                                    </div>
+
+                                    {activeTab === 'internacion' && (
+                                        <div className="flex items-center gap-3">
+                                            <select
+                                                value={filterPeriodo}
+                                                onChange={(e) => setFilterPeriodo(e.target.value)}
+                                                className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider text-teal-700 dark:text-teal-400 focus:outline-none transition-all shadow-inner"
+                                            >
+                                                <option value="proximas">Próximas</option>
+                                                <option value="realizadas">Historial</option>
+                                                <option value="suspendidas">Canceladas</option>
+                                                <option value="todas">Todas</option>
+                                            </select>
+                                            
+                                            <button 
+                                                onClick={() => { setFilterDate(''); setFilterProfesional(''); setFilterObraSocial(''); setFilterStatus(''); setFilterAudit(''); setSearchPaciente(''); }}
+                                                className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-400 rounded-xl hover:text-teal-600 border border-slate-200 dark:border-slate-700"
+                                                title="Limpiar filtros"
+                                            >
+                                                <Filter size={16} />
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            {activeTab === 'internacion' ? (
-                                <div className="flex flex-wrap items-center gap-3">
-                                    {/* Filter by Period */}
-                                    <select
-                                        value={filterPeriodo}
-                                        onChange={(e) => setFilterPeriodo(e.target.value)}
-                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-teal-700 dark:text-teal-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    >
-                                        <option value="proximas">Próximas Cirugías</option>
-                                        <option value="realizadas">Cirugías Realizadas (Historial)</option>
-                                        <option value="suspendidas">Cirugías Canceladas</option>
-                                        <option value="todas">Ver Todas</option>
-                                    </select>
 
-                                    {/* Filter by Date */}
-                                    <input
-                                        type="date"
-                                        value={filterDate}
-                                        onChange={(e) => {
-                                            const newDate = e.target.value;
-                                            setFilterDate(newDate);
-                                            if (newDate) {
-                                                const today = new Date();
-                                                today.setHours(0, 0, 0, 0);
-                                                const offset = today.getTimezoneOffset();
-                                                const todayLocal = new Date(today.getTime() - (offset * 60 * 1000));
-                                                const todayStr = todayLocal.toISOString().split('T')[0];
-                                                
-                                                if (newDate < todayStr) {
-                                                    setFilterPeriodo('todas');
-                                                }
-                                            }
-                                        }}
-                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    />
-                                    {/* Filter by Professional */}
-                                    <select
-                                        value={filterProfesional}
-                                        onChange={(e) => setFilterProfesional(e.target.value)}
-                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    >
-                                        <option value="">Todos los profesionales</option>
-                                        {profesionales.map(p => (
-                                            <option key={p.id} value={p.nombre}>{p.nombre}</option>
-                                        ))}
-                                    </select>
-                                    {/* Filter by Obra Social */}
-                                    <select
-                                        value={filterObraSocial}
-                                        onChange={(e) => setFilterObraSocial(e.target.value)}
-                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    >
-                                        <option value="">Todas las Obras Sociales</option>
-                                        {[...new Set(listToFilter.map(o => o.obraSocial?.trim().toUpperCase()).filter(Boolean))].sort().map(os => (
-                                            <option key={os} value={os}>{os}</option>
-                                        ))}
-                                    </select>
-                                    <select
-                                        value={filterStatus}
-                                        onChange={(e) => setFilterStatus(e.target.value)}
-                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    >
-                                        <option value="">Todos los estados</option>
-                                        <option value="pendientes">Pendientes</option>
-                                        <option value="enviadas">Enviadas</option>
-                                    </select>
-                                    {/* Filter by Audit Status */}
-                                    <select
-                                        value={filterAudit}
-                                        onChange={(e) => setFilterAudit(e.target.value)}
-                                        className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                    >
-                                        <option value="">Auditoría (Todas)</option>
-                                        <option value="pendientes">Pendientes</option>
-                                        <option value="auditadas">Auditadas</option>
-                                    </select>
-                                    {/* Search by Patient */}
-                                    <div className="relative">
-                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            {/* Secondary Filters Grid */}
+                            {activeTab === 'internacion' && (
+                                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Profesional</label>
+                                        <select
+                                            value={filterProfesional}
+                                            onChange={(e) => setFilterProfesional(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                                        >
+                                            <option value="">Todos</option>
+                                            {profesionales.map(p => (
+                                                <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Obra Social</label>
+                                        <select
+                                            value={filterObraSocial}
+                                            onChange={(e) => setFilterObraSocial(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                                        >
+                                            <option value="">Todas</option>
+                                            {[...new Set(listToFilter.map(o => o.obraSocial?.trim().toUpperCase()).filter(Boolean))].sort().map(os => (
+                                                <option key={os} value={os}>{os}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Envío</label>
+                                        <select
+                                            value={filterStatus}
+                                            onChange={(e) => setFilterStatus(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                                        >
+                                            <option value="">Todos</option>
+                                            <option value="pendientes">Pendientes</option>
+                                            <option value="enviadas">Enviadas</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Auditoría</label>
+                                        <select
+                                            value={filterAudit}
+                                            onChange={(e) => setFilterAudit(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                                        >
+                                            <option value="">Todas</option>
+                                            <option value="pendientes">Pendientes</option>
+                                            <option value="auditadas">Auditadas</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Fecha</label>
                                         <input
-                                            type="text"
-                                            placeholder="Buscar paciente..."
-                                            value={searchPaciente}
-                                            onChange={(e) => setSearchPaciente(e.target.value)}
-                                            className="pl-9 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500 w-48"
+                                            type="date"
+                                            value={filterDate}
+                                            onChange={(e) => setFilterDate(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none cursor-pointer"
                                         />
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-3">
-                                    <div className="relative">
-                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Buscar paciente..."
-                                            value={searchPaciente}
-                                            onChange={(e) => setSearchPaciente(e.target.value)}
-                                            className="pl-9 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500 w-64"
-                                        />
-                                    </div>
-                                    <button 
-                                        onClick={() => { setRangeStart(''); setRangeEnd(''); setSearchPaciente(''); }}
-                                        className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-teal-600 transition-colors"
-                                    >
-                                        Limpiar filtros
-                                    </button>
                                 </div>
                             )}
                         </div>
                     </div>
                     {sortedOrdenes.length === 0 ? (
-                        <div className="p-12 text-center text-slate-400">
-                            <ClipboardList size={48} className="mx-auto mb-4 opacity-50" />
-                            <p>{listToFilter.length === 0 ? 'No hay documentos creados aún.' : 'No se encontraron documentos con los filtros aplicados.'}</p>
+                        <div className="p-20 text-center bg-white dark:bg-slate-900/40 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-500">
+                            <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <ClipboardList size={40} className="text-slate-300 dark:text-slate-600" />
+                            </div>
+                            <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2">Sin registros</h3>
+                            <p className="text-sm text-slate-400 font-medium max-w-xs mx-auto">
+                                {listToFilter.length === 0 ? 'No hay documentos creados aún en esta sección.' : 'No se encontraron documentos que coincidan con los filtros aplicados.'}
+                            </p>
                         </div>
                     ) : (
                         <>
-                            <div className={viewMode === 'list' ? "divide-y divide-slate-100 dark:divide-slate-800" : "grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-100/30 dark:bg-slate-950"}>
-                                {sortedOrdenes.slice(0, visibleCount).map(orden => {
+                            <div className={viewMode === 'list' ? "space-y-3 px-2 pb-6" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4"}>
+                            {sortedOrdenes.slice(0, visibleCount).map(orden => {
                                     const isUrgent = checkUrgency(orden);
                                     if (viewMode === 'list') {
                                         return (
                                             <div
                                                 key={orden.id}
-                                                className={`p-4 flex items-center justify-between transition-colors ${orden.suspendida ? 'bg-slate-100 dark:bg-slate-800/50 opacity-60 grayscale-[0.8]' :
-                                                    orden.enviada ? 'bg-slate-50 dark:bg-slate-900/50 opacity-75 grayscale-[0.5]' :
-                                                        isUrgent ? 'bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 border-l-4 border-red-500' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                                                className={`group relative flex items-center justify-between p-2.5 rounded-xl transition-all duration-300 border ${orden.suspendida ? 'bg-slate-100/50 dark:bg-slate-800/30 opacity-60 grayscale border-slate-200 dark:border-slate-700' :
+                                                    orden.enviada ? 'bg-slate-50/80 dark:bg-slate-900/40 opacity-80 border-slate-100 dark:border-slate-800' :
+                                                        isUrgent ? 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-900 shadow-sm shadow-red-500/5' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-teal-200 dark:hover:border-teal-500/50 hover:shadow-lg'
                                                     } `}
                                             >
-                                                <div className="flex items-center gap-4">
-                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isUrgent ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 animate-pulse' :
-                                                        activeTab === 'pedidos' ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : (orden.incluyeMaterial ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' : 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400')
-                                                        } `}>
-                                                        {isUrgent ? <AlertCircle size={20} /> : (orden.enviada ? <CheckCircle2 size={20} /> : (orden.incluyeMaterial ? <FileStack size={20} /> : <FileText size={20} />))}
+                                                {isUrgent && !orden.suspendida && (
+                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-red-500 rounded-r-full"></div>
+                                                )}
+                                                
+                                                <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${orden.suspendida ? 'bg-slate-200 text-slate-500' : (isUrgent ? 'bg-red-100 dark:bg-red-900/30 text-red-600' : (orden.enviada ? 'bg-emerald-100 text-emerald-600' : 'bg-teal-100 text-teal-600'))}`}>
+                                                        {orden.suspendida ? <Ban size={20} /> : (isUrgent ? <AlertCircle size={20} className="animate-pulse" /> : (orden.enviada ? <CheckCircle2 size={20} /> : <FileText size={20} />))}
                                                     </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <p className={`font-bold ${orden.enviada ? 'text-slate-500 dark:text-slate-400' : isUrgent ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'}`}>
-                                                                {orden.afiliado}
-                                                            </p>
-                                                            {isUrgent && orden.status !== 'aprobada' && !orden.autorizada ? (
-                                                                <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold uppercase tracking-wide rounded-full flex items-center gap-1 animate-pulse">
-                                                                    <AlertCircle size={10} /> Urgente
-                                                                </span>
-                                                            ) : orden.status === 'aprobada' ? (
-                                                                <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wide rounded-full">
-                                                                    Aprobada
-                                                                </span>
-                                                            ) : orden.status === 'rechazada' ? (
-                                                                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-bold uppercase tracking-wide rounded-full">
-                                                                    Rechazada
-                                                                </span>
-                                                            ) : orden.enviada ? (
-                                                                <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wide rounded-full">
-                                                                    Enviada
-                                                                </span>
-                                                            ) : (
-                                                                <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-[10px] font-bold uppercase tracking-wide rounded-full">
-                                                                    Pendiente
-                                                                </span>
-                                                            )}
-                                                            {isTestEnv && !orden.isTest && (
-                                                                <span className="px-2 py-0.5 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wide rounded-full flex items-center gap-1">
-                                                                    <LockIcon size={10} /> Producción (L)
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-sm text-slate-500 dark:text-slate-400">
-                                                            {orden.profesional} • {orden.obraSocial} • {orden.dni && <span className="font-bold text-slate-700 dark:text-slate-300">DNI: {orden.dni} • </span>}Fecha: {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
-                                                            {orden.habitacion && <span className="ml-2 font-medium text-amber-600 dark:text-amber-400">• Hab: {orden.habitacion}</span>}
-                                                            {orden.incluyeMaterial && <span className="ml-2 text-purple-600 dark:text-purple-400 font-medium">+ Material</span>}
-                                                            {orden.status === 'auditada' && <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-black rounded uppercase tracking-tighter shadow-sm border border-emerald-200 dark:border-emerald-800">Auditada</span>}
-                                                        </p>
-                                                        {orden.observaciones && (
-                                                            <div className="mt-1 p-2 bg-teal-50 dark:bg-teal-900/20 border-l-2 border-teal-400 dark:border-teal-600 text-xs text-teal-700 dark:text-teal-300 italic rounded">
-                                                                <strong>Nota:</strong> {orden.observaciones}
+                                                    
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-0.5">
+                                                            <h4 className={`text-sm font-black truncate tracking-tight ${orden.suspendida ? 'text-slate-400 line-through' : (orden.enviada ? 'text-slate-500' : 'text-slate-900 dark:text-white')}`}>
+                                                                {orden.afiliado?.toUpperCase()} 
+                                                                <span className="ml-3 text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-normal">DNI: {orden.dni || 'S/D'}</span>
+                                                            </h4>
+                                                            <div className="flex gap-1.5">
+                                                                {isUrgent && !orden.suspendida && (
+                                                                    <span className="px-2 py-0.5 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Urgente</span>
+                                                                )}
+                                                                {orden.autorizada ? (
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); handleToggleField(orden, 'autorizada'); }}
+                                                                        className="px-2 py-0.5 bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full flex items-center gap-1 hover:bg-emerald-600 transition-all shadow-sm"
+                                                                        title="Hacer click para desmarcar como autorizada"
+                                                                    >
+                                                                        <ShieldCheck size={10} /> Autorizada
+                                                                    </button>
+                                                                ) : (
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); handleToggleField(orden, 'autorizada'); }}
+                                                                        className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-400 text-[8px] font-black uppercase tracking-widest rounded-full hover:bg-teal-500 hover:text-white transition-all border border-slate-200 dark:border-slate-700"
+                                                                    >
+                                                                        Autorizar
+                                                                    </button>
+                                                                )}
                                                             </div>
-                                                        )}
-
-                                                        {/* Status Toggles */}
-                                                        <div className="flex flex-wrap items-center gap-2 mt-2">
-
-                                                            {canEditOrdenes && (
-                                                                <button
-                                                                    onClick={() => handleToggleField(orden, 'autorizada')}
-                                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
-                                                                        ? 'bg-teal-600 text-white border-teal-700 shadow-sm hover:bg-teal-700'
-                                                                        : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
-                                                                        } `}
-                                                                >
-                                                                    <ShieldCheck size={12} strokeWidth={2.5} />
-                                                                    {orden.autorizada ? 'Autorizada' : 'Autorizar'}
-                                                                </button>
-                                                            )}
-
-                                                            {orden.incluyeMaterial && canEditOrdenes && (
-                                                                <button
-                                                                    onClick={() => handleToggleField(orden, 'materialSolicitado')}
-                                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
-                                                                        ? 'bg-purple-600 text-white border-purple-700 shadow-sm hover:bg-purple-700'
-                                                                        : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
-                                                                        } `}
-                                                                >
-                                                                    <Truck size={12} strokeWidth={2.5} />
-                                                                    {orden.materialSolicitado ? 'Mat. Solicitado' : 'Solicitar Material'}
-                                                                </button>
-                                                            )}
+                                                        </div>
+                                                        
+                                                        <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                            <span className="flex items-center gap-1.5">
+                                                                <User size={12} className="text-slate-300" />
+                                                                {orden.profesional}
+                                                            </span>
+                                                            <span className="flex items-center gap-1.5 font-bold text-teal-600 dark:text-teal-400 uppercase">
+                                                                <Building2 size={12} className="opacity-50" />
+                                                                {orden.obraSocial?.toUpperCase()}
+                                                            </span>
+                                                            <span className="flex items-center gap-1.5">
+                                                                <Calendar size={12} className="text-slate-300" />
+                                                                {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
+                                                            </span>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-1">
-                                                        {canEditOrdenes && (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => handleToggleStatus(orden)}
-                                                                    className={`p-2 rounded-lg transition-colors ${orden.enviada
-                                                                        ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300'
-                                                                        : 'text-slate-400 dark:text-slate-500 hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-600 dark:hover:text-green-400'
-                                                                        } `}
-                                                                    title={orden.enviada ? "Marcar como pendiente" : "Marcar como enviada"}
-                                                                >
-                                                                    {orden.enviada ? <ArchiveRestore size={18} /> : <CheckCircle2 size={18} />}
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleToggleField(orden, 'suspendida')}
-                                                                    className={`p-2 rounded-lg transition-colors ${orden.suspendida
-                                                                        ? 'text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700'
-                                                                        : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300'
-                                                                        } `}
-                                                                    title={orden.suspendida ? "Re-activar cirugía" : "Suspender cirugía"}
-                                                                >
-                                                                    <Ban size={18} />
-                                                                </button>
-                                                            </>
-                                                        )}
-                                                        {(canEditOrdenes || (permissions?.can_edit_own && orden.createdBy === currentUser?.email)) && (
-                                                            <button
-                                                                onClick={() => handleEdit(orden)}
-                                                                className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors"
-                                                                title="Editar"
-                                                            >
-                                                                <Edit3 size={18} />
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            onClick={() => handlePreview(orden, 'internacion')}
-                                                            className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors"
-                                                            title="Ver Documento"
+                                                </div>
+
+                                                <div className="flex items-center gap-2 ml-4">
+                                                    <div className="flex items-center bg-slate-50 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                                        {/* Acción: Marcar como Enviada */}
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleToggleField(orden, 'enviada'); }} 
+                                                            className={`p-2 rounded-lg transition-all ${orden.enviada ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30' : 'text-slate-400 hover:text-emerald-500'}`}
+                                                            title={orden.enviada ? 'Marcada como enviada' : 'Marcar como enviada'}
                                                         >
-                                                            <Printer size={18} />
+                                                            <CheckCircle2 size={16} />
                                                         </button>
-                                                        {orden.incluyeMaterial &&
-                                                            orden.descripcionMaterial && (
-                                                                <button
-                                                                    onClick={() => handlePreview(orden, 'material')}
-                                                                    className="p-2 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
-                                                                    title="Ver Material"
-                                                                >
-                                                                    <Package size={18} />
-                                                                </button>
-                                                            )}
-                                                        <button
-                                                            onClick={() => handlePreview(orden, 'caratula')}
-                                                            className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors"
-                                                            title="Ver Carátula"
+
+                                                        {/* Acción: Suspender */}
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleToggleField(orden, 'suspendida'); }} 
+                                                            className={`p-2 rounded-lg transition-all ${orden.suspendida ? 'text-rose-500 bg-rose-50 dark:bg-rose-950/30' : 'text-slate-400 hover:text-rose-500'}`}
+                                                            title={orden.suspendida ? 'Cirugía suspendida' : 'Suspender cirugía'}
                                                         >
-                                                            <Folder size={18} />
+                                                            <Ban size={16} />
                                                         </button>
+
+                                                        <div className="w-px h-4 bg-slate-200 dark:border-slate-700 mx-1"></div>
+
+                                                        <button onClick={() => handlePreview(orden, 'internacion')} className="p-2 text-slate-400 hover:text-teal-600 rounded-lg transition-all" title="Imprimir"><Printer size={16} /></button>
+                                                        <button onClick={() => handleEdit(orden)} className="p-2 text-slate-400 hover:text-amber-600 rounded-lg transition-all" title="Editar"><Edit3 size={16} /></button>
                                                         {orden.telefono && (
-                                                            <button
-                                                                onClick={() => setWhatsappModal(orden)}
-                                                                className="p-2 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
-                                                                title="Enviar WhatsApp"
-                                                            >
-                                                                <MessageCircle size={18} />
-                                                            </button>
+                                                            <button onClick={() => setWhatsappModal(orden)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-lg transition-all" title="WhatsApp"><MessageCircle size={16} /></button>
                                                         )}
-                                                        {(isSuperAdmin || permissions?.can_delete_data || (permissions?.can_delete_own && orden.createdBy === currentUser?.email)) && (
-                                                            <button
-                                                                onClick={() => handleDelete(orden.id)}
-                                                                className="p-2 text-red-400 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                                                                title="Eliminar"
-                                                            >
-                                                                <Trash2 size={18} />
-                                                            </button>
-                                                        )}
+                                                        <div className="w-px h-4 bg-slate-200 dark:border-slate-700 mx-1"></div>
+                                                        <button onClick={() => handleDelete(orden.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-lg transition-all" title="Eliminar"><Trash2 size={16} /></button>
                                                     </div>
                                                 </div>
                                             </div>
                                         );
-                                    }
-
-                                    // GRID VIEW (Mosaic)
+                                    }                                        // GRID VIEW - Rediseño Compacto
                                     return (
                                         <div
                                             key={orden.id}
-                                            className={`bg-white dark:bg-slate-800 rounded-2xl border p-5 flex flex-col justify-between transition-all hover:shadow-md ${orden.suspendida ? 'opacity-60 grayscale-[0.6] bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-inner' :
-                                                orden.enviada ? 'opacity-75 grayscale-[0.3] border-slate-200 dark:border-slate-700' :
-                                                    isUrgent ? 'border-red-200 dark:border-red-900/50 shadow-sm shadow-red-50 dark:shadow-red-900/20 ring-1 ring-red-100 dark:ring-red-900/30' : 'border-slate-100 dark:border-slate-700'
+                                            className={`group relative bg-white dark:bg-slate-900 rounded-2xl border p-5 flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${orden.suspendida ? 'opacity-60 grayscale border-slate-200 dark:border-slate-800' :
+                                                orden.enviada ? 'opacity-80 border-slate-100 dark:border-slate-800' :
+                                                    isUrgent ? 'border-red-100 dark:border-red-900 shadow-md shadow-red-500/5' : 'border-slate-100 dark:border-slate-800'
                                                 } `}
                                         >
+                                            {isUrgent && !orden.suspendida && (
+                                                <div className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-xl flex items-center justify-center shadow-lg animate-bounce z-10">
+                                                    <AlertCircle size={16} />
+                                                </div>
+                                            )}
+
                                             <div>
                                                 <div className="flex justify-between items-start mb-4">
-                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isUrgent ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' :
-                                                        activeTab === 'pedidos' ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : (orden.incluyeMaterial ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' : 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400')
+                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-md transition-transform duration-300 group-hover:rotate-3 ${isUrgent ? 'bg-red-100 text-red-600' :
+                                                        activeTab === 'pedidos' ? 'bg-pink-100 text-pink-600' : (orden.incluyeMaterial ? 'bg-violet-100 text-violet-600' : 'bg-teal-100 text-teal-600')
                                                         } `}>
                                                         {isUrgent ? <AlertCircle size={24} /> : (orden.enviada ? <CheckCircle2 size={24} /> : (orden.incluyeMaterial ? <FileStack size={24} /> : <FileText size={24} />))}
                                                     </div>
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        {isUrgent && orden.status !== 'aprobada' && !orden.autorizada ? (
-                                                            <span className="px-2 py-1 bg-red-600 text-white text-[10px] font-bold uppercase rounded-lg animate-pulse">
-                                                                Urgente
-                                                            </span>
-                                                        ) : orden.status === 'aprobada' ? (
-                                                            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase rounded-lg">
-                                                                Aprobada
-                                                            </span>
-                                                        ) : orden.status === 'rechazada' ? (
-                                                            <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-lg">
-                                                                Rechazada
-                                                            </span>
-                                                        ) : orden.enviada ? (
-                                                            <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[10px] font-bold uppercase rounded-lg">
-                                                                Enviada
-                                                            </span>
-                                                        ) : orden.suspendida ? (
-                                                            <span className="px-2 py-1 bg-slate-600 text-white text-[10px] font-bold uppercase rounded-lg">
-                                                                Suspendida
-                                                            </span>
+                                                    <div className="flex flex-col items-end gap-1.5">
+                                                        {orden.status === 'aprobada' ? (
+                                                            <span className="px-2 py-1 bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest rounded-lg">Aprobada</span>
                                                         ) : (
-                                                            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase rounded-lg">
-                                                                Pendiente
-                                                            </span>
-                                                        )}
-                                                        {orden.status === 'auditada' && <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-black rounded uppercase shadow-sm border border-emerald-200 dark:border-emerald-800">Auditada</span>}
-                                                        {isTestEnv && !orden.isTest && (
-                                                            <span className="px-2 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-lg flex items-center gap-1 mt-1 justify-center">
-                                                                <LockIcon size={10} /> Producción (Solo Lectura)
+                                                            <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border ${orden.enviada ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-amber-500 text-white border-amber-600'}`}>
+                                                                {orden.enviada ? 'Enviada' : 'Pendiente'}
                                                             </span>
                                                         )}
                                                     </div>
                                                 </div>
 
-                                                <h4 className={`text-lg font-bold truncate ${orden.enviada ? 'text-slate-500 dark:text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-                                                    {orden.afiliado}
+                                                <h4 className={`text-base font-black mb-4 tracking-tight line-clamp-2 uppercase ${orden.enviada ? 'text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                                                    {orden.afiliado?.toUpperCase()}
                                                 </h4>
 
-                                                <div className="mt-3 space-y-2">
-                                                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
-                                                        <User size={14} className="text-slate-400 dark:text-slate-500 shrink-0" />
-                                                        <span className="truncate">{orden.profesional}</span>
+                                                <div className="grid grid-cols-2 gap-2 mt-4">
+                                                    <div className="flex items-center gap-3 text-[10px] font-medium text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                                                        <User size={12} className="text-slate-300" />
+                                                        <span className="truncate">{shortProfName(orden.profesional)}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
-                                                        <Building2 size={14} className="text-slate-400 dark:text-slate-500 shrink-0" />
-                                                        <span className="truncate">{orden.obraSocial}</span>
+                                                    <div className="flex items-center gap-3 text-[10px] font-medium text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                                                        <Calendar size={12} className="text-slate-300" />
+                                                        <span>{formatDate(orden.fechaCirugia || orden.fechaDocumento)}</span>
                                                     </div>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
-                                                            <Hash size={14} className="text-slate-400 dark:text-slate-500 shrink-0" />
-                                                            <span className="font-bold">{orden.dni || '-'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
-                                                            <Calendar size={14} className="text-slate-400 dark:text-slate-500 shrink-0" />
-                                                            <span>{formatDate(orden.fechaCirugia || orden.fechaDocumento)}</span>
-                                                        </div>
+                                                    <div className="flex items-center gap-3 text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                                                        <Hash size={12} className="text-slate-300" />
+                                                        <span>{orden.dni || 'S/D'}</span>
                                                     </div>
-                                                    {orden.habitacion && (
-                                                        <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg font-medium">
-                                                            <Home size={14} className="shrink-0" />
-                                                            <span>Habitación: {orden.habitacion}</span>
+                                                    <div className="flex items-center gap-3 text-[10px] font-bold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 p-2 rounded-xl border border-teal-100 dark:border-teal-900/30">
+                                                        <Building2 size={12} className="opacity-50" />
+                                                        <span className="truncate uppercase">{orden.obraSocial?.toUpperCase()}</span>
+                                                    </div>
+                                                    {orden.telefono && (
+                                                        <div className="col-span-2 flex items-center gap-3 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                                                            <MessageCircle size={12} className="opacity-50" />
+                                                            <span>WhatsApp: {orden.telefono}</span>
                                                         </div>
                                                     )}
                                                 </div>
 
                                                 {orden.observaciones && (
-                                                    <div className="mt-3 p-3 bg-teal-50 dark:bg-teal-900/20 border-l-2 border-teal-400 dark:border-teal-600 text-xs text-teal-700 dark:text-teal-300 italic rounded">
-                                                        <strong>Nota:</strong> {orden.observaciones}
+                                                    <div className="mt-4 p-3 bg-amber-50/50 dark:bg-amber-950/20 border-l-4 border-amber-400 text-[10px] text-amber-800 dark:text-amber-300 font-medium rounded-lg italic">
+                                                        {orden.observaciones}
                                                     </div>
                                                 )}
-
-                                                <div className="flex flex-wrap gap-2 mt-4">
-
-                                                    <button
-                                                        onClick={() => handleToggleField(orden, 'autorizada')}
-                                                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.autorizada
-                                                            ? 'bg-teal-600 text-white border-teal-700 shadow-sm'
-                                                            : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                                                            } `}
-                                                    >
-                                                        <ShieldCheck size={14} />
-                                                        {orden.autorizada ? 'Autoriz.' : 'Autoriz.'}
-                                                    </button>
-
-                                                    {orden.incluyeMaterial && activeTab !== 'pedidos' && (
-                                                        <button
-                                                            onClick={() => handleToggleField(orden, 'materialSolicitado')}
-                                                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wide border transition-all ${orden.materialSolicitado
-                                                                ? 'bg-purple-600 text-white border-purple-700 shadow-sm'
-                                                                : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                                                                } `}
-                                                        >
-                                                            <Truck size={14} />
-                                                            {orden.materialSolicitado ? 'Ped.' : 'Ped.'}
-                                                        </button>
-                                                    )}
-                                                </div>
                                             </div>
 
-                                            <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
-                                                <div className="flex gap-1">
-                                                    {canEditOrdenes && (
-                                                        <>
-                                                            <button
-                                                                onClick={() => handleToggleStatus(orden)}
-                                                                className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"
-                                                                title="Estado"
-                                                            >
-                                                                {orden.enviada ? <ArchiveRestore size={20} /> : <CheckCircle2 size={20} />}
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleToggleField(orden, 'suspendida')}
-                                                                className={`p-2.5 rounded-xl transition-colors ${orden.suspendida
-                                                                    ? 'text-slate-600 bg-slate-200'
-                                                                    : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
-                                                                    } `}
-                                                                title={orden.suspendida ? "Re-activar" : "Suspender"}
-                                                            >
-                                                                <Ban size={20} />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    {(canEditOrdenes || (permissions?.can_edit_own && orden.createdBy === currentUser?.email)) && (
-                                                        <button
-                                                            onClick={() => handleEdit(orden)}
-                                                            className="p-2.5 text-teal-600 hover:bg-teal-50 rounded-xl transition-colors"
-                                                            title="Editar"
-                                                        >
-                                                            <Edit3 size={20} />
-                                                        </button>
-                                                    )}
+                                            <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+                                                <div className="flex gap-1.5">
+                                                    <button onClick={() => handlePreview(orden, 'internacion')} className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-teal-600 rounded-xl transition-all border border-transparent"><Printer size={18} /></button>
+                                                    <button onClick={() => handleEdit(orden)} className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-amber-600 rounded-xl transition-all border border-transparent"><Edit3 size={18} /></button>
                                                 </div>
-                                                <div className="flex gap-1">
-                                                    <button
-                                                        onClick={() => handlePreview(orden, activeTab === 'pedidos' ? 'pedido' : 'internacion')}
-                                                        className="p-2.5 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/50 rounded-xl transition-colors"
-                                                        title="Imprimir"
-                                                    >
-                                                        <Printer size={20} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handlePreview(orden, 'caratula')}
-                                                        className="p-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 rounded-xl transition-colors"
-                                                        title="Carátula"
-                                                    >
-                                                        <Folder size={20} />
-                                                    </button>
-                                                    {orden.telefono && (
-                                                        <button
-                                                            onClick={() => setWhatsappModal(orden)}
-                                                            className="p-2.5 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-xl transition-colors"
-                                                            title="WhatsApp"
-                                                        >
-                                                            <MessageCircle size={20} />
-                                                        </button>
-                                                    )}
-                                                    {(isSuperAdmin || permissions?.can_delete_data || (permissions?.can_delete_own && orden.createdBy === currentUser?.email)) && (
-                                                        <button
-                                                            onClick={() => handleDelete(orden.id)}
-                                                            className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
-                                                            title="Eliminar"
-                                                        >
-                                                            <Trash2 size={20} />
-                                                        </button>
-                                                    )}
-                                                </div>
+                                                <button
+                                                    onClick={() => handleToggleField(orden, 'autorizada')}
+                                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${orden.autorizada ? 'bg-teal-600 text-white border-teal-700 shadow-md' : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'}`}
+                                                >
+                                                    <ShieldCheck size={16} />
+                                                    {orden.autorizada ? 'Aprobado' : 'Aprobar'}
+                                                </button>
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
+                            
                             {sortedOrdenes.length > visibleCount && (
-                                <div className="p-6 text-center border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                                <div className="p-14 text-center">
                                     <button
-                                        onClick={() => setVisibleCount(prev => prev + 50)}
-                                        className="px-8 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-teal-600 dark:text-teal-400 rounded-xl font-bold hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:border-teal-300 dark:hover:border-teal-700 transition-all shadow-sm flex items-center gap-2 mx-auto"
+                                        onClick={() => setVisibleCount(prev => prev + 15)}
+                                        className="relative group px-14 py-6 bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-400 rounded-[2.5rem] font-black uppercase tracking-[0.2em] text-xs hover:shadow-3xl hover:shadow-teal-500/10 transition-all border-2 border-teal-500/10 hover:border-teal-500/30 active:scale-95 overflow-hidden"
                                     >
-                                        <Plus size={20} /> Ver más cirugías
+                                        <div className="absolute inset-0 bg-gradient-to-r from-teal-500/0 via-teal-500/5 to-teal-500/0 -translate-x-full group-hover:animate-shimmer"></div>
+                                        <span className="flex items-center gap-4">
+                                            <Plus size={24} strokeWidth={3} />
+                                            Explorar más ({sortedOrdenes.length - visibleCount} restantes)
+                                        </span>
                                     </button>
-                                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">Mostrando {visibleCount} de {sortedOrdenes.length} órdenes</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-6">
+                                        Mostrando {visibleCount} de {sortedOrdenes.length} registros
+                                    </p>
                                 </div>
                             )}
                         </>
@@ -2557,172 +2757,126 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
             )}
             {/* PRINT PREVIEW MODAL */}
             {showPreview && previewData && createPortal(
-                <div className="fixed inset-0 bg-slate-900 z-[100] overflow-auto print-orden">
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-2xl z-[100] flex flex-col animate-in fade-in duration-500 overflow-hidden print-orden">
                     <style>{`
                         @media print {
-                            @page {
-                                size: A4;
-                                margin: 0;
-                            }
-                            body {
-                                margin: 0 !important;
-                                padding: 0 !important;
-                                overflow: hidden !important;
-                                -webkit-print-color-adjust: exact;
-                            }
-                            #root, header, .sidebar, .no-print {
-                                display: none !important;
-                            }
-                            .print-orden {
-                                position: absolute !important;
-                                top: 0 !important;
-                                left: 0 !important;
-                                width: 210mm !important;
-                                height: 297mm !important;
-                                margin: 0 !important;
-                                padding: 0 !important;
-                                background: white !important;
-                                overflow: hidden !important;
-                                display: block !important;
-                                visibility: visible !important;
-                                z-index: 9999 !important;
-                            }
-                            * {
-                                -webkit-print-color-adjust: exact;
-                                print-color-adjust: exact;
-                            }
+                            @page { size: A4; margin: 0; }
+                            body { margin: 0 !important; padding: 0 !important; overflow: hidden !important; -webkit-print-color-adjust: exact; background: white !important; }
+                            #root, header, .sidebar, .no-print, [class*="no-print"] { display: none !important; opacity: 0 !important; visibility: hidden !important; height: 0 !important; width: 0 !important; }
+                            .print-orden { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; margin: 0 !important; padding: 0 !important; background: white !important; overflow: hidden !important; display: block !important; visibility: visible !important; z-index: 99999 !important; }
+                            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-shadow: none !important; text-shadow: none !important; }
                         }
-                        /* Force light mode for preview on screen and for html2canvas/PDF */
-                        .print-orden #preview-content, 
-                        .print-orden #preview-content * {
+                        /* FORCE WHITE BACKGROUNDS - NO GREY BLOCKS */
+                        .print-orden, .print-preview-container, #preview-content {
+                            background-color: white !important;
+                            background: white !important;
+                        }
+                        .print-orden #preview-content, .print-orden #preview-content * {
                             background-color: white !important;
                             color: black !important;
                             border-color: #cbd5e1 !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        }
-                        .print-orden #preview-content img {
-                            background-color: transparent !important;
                         }
                     `}</style>
-                    <div className="p-8 print:p-0">
-                        {/* Header Controls */}
-                        <div className="flex justify-between items-center mb-8 no-print border-b border-slate-800 pb-4">
-                            <div>
-                                <h2 className="text-2xl font-bold text-slate-100">Vista Previa</h2>
-                                {previewType !== 'reporte_semanal' && (() => {
-                                    const hasSurgeryCodes = previewData.codigosCirugia?.some(c => (c.codigo && String(c.codigo).trim() !== '') || (c.nombre && String(c.nombre).trim() !== ''));
-                                    const hasPractices = previewData.practicas?.some(p => p && String(p).trim() !== '');
-
-                                    // A doc is a Pedido if it has practices AND NO surgery codes.
-                                    // Otherwise it defaults to Internacion.
-                                    const isPedidoDoc = hasPractices && !hasSurgeryCodes;
-                                    const isInternacionDoc = !isPedidoDoc;
-                                    const isMaterialDoc = previewData.incluyeMaterial && previewData.descripcionMaterial;
-
-                                    return (
-                                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                                            {/* Primary Doc View (Internacion vs Pedido) */}
-                                            <button
-                                                onClick={() => setPreviewType(isPedidoDoc ? 'pedido' : 'internacion')}
-                                                className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${(previewType === 'internacion' || previewType === 'pedido') ? 'bg-teal-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                            >
-                                                {isInternacionDoc ? 'Internación' : 'Pedido Médico'}
-                                            </button>
-
-                                            {/* Material views - Only for Internacion */}
-                                            {isInternacionDoc && isMaterialDoc && (
-                                                <>
-                                                    <button
-                                                        onClick={() => setPreviewType('material')}
-                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'material' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                                    >
-                                                        Material
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setPreviewType('ambas')}
-                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                                    >
-                                                        📄 Ambas (2 pág.)
-                                                    </button>
-                                                </>
-                                            )}
-
-                                            {/* Extra Documents - Only for Internacion */}
-                                            {isInternacionDoc && (
-                                                <>
-                                                    <button
-                                                        onClick={() => setPreviewType('caratula')}
-                                                        className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-all ${previewType === 'caratula' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                                    >
-                                                        📂 Carátula
-                                                    </button>
-
-                                                    <button
-                                                        onClick={() => window.open(`/consentimientos/${encodeURIComponent(CONSENTIMIENTO_GENERICO)}`, '_blank')}
-                                                        className="px-3 py-1.5 rounded-lg font-bold text-sm bg-slate-800 text-slate-400 hover:bg-slate-700 transition-all ml-2"
-                                                    >
-                                                        📋 Genérico
-                                                    </button>
-
-                                                    {getApplicableConsents(previewData).length > 0 && (
-                                                        <div className="flex flex-wrap items-center gap-2 ml-4 pl-4 border-l border-slate-300">
-                                                            <span className="text-xs font-bold text-slate-500 uppercase">Consentimientos:</span>
-                                                            {getApplicableConsents(previewData).map((consent, idx) => (
-                                                                <div key={idx} className="flex items-center gap-1">
-                                                                    <span className="text-xs text-slate-600">{consent.nombre}:</span>
-                                                                    {consent.adulto && (
-                                                                        <button
-                                                                            onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.adulto)}`, '_blank')}
-                                                                            className="px-2 py-1 rounded-md font-bold text-xs bg-teal-100 text-teal-700 hover:bg-teal-200 transition-all"
-                                                                        >
-                                                                            Adulto
-                                                                        </button>
-                                                                    )}
-                                                                    {consent.menor && (
-                                                                        <button
-                                                                            onClick={() => window.open(`/consentimientos/${encodeURIComponent(consent.menor)}`, '_blank')}
-                                                                            className="px-2 py-1 rounded-md font-bold text-xs bg-pink-100 text-pink-700 hover:bg-pink-200 transition-all"
-                                                                        >
-                                                                            Menor
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-
-                                            <button
-                                                onClick={handleDownloadPDF}
-                                                className="flex items-center gap-2 px-6 py-2 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 shadow-lg shadow-teal-900/20 transition-all ml-auto ml-2"
-                                            >
-                                                <Download size={20} />
-                                                <span className="hidden sm:inline">Descargar PDF</span>
-                                            </button>
-                                        </div>
-                                    );
-                                })()}
+                    
+                    {/* TOP BAR - COMPACT PREMIUM CONTROLS */}
+                    <div className={`w-full h-16 ${(lowPerfMode || false) ? 'bg-white' : 'bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl'} border-b border-slate-200 dark:border-slate-800/50 flex items-center justify-between px-6 shrink-0 no-print`}>
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-teal-500/20">
+                                <FileText size={20} />
                             </div>
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={() => window.print()}
-                                    className={`flex items-center gap-2 px-6 py-2 text-white rounded-xl font-bold ${previewType === 'ambas' ? 'bg-gradient-to-r from-teal-600 to-purple-600' : previewType === 'material' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-teal-600 hover:bg-teal-700'}`}
-                                >
-                                    <Printer size={20} /> Imprimir / PDF
-                                </button>
-                                <button
-                                    onClick={() => setShowPreview(false)}
-                                    className="flex items-center gap-2 px-6 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold hover:bg-slate-700"
-                                >
-                                    <X size={20} /> Cerrar
-                                </button>
+                            <div>
+                                <h2 className="text-base font-black text-slate-900 dark:text-white tracking-tight">Consola de Impresión</h2>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">{previewType.replace('_', ' ')} • v4.0</p>
                             </div>
                         </div>
 
-                        <div id="preview-content">
-                            {previewType === 'ambas' ? (
+                        <div className="flex items-center gap-4 bg-slate-100/50 dark:bg-black/20 p-2 rounded-[1.5rem] border border-slate-200/50 dark:border-slate-800/50">
+                            {previewType !== 'reporte_semanal' && (() => {
+                                const hasSurgeryCodes = previewData.codigosCirugia?.some(c => (c.codigo && String(c.codigo).trim() !== '') || (c.nombre && String(c.nombre).trim() !== ''));
+                                const hasPractices = previewData.practicas?.some(p => p && String(p).trim() !== '');
+                                const isPedidoDoc = hasPractices && !hasSurgeryCodes;
+                                const isInternacionDoc = !isPedidoDoc;
+                                const isMaterialDoc = previewData.incluyeMaterial && previewData.descripcionMaterial;
+
+                                return (
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => { setPreviewType(isPedidoDoc ? 'pedido' : 'internacion'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${!selectedConsent && (previewType === 'internacion' || previewType === 'pedido') ? 'bg-white dark:bg-slate-800 text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{isInternacionDoc ? 'Internación' : 'Pedido'}</button>
+                                        {isInternacionDoc && isMaterialDoc && (
+                                            <>
+                                                <button onClick={() => { setPreviewType('material'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${!selectedConsent && previewType === 'material' ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Material</button>
+                                                <button onClick={() => { setPreviewType('ambas'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${!selectedConsent && previewType === 'ambas' ? 'bg-white dark:bg-slate-800 text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Ambas (2 pág.)</button>
+                                            </>
+                                        )}
+                                        <button onClick={() => setSelectedConsent('caratula')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedConsent === 'caratula' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Carátula</button>
+                                        <button onClick={() => setSelectedConsent('generico')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedConsent === 'generico' ? 'bg-white dark:bg-slate-800 text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Genérico</button>
+                                        
+                                        {(() => {
+                                            const applicableConsents = getApplicableConsents(previewData);
+                                            if (applicableConsents.length === 0) return null;
+
+                                            return (
+                                                <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-200 dark:border-slate-800">
+                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">CONSENTIMIENTOS:</span>
+                                                    {applicableConsents.map((consent, idx) => {
+                                                        // Extract the effective code (might be a combo or the 6-digit one)
+                                                        const effectiveCode = consent.code || (consent.codigos ? consent.codigos.join('+') : null);
+                                                        if (!effectiveCode) return null;
+
+                                                        return (
+                                                            <div key={idx} className="flex items-center gap-1 bg-slate-100 dark:bg-black/30 p-1 rounded-xl border border-slate-200 dark:border-slate-800/50">
+                                                                <span className="text-[9px] font-black text-slate-500 px-2 uppercase truncate max-w-[150px]" title={consent.nombre}>
+                                                                    {consent.nombre}
+                                                                </span>
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        const url = getConsentUrl('especifico', effectiveCode, false);
+                                                                        if (url) window.open(url, '_blank');
+                                                                        else alert('PDF no disponible');
+                                                                    }} 
+                                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all bg-white dark:bg-slate-800 text-slate-400 hover:bg-blue-600 hover:text-white shadow-sm`}
+                                                                >
+                                                                    Adulto
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        const url = getConsentUrl('especifico', effectiveCode, true);
+                                                                        if (url) window.open(url, '_blank');
+                                                                        else alert('PDF no disponible');
+                                                                    }} 
+                                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all bg-white dark:bg-slate-800 text-slate-400 hover:bg-pink-600 hover:text-white shadow-sm`}
+                                                                >
+                                                                    Menor
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button onClick={handleDownloadPDF} className="h-10 px-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-800 dark:hover:bg-slate-100 transition-all flex items-center gap-2">
+                                <Download size={14} /> PDF
+                            </button>
+                            <button onClick={handlePrint} className="h-10 px-4 bg-teal-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-teal-700 transition-all shadow-md shadow-teal-500/10 flex items-center gap-2">
+                                <Printer size={14} /> Imprimir
+                            </button>
+                            <div className="w-px h-6 bg-slate-200 dark:bg-slate-800 mx-1"></div>
+                            <button onClick={() => setShowPreview(false)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-all">
+                                <X size={20} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className={`flex-1 overflow-auto bg-white p-0 md:p-10 flex justify-center items-start custom-scrollbar print-preview-container`}>
+                        <div id="preview-content" className={`${(lowPerfMode || false) ? 'shadow-none ring-0 border border-slate-200' : 'bg-white shadow-2xl shadow-black/20 ring-1 ring-black/5'}`}>
+                            {selectedConsent ? (
+                                renderSelectedConsent()
+                            ) : previewType === 'ambas' ? (
                                 <>
                                     {renderPrintContent('internacion')}
                                     <div className="page-break" style={{ pageBreakAfter: 'always', breakAfter: 'page' }}></div>
@@ -2737,47 +2891,35 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                 document.body
             )}
 
-            {/* WHATSAPP MODAL */}
+            {/* WHATSAPP MODAL - COMPACT REDESIGN */}
             {whatsappModal && (
                 <ModalPortal onClose={() => setWhatsappModal(null)}>
-                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200 overflow-hidden border border-slate-100 dark:border-slate-800">
-                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-                            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-                                <MessageCircle size={24} className="text-green-600 dark:text-green-400" />
-                                Enviar WhatsApp
-                            </h3>
-                            <button onClick={() => setWhatsappModal(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
-                                <X size={20} />
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+                        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-emerald-500/5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+                                    <MessageCircle size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tight">Enviar WhatsApp</h3>
+                                    <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Gestión de Autorización</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setWhatsappModal(null)} className="text-slate-400 hover:text-rose-500 transition-colors p-2">
+                                <X size={18} />
                             </button>
                         </div>
-                        <div className="p-8 space-y-6">
-                            <div className="text-center">
-                                <p className="text-slate-600 dark:text-slate-300">
-                                    Enviar mensaje a <span className="font-bold text-slate-900 dark:text-white">{whatsappModal.afiliado}</span>
-                                </p>
-                                <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
-                                    📱 {whatsappModal.telefono}
+
+                        <div className="p-5 space-y-4 text-center">
+                            <div>
+                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Paciente</p>
+                                <p className="text-sm font-black text-slate-800 dark:text-white">{whatsappModal.afiliado}</p>
+                                <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-1 flex items-center justify-center gap-1">
+                                    <span className="opacity-50">📱</span> {whatsappModal.telefono}
                                 </p>
                             </div>
 
-                            <div className="space-y-4">
-                                <button
-                                    onClick={async () => {
-                                        const fecha = whatsappModal.fechaCirugia ?
-                                            new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
-                                            : 'sin fecha';
-                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n * ${whatsappModal.afiliado}* tiene agendada una cirugía el día * ${fecha}* con * ${whatsappModal.profesional}*.En el caso de su obra social, la autorización la gestiona el paciente.\n\nA continuación envío orden de internación para que pueda gestionar la autorización con su obra social.`;
-                                        await navigator.clipboard.writeText(mensaje);
-                                        setWhatsappModal(null);
-                                        setCopiedToast(true);
-                                        setTimeout(() => setCopiedToast(false), 3000);
-                                    }}
-                                    className="w-full p-5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl font-bold hover:from-green-600 hover:to-emerald-700 transition-all flex items-center justify-center gap-3 shadow-lg shadow-green-900/20"
-                                >
-                                    <User size={20} />
-                                    <span>Autoriza el Paciente</span>
-                                </button>
-
+                            <div className="pt-2">
                                 <button
                                     onClick={async () => {
                                         const fecha = whatsappModal.fechaCirugia ?
@@ -2789,19 +2931,13 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                                         setCopiedToast(true);
                                         setTimeout(() => setCopiedToast(false), 3000);
                                     }}
-                                    className="w-full p-5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-2xl font-bold hover:from-blue-600 hover:to-indigo-700 transition-all flex items-center justify-center gap-3 shadow-lg shadow-blue-900/20"
+                                    className="w-full py-4 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 group"
                                 >
-                                    <Building2 size={20} />
-                                    <span>Autoriza la Institución</span>
+                                    <Building2 size={16} className="group-hover:scale-110 transition-transform" />
+                                    Copiar Mensaje Institucional
                                 </button>
+                                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-3">El mensaje se copiará al portapapeles</p>
                             </div>
-
-                            <button
-                                onClick={() => setWhatsappModal(null)}
-                                className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 transition-colors"
-                            >
-                                Cancelar
-                            </button>
                         </div>
                     </div>
                 </ModalPortal>
@@ -2816,7 +2952,8 @@ const OrdenesView = ({ initialTab = 'internacion', draftData = null, onDraftCons
                     </div>
                 </div>
             )}
-        </div>
+            </div>
+        </>
     );
 };
 

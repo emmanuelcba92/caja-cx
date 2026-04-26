@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, isLocalEnv } from '../firebase/config';
-import { collection, query, getDocs, addDoc, deleteDoc, doc, where, updateDoc, setDoc, getDoc } from 'firebase/firestore';
-import { Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, Download, Upload, Database, FileJson, AlertTriangle, PieChart, ChevronDown, Filter } from 'lucide-react';
-
+import { supabase } from '../supabase/config';
+import { initializeApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { 
+    collection, getDocs, doc, setDoc, updateDoc, deleteDoc, 
+    query, where, orderBy, addDoc, getDoc, writeBatch,
+    getCountFromServer 
+} from "firebase/firestore";
+import { 
+    Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, 
+    Download, Upload, Database, FileJson, AlertTriangle, PieChart, 
+    ChevronDown, Filter, CheckCircle2, UserCheck, ShieldCheck, 
+    Calendar, RefreshCw, Layers, HardDrive, Key, LayoutDashboard, FileText, X,
+    History as HistoryIcon, ShieldAlert, Zap
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, showAllOption = false }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -17,10 +30,10 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, s
             <button
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:border-teal-500 dark:hover:border-teal-500 transition-all min-w-[220px] justify-between shadow-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:border-blue-500 dark:hover:border-blue-500 transition-all min-w-[220px] justify-between shadow-sm"
             >
                 <div className="flex items-center gap-2 truncate">
-                    {Icon && <Icon size={16} className="text-teal-500" />}
+                    {Icon && <Icon size={16} className="text-blue-500" />}
                     <span className="truncate">{selectedLabel}</span>
                 </div>
                 <ChevronDown size={16} className={`transition-transform text-slate-400 ${isOpen ? 'rotate-180' : ''}`} />
@@ -39,7 +52,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, s
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
                                     placeholder="Buscar obra social..."
-                                    className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500 text-slate-900 dark:text-white"
+                                    className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
                                 />
                             </div>
                         </div>
@@ -51,7 +64,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, s
                                         setIsOpen(false);
                                         setSearch('');
                                     }}
-                                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors ${value === 'all' ? 'text-teal-600 font-bold bg-teal-50/50' : 'text-slate-600 dark:text-slate-300'}`}
+                                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors ${value === 'all' ? 'text-blue-600 font-bold bg-blue-50/50' : 'text-slate-600 dark:text-slate-300'}`}
                                 >
                                     Todas las Obras Sociales
                                 </button>
@@ -65,7 +78,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, s
                                             setIsOpen(false);
                                             setSearch('');
                                         }}
-                                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors ${value === opt ? 'text-teal-600 font-bold bg-teal-50/50' : 'text-slate-600 dark:text-slate-300'}`}
+                                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors ${value === opt ? 'text-blue-600 font-bold bg-blue-50/50' : 'text-slate-600 dark:text-slate-300'}`}
                                     >
                                         {opt}
                                     </button>
@@ -90,14 +103,78 @@ const AdminView = () => {
     const [newEmail, setNewEmail] = useState('');
     const [newRole, setNewRole] = useState('user');
     const [allDoctors, setAllDoctors] = useState([]);
+    const [activeTab, setActiveTab] = useState('seguridad');
     const [profiles, setProfiles] = useState({});
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState(() => {
-        if (isSuperAdmin || permissions?.can_manage_users) return 'users';
-        if (permissions?.can_view_stats) return 'stats';
-        return 'users';
-    }); // 'users', 'stats', 'maintenance', 'backup', 'notifications'
+    const [showUserCreateModal, setShowUserCreateModal] = useState(false);
+    const [newUserForm, setNewUserForm] = useState({
+        email: '',
+        password: '',
+        displayName: '',
+        role: 'user',
+        specialty: '',
+        mp: '',
+        me: ''
+    });
+    const [dashboardLoaded, setDashboardLoaded] = useState(false);
+
+    const handleCreateUser = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        
+        try {
+            const secondaryConfig = {
+                apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+                authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+                projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+                storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+                messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+                appId: import.meta.env.VITE_FIREBASE_APP_ID
+            };
+            
+            const secondaryApp = initializeApp(secondaryConfig, "Secondary");
+            const secondaryAuth = getAuth(secondaryApp);
+            
+            const userCredential = await createUserWithEmailAndPassword(
+                secondaryAuth, 
+                newUserForm.email, 
+                newUserForm.password
+            );
+            const uid = userCredential.user.uid;
+            
+            await setDoc(doc(db, "profiles", uid), {
+                email: newUserForm.email.toLowerCase(),
+                displayName: newUserForm.displayName,
+                role: newUserForm.role,
+                specialty: newUserForm.specialty || '',
+                mp: newUserForm.mp || '',
+                me: newUserForm.me || '',
+                createdAt: new Date().toISOString()
+            });
+            
+            await addDoc(collection(db, "authorized_emails"), {
+                email: newUserForm.email.toLowerCase().trim(),
+                role: newUserForm.role,
+                addedAt: new Date().toISOString(),
+                ownerUid: currentUser.uid
+            });
+            
+            await signOut(secondaryAuth);
+            await secondaryApp.delete();
+            
+            alert("Usuario creado exitosamente.");
+            setShowUserCreateModal(false);
+            setNewUserForm({ email: '', password: '', displayName: '', role: 'user', specialty: '', mp: '', me: '' });
+            fetchData();
+        } catch (error) {
+            console.error("Error creando usuario:", error);
+            alert("Error: " + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
     const [roles, setRoles] = useState([]);
     const [maintenanceUser, setMaintenanceUser] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -106,10 +183,22 @@ const AdminView = () => {
     const [scriptUrl, setScriptUrl] = useState('');
     const [appNotificationUids, setAppNotificationUids] = useState([]);
     const [stats, setStats] = useState({ totalCirugias: 0, realizadas: 0, proximas: 0, canceladas: 0 });
+    const [firestoreUsage, setFirestoreUsage] = useState({ 
+        totalDocs: 0, 
+        totalSizeKB: 0,
+        collections: { 
+            caja: { count: 0, size: 0 }, 
+            ordenes: { count: 0, size: 0 }, 
+            profesionales: { count: 0, size: 0 }, 
+            pacientes: { count: 0, size: 0 },
+            reminders: { count: 0, size: 0 }, 
+            notes: { count: 0, size: 0 } 
+        } 
+    });
     const [allSurgeries, setAllSurgeries] = useState([]);
+    const [supabaseStats, setSupabaseStats] = useState({ count: 0, sizeMB: 0 });
     
-    // Statistics Filter State
-    const [statsFilterType, setStatsFilterType] = useState('all'); // 'all', 'month', 'year', 'range'
+    const [statsFilterType, setStatsFilterType] = useState('all');
     const [statsMonth, setStatsMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
     const [statsYear, setStatsYear] = useState(new Date().getFullYear().toString());
     const [statsDateStart, setStatsDateStart] = useState('');
@@ -119,7 +208,6 @@ const AdminView = () => {
     const [availableOS, setAvailableOS] = useState([]);
     const [selectedOSForCodes, setSelectedOSForCodes] = useState('');
 
-    // Role Form State
     const [roleName, setRoleName] = useState('');
     const [rolePermissions, setRolePermissions] = useState({
         can_view_admin: false,
@@ -133,9 +221,9 @@ const AdminView = () => {
         is_ephemeral: false
     });
 
-    // Professionals for linking
     const [allProfessionals, setAllProfessionals] = useState([]);
     const [selectedLinkedProf, setSelectedLinkedProf] = useState('');
+    const [remapImport, setRemapImport] = useState(true);
 
     const translatePermission = (key) => {
         const translations = {
@@ -164,100 +252,163 @@ const AdminView = () => {
         return translations[key] || key.replace(/_/g, ' ');
     };
 
+    const estimateSize = (data) => {
+        if (!data || (Array.isArray(data) && data.length === 0)) return 0;
+        try {
+            const sample = Array.isArray(data) ? data : [data];
+            const str = JSON.stringify(sample);
+            return str.length / 1024;
+        } catch (e) { return 0; }
+    };
+
     const fetchData = async () => {
         setLoading(true);
-        try {
-            // 1. Fetch Authorized Emails
-            const authSnap = await getDocs(collection(db, "authorized_emails"));
-            const authList = authSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setAuthorizedEmails(authList);
-
-            // Trigger cleanup logic for "Prueba" users if I'm Super Admin
-            runPruebaCleanup(authList);
-
-            // 2. Fetch User Profiles (Mapping UID -> Info)
-            const profSnap = await getDocs(collection(db, "profiles"));
-            const profMap = {};
-            profSnap.forEach(d => { profMap[d.id] = d.data(); });
-            setProfiles(profMap);
-
-            // 3. Fetch all unique doctors/users that have data
-            const cajaSnap = await getDocs(collection(db, "caja"));
-            const uniqueUsers = {};
-            cajaSnap.forEach(d => {
-                const data = d.data();
-                if (data.userId) {
-                    uniqueUsers[data.userId] = (uniqueUsers[data.userId] || 0) + 1;
-                }
-            });
-
-            setAllDoctors(Object.entries(profMap).map(([uid, profile]) => ({
-                uid,
-                count: uniqueUsers[uid] || 0,
-                profile
-            })).sort((a, b) => (b.count - a.count)));
-
-            // 4. Fetch Roles
-            const rolesSnap = await getDocs(collection(db, "roles"));
-            setRoles(rolesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-            // 5. Fetch Professionals (Global Access)
-            const profsSnap = await getDocs(collection(db, "profesionales"));
-            const profsList = profsSnap.docs.map(doc => doc.data().nombre);
-            setAllProfessionals([...new Set(profsList)].sort());
-
-            // 6. Fetch Notification Email Config (from Firestore now for 24/7 access)
-            const emailDoc = await getDoc(doc(db, "settings", "notifications"));
-            if (emailDoc.exists()) {
-                setNotificationEmails(emailDoc.data().emails || '');
-                setScriptUrl(emailDoc.data().scriptUrl || '');
-                setAppNotificationUids(emailDoc.data().appNotificationUids || []);
-            } else {
-                setNotificationEmails('emmanuel.ag92@gmail.com');
+        const usage = {
+            totalSizeKB: 0,
+            collections: {
+                caja: { count: 0, size: 0 },
+                ordenes: { count: 0, size: 0 },
+                profesionales: { count: 0, size: 0 },
+                pacientes: { count: 0, size: 0 },
+                reminders: { count: 0, size: 0 },
+                notes: { count: 0, size: 0 }
             }
+        };
 
-            // 7. Fetch Stats for Surgeries
-            const ordenesSnap = await getDocs(collection(db, "ordenes_internacion"));
-            const fetchedSurgeries = [];
-            ordenesSnap.forEach(d => fetchedSurgeries.push({ id: d.id, ...d.data() }));
-            setAllSurgeries(fetchedSurgeries);
+        try {
+            try {
+                const authSnap = await getDocs(collection(db, "authorized_emails"));
+                const authList = authSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                setAuthorizedEmails(authList);
+                runPruebaCleanup(authList);
+            } catch (e) { console.error("Error fetching auth emails:", e); }
+
+            try {
+                const profSnap = await getDocs(collection(db, "profiles"));
+                let profMap = {};
+                profSnap.forEach(d => { profMap[d.id] = d.data(); });
+                setProfiles(profMap);
+            } catch (e) { console.error("Error fetching profiles:", e); }
+
+            try {
+                const cajaCount = await getCountFromServer(collection(db, "caja"));
+                usage.collections.caja.count = cajaCount.data().count;
+                const cajaSample = await getDocs(query(collection(db, "caja"), limit(10)));
+                const avgSize = estimateSize(cajaSample.docs.map(d => d.data())) / 10;
+                usage.collections.caja.size = avgSize * usage.collections.caja.count;
+            } catch (e) { console.error("Error counting/estimating caja:", e); }
+
+            try {
+                const rolesSnap = await getDocs(collection(db, "roles"));
+                setRoles(rolesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            } catch (e) { console.error("Error fetching roles:", e); }
+
+            try {
+                const profsCount = await getCountFromServer(collection(db, "profesionales"));
+                usage.collections.profesionales.count = profsCount.data().count;
+                const profsSnap = await getDocs(collection(db, "profesionales"));
+                const profsData = profsSnap.docs.map(doc => doc.data());
+                setAllProfessionals([...new Set(profsData.map(d => d.nombre))].sort());
+                usage.collections.profesionales.size = estimateSize(profsData);
+            } catch (e) { console.error("Error fetching profesionales:", e); }
+
+            try {
+                const emailDoc = await getDoc(doc(db, "settings", "notifications"));
+                if (emailDoc.exists()) {
+                    setNotificationEmails(emailDoc.data().emails || '');
+                    setScriptUrl(emailDoc.data().scriptUrl || '');
+                    setAppNotificationUids(emailDoc.data().appNotificationUids || []);
+                }
+            } catch (e) { console.error("Error fetching settings:", e); }
+
+            try {
+                const patientsCount = await getCountFromServer(collection(db, "pacientes"));
+                usage.collections.pacientes.count = patientsCount.data().count;
+                const patientsSample = await getDocs(query(collection(db, "pacientes"), limit(10)));
+                const avgSize = estimateSize(patientsSample.docs.map(d => d.data())) / 10;
+                usage.collections.pacientes.size = avgSize * usage.collections.pacientes.count;
+            } catch (e) { console.error("Error counting/estimating pacientes:", e); }
+
+            try {
+                const ordenesCount = await getCountFromServer(collection(db, "ordenes_internacion"));
+                usage.collections.ordenes.count = ordenesCount.data().count;
+                const ordenesSnap = await getDocs(collection(db, "ordenes_internacion"));
+                const ordenesData = ordenesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                setAllSurgeries(ordenesData);
+                usage.collections.ordenes.size = estimateSize(ordenesData);
+            } catch (e) { console.error("Error fetching ordenes:", e); }
+
+            try {
+                const fetchStorageStats = async () => {
+                    let totalFiles = 0;
+                    let totalSizeBytes = 0;
+                    const listRecursive = async (path = '') => {
+                        const { data, error } = await supabase.storage.from('Cirugias').list(path);
+                        if (error) throw error;
+                        for (const item of data) {
+                            if (item.id === null) {
+                                await listRecursive(path ? `${path}/${item.name}` : item.name);
+                            } else {
+                                totalFiles++;
+                                totalSizeBytes += item.metadata.size || 0;
+                            }
+                        }
+                    };
+                    await listRecursive('');
+                    setSupabaseStats({
+                        count: totalFiles,
+                        sizeMB: totalSizeBytes / (1024 * 1024)
+                    });
+                };
+                fetchStorageStats();
+            } catch (e) { console.error("Error fetching Supabase stats:", e); }
+
+            try {
+                const remindersCount = await getCountFromServer(collection(db, "reminders"));
+                usage.collections.reminders.count = remindersCount.data().count;
+            } catch (e) { console.warn("Reminders restricted:", e); }
+
+            try {
+                const notesCount = await getCountFromServer(collection(db, "notes"));
+                usage.collections.notes.count = notesCount.data().count;
+            } catch (e) { console.warn("Notes restricted:", e); }
+
+            usage.totalDocs = Object.values(usage.collections).reduce((sum, col) => sum + col.count, 0);
+            usage.totalSizeKB = Object.values(usage.collections).reduce((sum, col) => sum + (col.size || 0), 0);
+            setFirestoreUsage(usage);
 
         } catch (error) {
-            console.error(error);
+            console.error("Critical Admin Fetch Error:", error);
+            toast.error("Error parcial al cargar administración");
         } finally {
             setLoading(false);
         }
     };
-
-    const [remapImport, setRemapImport] = useState(true);
 
     const runNotificationCleanup = async () => {
         try {
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             const limitIso = sevenDaysAgo.toISOString();
-
-            const q = query(
-                collection(db, "notifications"),
-                where("createdAt", "<", limitIso)
-            );
-
+            const q = query(collection(db, "notifications"), where("createdAt", "<", limitIso));
             const snap = await getDocs(q);
             if (snap.empty) return;
-
             const batch = writeBatch(db);
-            snap.docs.forEach(d => {
-                batch.delete(d.ref);
-            });
+            snap.docs.forEach(d => batch.delete(d.ref));
             await batch.commit();
-            console.log(`Limpieza de notificaciones: ${snap.size} eliminadas.`);
         } catch (error) {
             console.error("Error cleaning up notifications:", error);
         }
     };
 
     useEffect(() => {
-        fetchData();
+        if (activeTab === 'dashboard' && !dashboardLoaded) {
+            fetchData();
+            setDashboardLoaded(true);
+        }
+    }, [activeTab, dashboardLoaded]);
+
+    useEffect(() => {
         runNotificationCleanup();
     }, []);
 
@@ -273,43 +424,27 @@ const AdminView = () => {
         allSurgeries.forEach(data => {
             const os = (data.obraSocial || 'SIN OBRA SOCIAL').trim().toUpperCase();
             osSet.add(os);
-
             const dateStr = data.fechaCirugia || data.date || data.createdAt || '';
             if (!dateStr) return;
 
             let include = false;
-            if (statsFilterType === 'all') {
-                include = true;
-            } else if (statsFilterType === 'month') {
-                include = dateStr.startsWith(`${statsYear}-${statsMonth}`);
-            } else if (statsFilterType === 'year') {
-                include = dateStr.startsWith(statsYear);
-            } else if (statsFilterType === 'range') {
-                include = (!statsDateStart || dateStr >= statsDateStart) && (!statsDateEnd || dateStr <= statsDateEnd);
-            }
+            if (statsFilterType === 'all') include = true;
+            else if (statsFilterType === 'month') include = dateStr.startsWith(`${statsYear}-${statsMonth}`);
+            else if (statsFilterType === 'year') include = dateStr.startsWith(statsYear);
+            else if (statsFilterType === 'range') include = (!statsDateStart || dateStr >= statsDateStart) && (!statsDateEnd || dateStr <= statsDateEnd);
 
             if (include) {
-                // Filtro global por Obra Social para los contadores
                 if (statsOSFilter === 'all' || os === statsOSFilter) {
                     totalCirugias++;
-                    if (data.suspendida) {
-                        canceladas++;
-                    } else if (dateStr < todayStr) {
-                        realizadas++;
-                    } else {
-                        proximas++;
-                    }
+                    if (data.suspendida) canceladas++;
+                    else if (dateStr < todayStr) realizadas++;
+                    else proximas++;
                 }
-
-                // Siempre calculamos el desglose de códigos por OS (independiente del filtro global de contadores)
                 if (!osStats[os]) osStats[os] = {};
-                
                 const codes = data.codigosCirugia || [];
                 codes.forEach(c => {
                     const codeKey = c.codigo || c.nombre || 'SIN CÓDIGO';
-                    if (codeKey) {
-                        osStats[os][codeKey] = (osStats[os][codeKey] || 0) + 1;
-                    }
+                    if (codeKey) osStats[os][codeKey] = (osStats[os][codeKey] || 0) + 1;
                 });
             }
         });
@@ -340,25 +475,16 @@ const AdminView = () => {
         if (currentUser.email !== SUPER_ADMIN_EMAIL) return;
         const pruebaEmails = authList.filter(a => a.role === 'prueba').map(a => a.email);
         if (pruebaEmails.length === 0) return;
-
         const profSnap = await getDocs(collection(db, "profiles"));
-        const pruebaUids = profSnap.docs
-            .filter(d => pruebaEmails.includes(d.data().email))
-            .map(d => d.id);
-
+        const pruebaUids = profSnap.docs.filter(d => pruebaEmails.includes(d.data().email)).map(d => d.id);
         if (pruebaUids.length === 0) return;
-
         const yesterday = new Date();
         yesterday.setHours(yesterday.getHours() - 24);
         const yesterdayIso = yesterday.toISOString();
-
         const collectionsToClean = ['caja', 'notes', 'profesionales'];
         for (const colName of collectionsToClean) {
             for (const uid of pruebaUids) {
-                const q = query(
-                    collection(db, colName),
-                    where("userId", "==", uid)
-                );
+                const q = query(collection(db, colName), where("userId", "==", uid));
                 const snap = await getDocs(q);
                 const toDelete = snap.docs.filter(d => {
                     const data = d.data();
@@ -397,7 +523,7 @@ const AdminView = () => {
             return;
         }
         if (isLocalEnv) {
-            alert("🔒 SEGURIDAD LOCAL: No se permite eliminar autorizaciones de la nube desde el entorno local para evitar pérdida de datos accidental.");
+            alert("­ƒöÆ SEGURIDAD LOCAL: No se permite eliminar autorizaciones de la nube desde el entorno local.");
             return;
         }
         if (!window.confirm("¿Seguro que quieres quitar la autorización?")) return;
@@ -408,8 +534,6 @@ const AdminView = () => {
             alert(error.message);
         }
     };
-
-
 
     const handleCreateRole = async (e) => {
         e.preventDefault();
@@ -428,6 +552,7 @@ const AdminView = () => {
                 can_view_ordenes: false,
                 can_share_ordenes: false,
                 can_approve_ordenes: false,
+                can_view_stats: false,
                 can_delete_data: false,
                 is_ephemeral: false
             });
@@ -439,7 +564,7 @@ const AdminView = () => {
 
     const handleDeleteRole = async (roleId) => {
         if (isLocalEnv) {
-            alert("🔒 SEGURIDAD LOCAL: No se permite eliminar roles globales desde el entorno local.");
+            alert("­ƒöÆ SEGURIDAD LOCAL: No se permite eliminar roles globales desde el entorno local.");
             return;
         }
         if (!window.confirm("¿Eliminar este rol? Los usuarios con este rol podrían perder acceso.")) return;
@@ -451,24 +576,6 @@ const AdminView = () => {
         }
     };
 
-    const handleToggleRolePermission = async (roleId, permissionKey, currentValue) => {
-        try {
-            const role = roles.find(r => r.id === roleId);
-            if (!role) return;
-            const updatedPermissions = {
-                ...role.permissions,
-                [permissionKey]: !currentValue
-            };
-            await setDoc(doc(db, "roles", roleId), {
-                ...role,
-                permissions: updatedPermissions
-            });
-            fetchData();
-        } catch (error) {
-            alert("Error actualizando permiso: " + error.message);
-        }
-    };
-
     const handleWipeData = async (uid) => {
         const email = profiles[uid]?.email || uid;
         if (email === SUPER_ADMIN_EMAIL) {
@@ -476,10 +583,10 @@ const AdminView = () => {
             return;
         }
         if (isLocalEnv) {
-            alert("⚠️ BLOQUEO DE SEGURIDAD: Estás en modo LOCAL. El borrado masivo de datos está desactivado para proteger la base de datos de producción.");
+            alert("BLOQUEO DE SEGURIDAD: Estás en modo LOCAL. El borrado masivo de datos está desactivado.");
             return;
         }
-        if (!window.confirm(`⚠️ ADVERTENCIA CRÍTICA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR TODA LA INFORMACIÓN de: ${email}?\n\nEsta acción eliminará registros de Caja, Profesionales, Notas, Permisos de Acceso, Perfil y Configuración.`)) return;
+        if (!window.confirm(`ADVERTENCIA CRÍTICA: ¿Estás SEGURO de que quieres BORRAR TODA LA INFORMACIÓN de: ${email}?`)) return;
         const secondConfirm = window.prompt(`Para confirmar, escribe el email o UID del usuario (${email}):`);
         if (secondConfirm !== email && secondConfirm !== uid) {
             alert("Confirmación incorrecta.");
@@ -516,10 +623,10 @@ const AdminView = () => {
         }
         const email = profiles[maintenanceUser]?.email || maintenanceUser;
         if (isLocalEnv) {
-            alert("🔒 Acción denegada en LOCAL para proteger el historial de la nube.");
+            alert("Acción denegada en LOCAL.");
             return;
         }
-        if (!window.confirm(`⚠️ ADVERTENCIA ⚠️\n\n¿Estás SEGURO de que quieres BORRAR las órdenes de ${email} entre el ${startDate} y el ${endDate}?`)) return;
+        if (!window.confirm(`ADVERTENCIA: ¿Seguro de borrar las órdenes de ${email} entre ${startDate} y ${endDate}?`)) return;
         setLoading(true);
         try {
             let deletedCount = 0;
@@ -549,47 +656,25 @@ const AdminView = () => {
 
     const handleNormalizeObraSocial = async () => {
         if (isLocalEnv) {
-            alert("🔒 Acción denegada en LOCAL para proteger el historial de la nube.");
+            alert("Acción denegada en LOCAL.");
             return;
         }
-        if (!window.confirm("¿Seguro que deseas normalizar todas las obras sociales en la base de datos?\n\nEsto unificará variaciones (ej: 'Apros', 'apross' -> 'APROSS', 'Osde' -> 'OSDE') en todas las colecciones para corregir las estadísticas.")) return;
-        
+        if (!window.confirm("¿Seguro que deseas normalizar todas las obras sociales?")) return;
         setLoading(true);
         try {
             const collectionsToNormalize = ['ordenes_internacion', 'pedidos_medicos', 'caja'];
             let updatedCount = 0;
-            
             for (const colName of collectionsToNormalize) {
                 const q = query(collection(db, colName));
                 const snap = await getDocs(q);
-                
                 for (const docSnap of snap.docs) {
                     const data = docSnap.data();
-                    // En ordenes_internacion y pedidos_medicos el campo es 'obraSocial'
-                    // En caja el campo es 'obra_social'
                     const osField = data.obraSocial !== undefined ? 'obraSocial' : (data.obra_social !== undefined ? 'obra_social' : null);
-                    
                     if (osField && data[osField]) {
                         let os = data[osField];
                         let normalized = os.trim().toUpperCase();
-                        
-                        // Reglas de normalización
                         if (/^APROS/i.test(normalized)) normalized = "APROSS";
                         else if (/^OSDE/i.test(normalized)) normalized = "OSDE";
-                        else if (/^OMINT/i.test(normalized)) normalized = "OMINT";
-                        else if (/SANCOR/i.test(normalized)) normalized = "SANCOR SALUD";
-                        else if (/SWISS/i.test(normalized)) normalized = "SWISS MEDICAL";
-                        else if (/OSECAC/i.test(normalized)) normalized = "OSECAC";
-                        else if (/OSPEDY/i.test(normalized)) normalized = "OSPEDYC";
-                        else if (/JER[AÁ]RQUICOS/i.test(normalized)) normalized = "JERARQUICOS SALUD";
-                        else if (/NOBIS/i.test(normalized)) normalized = "NOBIS";
-                        else if (/SIPSSA/i.test(normalized)) normalized = "SIPSSA";
-                        else if (/MET/i.test(normalized)) normalized = "MET MEDICINA PRIVADA";
-                        else if (/PREVENCI[OÓ]N/i.test(normalized)) normalized = "PREVENCION SALUD";
-                        else if (/GALENO/i.test(normalized)) normalized = "GALENO";
-                        else if (/MEDIFE/i.test(normalized)) normalized = "MEDIFE";
-                        else if (/DASPU/i.test(normalized)) normalized = "DASPU";
-                        
                         if (os !== normalized) {
                             await updateDoc(docSnap.ref, { [osField]: normalized });
                             updatedCount++;
@@ -597,7 +682,7 @@ const AdminView = () => {
                     }
                 }
             }
-            alert(`¡Normalización completada! Se actualizaron ${updatedCount} registros.`);
+            alert(`Normalización completada! ${updatedCount} registros actualizados.`);
             fetchData();
         } catch (error) {
             alert("Error al normalizar: " + error.message);
@@ -608,18 +693,13 @@ const AdminView = () => {
 
     const handleExportData = async () => {
         if (!maintenanceUser) {
-            alert("Selecciona un usuario para exportar sus datos.");
+            alert("Selecciona un usuario.");
             return;
         }
         setLoading(true);
         try {
             const collectionsToExport = ['pedidos_medicos', 'ordenes_internacion', 'profesionales', 'caja', 'notes'];
-            const exportData = {
-                version: '1.0',
-                exportDate: new Date().toISOString(),
-                userId: maintenanceUser,
-                data: {}
-            };
+            const exportData = { version: '1.0', exportDate: new Date().toISOString(), userId: maintenanceUser, data: {} };
             for (const colName of collectionsToExport) {
                 const q = query(collection(db, colName), where("userId", "==", maintenanceUser));
                 const snap = await getDocs(q);
@@ -629,12 +709,55 @@ const AdminView = () => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `backup_${maintenanceUser}_${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `backup_${maintenanceUser}.json`;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            alert("Exportación completada con éxito.");
         } catch (error) {
-            alert("Error al exportar: " + error.message);
+            alert("Error: " + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSyncPatientsFromOrders = async () => {
+        if (!window.confirm("¿Seguro que deseas sincronizar la base de pacientes desde las órdenes? Esto creará registros para cada paciente único encontrado en las órdenes de internación.")) return;
+        
+        setLoading(true);
+        try {
+            const ordersSnap = await getDocs(collection(db, "ordenes_internacion"));
+            const orders = ordersSnap.docs.map(d => d.data());
+            const patientsMap = new Map();
+
+            orders.forEach(order => {
+                const dni = order.dni || order.pacienteDni;
+                const nombre = order.afiliado || order.pacienteNombre;
+                if (dni && nombre) {
+                    if (!patientsMap.has(dni)) {
+                        patientsMap.set(dni, {
+                            dni: String(dni),
+                            nombre: nombre,
+                            obraSocial: order.obraSocial || '',
+                            numeroAfiliado: order.numeroAfiliado || '',
+                            telefono: order.telefono || '',
+                            email: order.email || '',
+                            lastUpdate: new Date().toISOString()
+                        });
+                    }
+                }
+            });
+
+            const patientsToSync = Array.from(patientsMap.values());
+            let syncedCount = 0;
+
+            for (const patient of patientsToSync) {
+                await setDoc(doc(db, 'pacientes', patient.dni), patient);
+                syncedCount++;
+            }
+
+            alert(`Sincronización completada. Se procesaron ${syncedCount} pacientes.`);
+        } catch (error) {
+            console.error("Error syncing patients:", error);
+            alert("Error en la sincronización: " + error.message);
         } finally {
             setLoading(false);
         }
@@ -648,7 +771,7 @@ const AdminView = () => {
             try {
                 const importData = JSON.parse(event.target.result);
                 if (!importData.data || !importData.userId) throw new Error("Formato incorrecto.");
-                if (!window.confirm(`¿Importar datos en la cuenta de ${importData.userId}?`)) return;
+                if (!window.confirm(`¿Importar en la cuenta de ${importData.userId}?`)) return;
                 setLoading(true);
                 let importedCount = 0;
                 for (const [colName, docs] of Object.entries(importData.data)) {
@@ -659,10 +782,10 @@ const AdminView = () => {
                         importedCount++;
                     }
                 }
-                alert(`Importación completada. Se procesaron ${importedCount} documentos.`);
+                alert(`Importación completada. ${importedCount} documentos.`);
                 fetchData();
             } catch (error) {
-                alert("Error al importar: " + error.message);
+                alert("Error: " + error.message);
             } finally {
                 setLoading(false);
                 e.target.value = '';
@@ -672,6 +795,7 @@ const AdminView = () => {
     };
 
     const handleSaveEmailConfig = async () => {
+        setLoading(true);
         try {
             await setDoc(doc(db, "settings", "notifications"), {
                 emails: notificationEmails,
@@ -679,13 +803,13 @@ const AdminView = () => {
                 appNotificationUids: appNotificationUids,
                 updatedAt: new Date().toISOString()
             });
-            alert("Configuración de emails actualizada en la nube");
+            alert("Configuración de notificaciones guardada correctamente.");
         } catch (error) {
-            alert("Error al guardar en Firebase: " + error.message);
+            alert("Error al guardar configuración: " + error.message);
+        } finally {
+            setLoading(false);
         }
     };
-
-
 
     const handleTestEmail = async () => {
         if (!scriptUrl || !notificationEmails) {
@@ -695,7 +819,6 @@ const AdminView = () => {
         if (!window.confirm(`¿Enviar un email de prueba a: ${notificationEmails}?`)) return;
 
         try {
-            // Note: Cloud triggers are opaque in no-cors mode
             fetch(scriptUrl, {
                 method: 'POST',
                 mode: 'no-cors',
@@ -706,18 +829,10 @@ const AdminView = () => {
                     body: "Si recibes este correo, la integración con Google Apps Script está funcionando correctamente."
                 })
             });
-            alert("Solicitud de prueba enviada. Revisa los correos (incluyendo SPAM). Si no llega en 1 minuto, revisa los permisos del script.");
+            alert("Solicitud de prueba enviada. Revisa los correos (incluyendo SPAM).");
         } catch (error) {
             alert("Error al intentar la prueba: " + error.message);
         }
-    };
-
-    const toggleNotificationRecipient = (uid) => {
-        setAppNotificationUids(prev =>
-            prev.includes(uid)
-                ? prev.filter(id => id !== uid)
-                : [...prev, uid]
-        );
     };
 
     const filteredDoctors = allDoctors.filter(d => {
@@ -727,162 +842,285 @@ const AdminView = () => {
         return d.uid.toLowerCase().includes(search) || email.includes(search) || name.includes(search);
     });
 
+    const tabs = [
+        { id: 'seguridad', label: 'Seguridad', icon: ShieldAlert, show: isSuperAdmin || permissions?.can_manage_users, color: 'blue' },
+        { id: 'intelligence', label: 'Inteligencia', icon: Zap, show: isSuperAdmin || permissions?.can_view_stats, color: 'purple' },
+        { id: 'permissions', label: 'Permisos', icon: Key, show: isSuperAdmin, color: 'emerald' },
+        { id: 'mantenimiento', label: 'Mantenimiento', icon: RefreshCw, show: isSuperAdmin, color: 'amber' },
+        { id: 'infrastructure', label: 'Infraestructura', icon: HardDrive, show: isSuperAdmin, color: 'indigo' },
+        { id: 'notifications', label: 'Alertas', icon: Mail, show: isSuperAdmin, color: 'rose' },
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: isSuperAdmin || permissions?.can_view_stats, color: 'cyan' }
+    ];
+
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Header */}
-            <div className="flex items-center gap-4 bg-blue-600 text-white p-8 rounded-3xl shadow-xl overflow-hidden relative">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 shadow-lg">
-                    <Shield size={32} />
-                </div>
-                <div>
-                    <h2 className="text-3xl font-black tracking-tight">Panel de Control</h2>
-                    <p className="text-blue-50 font-medium">Gestión global de accesos y usuarios</p>
-                </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex flex-wrap gap-4 mb-8">
-                {(isSuperAdmin || permissions?.can_manage_users) && (
-                    <button
-                        onClick={() => setActiveTab('users')}
-                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-                    >
-                        Usuarios y Permisos
-                    </button>
-                )}
-                {(isSuperAdmin || permissions?.can_view_stats) && (
-                    <button
-                        onClick={() => setActiveTab('stats')}
-                        className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'stats' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-                    >
-                        Estadísticas
-                    </button>
-                )}
-                {isSuperAdmin && (
-                    <>
-                        <button
-                            onClick={() => setActiveTab('maintenance')}
-                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-                        >
-                            Mantenimiento
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('backup')}
-                            className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'backup' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-                        >
-                            Backup / Migración
-                        </button>
-                    </>
-                )}
-            </div>
-
-            {activeTab === 'users' && (isSuperAdmin || permissions?.can_manage_users) ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Authorized Emails */}
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                                <Mail size={24} />
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Usuarios Autorizados</h3>
+        <div className="space-y-8 animate-in fade-in duration-700">
+            <div className="relative overflow-hidden bg-white dark:bg-slate-950 rounded-[2.5rem] p-6 md:p-8 shadow-xl border border-slate-200 dark:border-white/5">
+                <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px] -mr-48 -mt-48 animate-pulse"></div>
+                <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-600/10 rounded-full blur-[80px] -ml-32 -mb-32"></div>
+                
+                <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-8">
+                    <div className="flex items-center gap-6">
+                        <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-[0_0_50px_rgba(37,99,235,0.3)] transform -rotate-3 transition-transform hover:rotate-0">
+                            <Shield className="text-white" size={40} strokeWidth={2.5} />
                         </div>
-
-                        <form onSubmit={handleAddAuthorized} className="flex flex-col gap-3 mb-8">
-                            <div className="flex flex-wrap gap-3">
-                                <div className="flex-1 min-w-[200px] relative">
-                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                    <input
-                                        type="email"
-                                        placeholder="nuevo@usuario.com"
-                                        className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
-                                        value={newEmail}
-                                        onChange={(e) => setNewEmail(e.target.value)}
-                                        required
-                                    />
-                                </div>
-                                <select
-                                    className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
-                                    value={newRole}
-                                    onChange={(e) => setNewRole(e.target.value)}
-                                >
-                                    {roles.map(r => (
-                                        <option key={r.id} value={r.id}>{r.name}</option>
-                                    ))}
-                                </select>
-
-                                <button type="submit" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100">
-                                    Autorizar
-                                </button>
+                        <div>
+                            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight mb-1">Panel Maestro</h2>
+                            <div className="flex items-center gap-3">
+                                <span className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-black uppercase tracking-widest border border-blue-500/30">
+                                    <ShieldCheck size={14} /> Control de Accesos
+                                </span>
+                                <span className="text-slate-500 font-medium text-sm">Caja v4.0 • Enterprise</span>
                             </div>
-                        </form>
-
-                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                            {authorizedEmails.map(auth => (
-                                <div key={auth.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl group hover:border-blue-200 transition-all">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center text-slate-400 font-bold border border-slate-200 dark:border-slate-700">
-                                            {auth.email[0].toUpperCase()}
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="font-semibold text-slate-700 dark:text-slate-200">{auth.email}</span>
-                                            <select
-                                                value={auth.role}
-                                                onChange={(e) => handleUpdateRole(auth.id, e.target.value)}
-                                                className="bg-transparent text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 outline-none border-none cursor-pointer hover:text-blue-500 transition-colors w-fit"
-                                            >
-                                                {roles.map(r => (
-                                                    <option key={r.id} value={r.id} className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 uppercase">{r.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <button onClick={() => handleRemoveAuthorized(auth.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                                        <Trash2 size={18} />
-                                    </button>
-                                </div>
-                            ))}
                         </div>
                     </div>
 
-                    {/* Active Accounts */}
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                                <Users size={24} />
+                    <div className="flex gap-4">
+                        {[
+                            { label: 'Cuentas', value: allDoctors.length, icon: Users, color: 'text-blue-400' },
+                            { label: 'Autorizados', value: authorizedEmails.length, icon: UserCheck, color: 'text-emerald-400' },
+                            { label: 'Roles', value: roles.length, icon: Key, color: 'text-purple-400' }
+                        ].map((stat, i) => (
+                            <div key={i} className="px-6 py-4 bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl min-w-[120px] transition-all hover:bg-white/10 hover:scale-105">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <stat.icon size={14} className={stat.color} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{stat.label}</span>
+                                </div>
+                                <p className="text-2xl font-black text-white">{stat.value}</p>
                             </div>
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Cuentas Activas</h3>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 p-2 bg-slate-100/50 dark:bg-white/5 backdrop-blur-md rounded-[2rem] w-fit border border-slate-200 dark:border-white/5 shadow-inner">
+                {tabs.map(tab => tab.show && (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex items-center gap-2 px-6 py-3 rounded-[1.2rem] font-black transition-all duration-500 uppercase tracking-widest text-[9px] ${
+                            activeTab === tab.id 
+                            ? `bg-white dark:bg-slate-800 text-${tab.color}-600 dark:text-${tab.color}-400 shadow-xl shadow-${tab.color}-500/10 scale-105 border border-${tab.color}-500/20` 
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-white/50 dark:hover:bg-white/5'
+                        }`}
+                    >
+                        <tab.icon size={16} strokeWidth={activeTab === tab.id ? 3 : 2} />
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Tab Content */}
+            {activeTab === 'dashboard' && (isSuperAdmin || permissions?.can_view_stats) && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="premium-card p-5 bg-white dark:bg-slate-900 border-l-4 border-l-blue-500 shadow-xl relative overflow-hidden group">
+                            <div className="flex justify-between items-start mb-2">
+                                <p className="text-[9px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.2em]">Base de Pacientes</p>
+                                <Users size={18} className="text-slate-300 dark:text-slate-600" />
+                            </div>
+                            <h4 className="text-3xl font-black text-slate-900 dark:text-white mb-1">{firestoreUsage.collections.pacientes.count}</h4>
+                            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Registros Únicos</p>
+                        </div>
+                        <div className="premium-card p-5 bg-white dark:bg-slate-900 border-l-4 border-l-purple-500 shadow-xl relative overflow-hidden group">
+                            <div className="flex justify-between items-start mb-2">
+                                <p className="text-[9px] font-black text-purple-500 dark:text-purple-400 uppercase tracking-[0.2em]">Cirugías Totales</p>
+                                <FileText size={18} className="text-slate-300 dark:text-slate-600" />
+                            </div>
+                            <h4 className="text-3xl font-black text-slate-900 dark:text-white mb-1">{firestoreUsage.collections.ordenes.count}</h4>
+                            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Historial Médico</p>
+                        </div>
+                        <div className="premium-card p-5 bg-white dark:bg-slate-900 border-l-4 border-l-pink-500 shadow-xl relative overflow-hidden group">
+                            <div className="flex justify-between items-start mb-2">
+                                <p className="text-[9px] font-black text-pink-500 dark:text-pink-400 uppercase tracking-[0.2em]">Movimientos Caja</p>
+                                <HistoryIcon size={18} className="text-slate-300 dark:text-slate-600" />
+                            </div>
+                            <h4 className="text-3xl font-black text-slate-900 dark:text-white mb-1">{firestoreUsage.collections.caja.count}</h4>
+                            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Flujo Financiero</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="premium-card p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl text-slate-900 dark:text-white">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-2 bg-orange-500/10 text-orange-500 rounded-lg">
+                                    <Database size={18} />
+                                </div>
+                                <h3 className="text-sm font-black text-slate-900 dark:text-white tracking-tight uppercase">Datos (Firestore)</h3>
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="text-4xl font-black text-slate-900 dark:text-white">
+                                        {firestoreUsage.totalSizeKB > 1024 
+                                            ? (firestoreUsage.totalSizeKB / 1024).toFixed(1) 
+                                            : firestoreUsage.totalSizeKB.toFixed(1)}
+                                    </h4>
+                                    <span className="text-lg font-black text-slate-500 mt-2">{firestoreUsage.totalSizeKB > 1024 ? 'MB' : 'KB'}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Peso Total Estimado</p>
+                                    <div className="px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded text-[8px] font-black uppercase tracking-tighter">Muestreo Activo</div>
+                                </div>
+                            </div>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                                    <span className="text-blue-400">Caja Diaria</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-slate-300">{firestoreUsage.collections.caja.count} Docs</span>
+                                        <span className="text-slate-500 font-bold">{(firestoreUsage.collections.caja.size || 0).toFixed(1)} KB</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                                    <span className="text-purple-400">Órdenes</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-slate-300">{firestoreUsage.collections.ordenes.count} Docs</span>
+                                        <span className="text-slate-500 font-bold">{(firestoreUsage.collections.ordenes.size || 0).toFixed(1)} KB</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                                    <span className="text-emerald-400">Profesionales</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-slate-300">{firestoreUsage.collections.profesionales.count} Docs</span>
+                                        <span className="text-slate-500 font-bold">{(firestoreUsage.collections.profesionales.size || 0).toFixed(1)} KB</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center text-[10px] font-bold">
+                                    <span className="text-slate-400 uppercase tracking-widest">PACIENTES</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-slate-400">{firestoreUsage.collections.pacientes.count} Docs</span>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-slate-500 leading-relaxed italic">
+                                    Consumo optimizado: Los documentos se cuentan mediante metadatos del servidor para ahorrar recursos de hardware y ancho de banda.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="premium-card p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl text-slate-900 dark:text-white">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                                    <Upload size={18} />
+                                </div>
+                                <h3 className="text-sm font-black text-slate-900 dark:text-white tracking-tight uppercase">Archivos (Supabase)</h3>
+                            </div>
+                            <div className="space-y-8">
+                                <div className="flex justify-between items-end">
+                                    <div>
+                                        <h4 className="text-4xl font-black text-slate-900 dark:text-white mb-1">
+                                            {supabaseStats.sizeMB.toFixed(2)} 
+                                            <span className="text-lg text-slate-500 ml-2">MB</span>
+                                        </h4>
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Capacidad usada</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <h4 className="text-2xl font-black text-emerald-500 mb-1">{supabaseStats.count}</h4>
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Archivos</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="h-2.5 w-full bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                                        <div 
+                                            className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] transition-all duration-1000"
+                                            style={{ width: `${Math.min((supabaseStats.sizeMB / 1024) * 100, 100)}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-slate-500 leading-relaxed pt-10">
+                                    Aloja firmas y PDFs de informes. Límite de 1GB en plan gratuito.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Security / User Management Tab */}
+            {activeTab === 'seguridad' && (isSuperAdmin || permissions?.can_manage_users) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Create Account Card */}
+                    <div className="premium-card p-5 relative group overflow-hidden border-t-4 border-t-emerald-500 flex flex-col justify-center">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-2xl shadow-inner">
+                                <ShieldCheck size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Registro de Usuarios</h3>
+                                <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest opacity-60">Control de acceso administrativo</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50/50 dark:bg-white/5 rounded-3xl p-6 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center text-center space-y-4">
+                            <div className="w-14 h-14 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center shadow-xl border border-slate-100 dark:border-slate-800">
+                                <UserPlus size={28} className="text-emerald-500" />
+                            </div>
+                            <div>
+                                <h4 className="text-slate-900 dark:text-white font-black uppercase tracking-widest text-sm">¿Nuevo Integrante?</h4>
+                                <p className="text-[11px] text-slate-500 mt-1 px-4 leading-relaxed">Crea una cuenta oficial para el médico o personal administrativo con sus matrículas y especialidades.</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowUserCreateModal(true)}
+                                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black transition-all shadow-xl shadow-emerald-600/20 active:scale-95 flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]"
+                            >
+                                <UserPlus size={16} /> Crear Cuenta Ahora
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Active Accounts Card */}
+                    <div className="premium-card p-5 relative group overflow-hidden border-t-4 border-t-blue-500">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-blue-500/10 text-blue-500 rounded-2xl shadow-inner">
+                                    <Users size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Cuentas Activas</h3>
+                                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest opacity-60">Historial de registros</p>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="relative mb-6">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
                             <input
                                 type="text"
-                                placeholder="Buscar..."
-                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
+                                placeholder="Buscar por nombre o email..."
+                                className="w-full pl-12 pr-4 py-4 bg-slate-50/50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl outline-none focus:border-blue-500 transition-all font-bold text-slate-900 dark:text-white text-xs shadow-inner"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
 
-                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="grid grid-cols-1 gap-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             {filteredDoctors.map(doctor => (
-                                <div key={doctor.uid} className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl hover:border-slate-300 dark:hover:border-slate-600 transition-all">
-                                    <div className="flex items-center gap-3 overflow-hidden">
-                                        <Activity size={18} className="text-blue-500" />
+                                <div key={doctor.uid} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white dark:bg-white/5 border border-slate-100 dark:border-white/5 rounded-2xl hover:shadow-xl hover:bg-slate-50 dark:hover:bg-white/10 transition-all group relative overflow-hidden">
+                                    <div className="flex items-center gap-4 overflow-hidden">
+                                        <div className="relative flex-shrink-0">
+                                            <div className="w-14 h-14 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-xl font-black text-slate-400 dark:text-slate-500 overflow-hidden border-2 border-white dark:border-slate-700 shadow-lg group-hover:scale-105 transition-transform duration-500">
+                                                {doctor.profile?.photoURL ? (
+                                                    <img src={doctor.profile.photoURL} alt="" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    doctor.profile?.displayName?.[0] || doctor.profile?.email?.[0]?.toUpperCase() || '?'
+                                                )}
+                                            </div>
+                                            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full shadow-lg"></div>
+                                        </div>
                                         <div className="overflow-hidden">
-                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{doctor.profile?.displayName || doctor.profile?.email || 'Sin Nombre'}</p>
-                                            <p className="text-[10px] text-slate-400 dark:text-slate-500">{doctor.count} Registros</p>
+                                            <h4 className="text-sm font-black text-slate-800 dark:text-white truncate uppercase tracking-tight">{doctor.profile?.displayName || 'Usuario Sin Nombre'}</h4>
+                                            <p className="text-xs text-slate-400 font-bold truncate mb-1">{doctor.profile?.email || 'Sin Email'}</p>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded-md text-[8px] font-black uppercase tracking-widest">
+                                                    {doctor.uid.slice(0, 8)}...
+                                                </span>
+                                                <span className="px-2 py-0.5 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-md text-[8px] font-black uppercase tracking-widest">
+                                                    {doctor.profile?.role || 'User'}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        {isSuperAdmin && (
-                                            <button onClick={() => handleWipeData(doctor.uid)} className="p-2 text-slate-400 hover:text-red-500 rounded-lg">
-                                                <Trash2 size={18} />
-                                            </button>
-                                        )}
-                                        <button onClick={() => switchContext(doctor.uid)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition">
-                                            Entrar
+                                    <div className="mt-4 sm:mt-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => handleWipeData(doctor.uid)} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all" title="Eliminar Datos">
+                                            <Trash2 size={18} />
+                                        </button>
+                                        <button onClick={() => switchContext(doctor.uid)} className="p-3 text-slate-300 hover:text-blue-500 hover:bg-blue-500/10 rounded-xl transition-all" title="Ver Detalles">
+                                            <ArrowRight size={18} />
                                         </button>
                                     </div>
                                 </div>
@@ -890,270 +1128,266 @@ const AdminView = () => {
                         </div>
                     </div>
                 </div>
-            ) : activeTab === 'stats' ? (
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
-                                <PieChart size={24} />
+            )}
+
+            {/* Intelligence Tab */}
+            {activeTab === 'intelligence' && (isSuperAdmin || permissions?.can_view_stats) && (
+                <div className="space-y-10">
+                    <div className="premium-card p-6 flex flex-col md:flex-row items-center justify-between gap-6 border-t-4 border-t-blue-500">
+                        <div className="flex items-center gap-5">
+                            <div className="p-4 bg-blue-500 text-white rounded-3xl shadow-xl shadow-blue-500/20 transform -rotate-3">
+                                <Activity size={32} />
                             </div>
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Estadísticas de Cirugías</h3>
+                            <div>
+                                <h3 className="text-3xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Análisis Inteligente</h3>
+                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] opacity-60">Visualización de rendimiento quirúrgico</p>
+                            </div>
                         </div>
-                        
-                        {/* Filters */}
-                        <div className="flex flex-wrap items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-2xl border border-slate-200 dark:border-slate-700">
-                            <select 
-                                value={statsFilterType} 
-                                onChange={(e) => setStatsFilterType(e.target.value)}
-                                className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm font-bold text-slate-700 dark:text-slate-200"
-                            >
-                                <option value="all">Historico (Todo)</option>
-                                <option value="month">Por Mes</option>
-                                <option value="year">Por Año</option>
-                                <option value="range">Rango de Fechas</option>
-                            </select>
-
+                        <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-white/5 p-3 rounded-[2rem] border border-slate-200 dark:border-white/5 shadow-inner">
+                            <div className="relative group">
+                                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <select 
+                                    value={statsFilterType} 
+                                    onChange={(e) => setStatsFilterType(e.target.value)} 
+                                    className="pl-12 pr-10 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl outline-none text-xs font-black uppercase tracking-widest cursor-pointer hover:border-blue-500 transition-all appearance-none"
+                                >
+                                    <option value="all">Histórico Total</option>
+                                    <option value="month">Por Mes</option>
+                                    <option value="year">Por Año</option>
+                                    <option value="range">Rango Libre</option>
+                                </select>
+                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                            </div>
                             {statsFilterType === 'month' && (
-                                <>
-                                    <select 
-                                        value={statsMonth} 
-                                        onChange={(e) => setStatsMonth(e.target.value)}
-                                        className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
-                                    >
-                                        <option value="01">Ene</option>
-                                        <option value="02">Feb</option>
-                                        <option value="03">Mar</option>
-                                        <option value="04">Abr</option>
-                                        <option value="05">May</option>
-                                        <option value="06">Jun</option>
-                                        <option value="07">Jul</option>
-                                        <option value="08">Ago</option>
-                                        <option value="09">Sep</option>
-                                        <option value="10">Oct</option>
-                                        <option value="11">Nov</option>
-                                        <option value="12">Dic</option>
+                                <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-500">
+                                    <select value={statsMonth} onChange={(e) => setStatsMonth(e.target.value)} className="px-6 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl outline-none text-xs font-black appearance-none hover:border-blue-500 transition-all">
+                                        {['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => <option key={m} value={m}>{m}</option>)}
                                     </select>
-                                    <input 
-                                        type="number" 
-                                        value={statsYear} 
-                                        onChange={(e) => setStatsYear(e.target.value)}
-                                        className="w-20 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
-                                    />
-                                </>
-                            )}
-
-                            {statsFilterType === 'year' && (
-                                <input 
-                                    type="number" 
-                                    value={statsYear} 
-                                    onChange={(e) => setStatsYear(e.target.value)}
-                                    className="w-24 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
-                                />
-                            )}
-
-                            {statsFilterType === 'range' && (
-                                <div className="flex items-center gap-2">
-                                    <input 
-                                        type="date" 
-                                        value={statsDateStart} 
-                                        onChange={(e) => setStatsDateStart(e.target.value)}
-                                        className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
-                                    />
-                                    <span className="text-slate-400">-</span>
-                                    <input 
-                                        type="date" 
-                                        value={statsDateEnd} 
-                                        onChange={(e) => setStatsDateEnd(e.target.value)}
-                                        className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-200"
-                                    />
+                                    <input type="number" value={statsYear} onChange={(e) => setStatsYear(e.target.value)} className="w-28 px-6 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl outline-none text-xs font-black hover:border-blue-500 transition-all" />
                                 </div>
                             )}
-
+                            {statsFilterType === 'range' && (
+                                <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-500">
+                                    <input type="date" value={statsDateStart} onChange={(e) => setStatsDateStart(e.target.value)} className="px-5 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl text-[10px] font-black uppercase hover:border-blue-500 transition-all" />
+                                    <span className="text-slate-400 font-black">~</span>
+                                    <input type="date" value={statsDateEnd} onChange={(e) => setStatsDateEnd(e.target.value)} className="px-5 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl text-[10px] font-black uppercase hover:border-blue-500 transition-all" />
+                                </div>
+                            )}
                             <SearchableSelect 
                                 options={availableOS}
                                 value={statsOSFilter}
                                 onChange={setStatsOSFilter}
-                                placeholder="Filtrar por Obra Social"
+                                placeholder="Obra Social"
                                 icon={Filter}
                                 showAllOption={true}
                             />
                         </div>
                     </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
-                        <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-800/50">
-                            <p className="text-sm font-bold text-blue-600 dark:text-blue-400 mb-1">Totales</p>
-                            <p className="text-3xl font-black text-slate-800 dark:text-white">{stats.totalCirugias}</p>
-                        </div>
-                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-6 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
-                            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mb-1">Realizadas</p>
-                            <p className="text-3xl font-black text-slate-800 dark:text-white">{stats.realizadas}</p>
-                        </div>
-                        <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-2xl border border-amber-100 dark:border-amber-800/50">
-                            <p className="text-sm font-bold text-amber-600 dark:text-amber-400 mb-1">Próximas</p>
-                            <p className="text-3xl font-black text-slate-800 dark:text-white">{stats.proximas}</p>
-                        </div>
-                        <div className="bg-red-50 dark:bg-red-900/20 p-6 rounded-2xl border border-red-100 dark:border-red-800/50">
-                            <p className="text-sm font-bold text-red-600 dark:text-red-400 mb-1">Canceladas</p>
-                            <p className="text-3xl font-black text-slate-800 dark:text-white">{stats.canceladas}</p>
-                        </div>
-                    </div>
-
-                    {/* Simple Bar Chart UI using Tailwind */}
-                    <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
-                        <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-6 uppercase tracking-wider">Distribución de Estados</h4>
-                        
-                        {stats.totalCirugias > 0 ? (
-                            <div className="space-y-6">
-                                <div>
-                                    <div className="flex justify-between text-sm font-bold mb-2">
-                                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Realizadas</span>
-                                        <span className="text-slate-600 dark:text-slate-300">{Math.round((stats.realizadas / stats.totalCirugias) * 100)}%</span>
-                                    </div>
-                                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
-                                        <div className="bg-emerald-500 h-4 rounded-full transition-all duration-1000" style={{ width: `${(stats.realizadas / stats.totalCirugias) * 100}%` }}></div>
-                                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                        {[
+                            { label: 'Total Cirugías', value: stats.totalCirugias, color: 'blue', icon: Database, gradient: 'from-blue-500 to-indigo-600' },
+                            { label: 'Realizadas', value: stats.realizadas, color: 'emerald', icon: CheckCircle2, gradient: 'from-emerald-500 to-teal-600' },
+                            { label: 'Próximas', value: stats.proximas, color: 'amber', icon: Calendar, gradient: 'from-amber-500 to-orange-600' },
+                            { label: 'Canceladas', value: stats.canceladas, color: 'rose', icon: AlertTriangle, gradient: 'from-rose-500 to-red-600' }
+                        ].map((s, i) => (
+                            <div key={i} className="premium-card p-10 group hover:scale-105 transition-all duration-500 cursor-default">
+                                <div className={`w-16 h-16 bg-gradient-to-br ${s.gradient} rounded-3xl flex items-center justify-center text-white mb-6 shadow-xl shadow-${s.color}-500/20 transform group-hover:rotate-6 transition-transform`}>
+                                    <s.icon size={28} />
                                 </div>
-                                <div>
-                                    <div className="flex justify-between text-sm font-bold mb-2">
-                                        <span className="text-amber-600 dark:text-amber-400 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-amber-500"></div>Próximas</span>
-                                        <span className="text-slate-600 dark:text-slate-300">{Math.round((stats.proximas / stats.totalCirugias) * 100)}%</span>
-                                    </div>
-                                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
-                                        <div className="bg-amber-500 h-4 rounded-full transition-all duration-1000" style={{ width: `${(stats.proximas / stats.totalCirugias) * 100}%` }}></div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="flex justify-between text-sm font-bold mb-2">
-                                        <span className="text-red-600 dark:text-red-400 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500"></div>Canceladas</span>
-                                        <span className="text-slate-600 dark:text-slate-300">{Math.round((stats.canceladas / stats.totalCirugias) * 100)}%</span>
-                                    </div>
-                                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
-                                        <div className="bg-red-500 h-4 rounded-full transition-all duration-1000" style={{ width: `${(stats.canceladas / stats.totalCirugias) * 100}%` }}></div>
-                                    </div>
+                                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-2">{s.label}</p>
+                                <div className="flex items-baseline gap-3">
+                                    <p className="text-5xl font-black text-slate-800 dark:text-white leading-none tracking-tighter">{s.value}</p>
+                                    <div className={`w-2 h-2 rounded-full bg-${s.color}-500 animate-pulse`}></div>
                                 </div>
                             </div>
-                        ) : (
-                            <p className="text-center text-slate-500 font-medium py-4">No hay cirugías registradas.</p>
-                        )}
+                        ))}
                     </div>
-
-                    {/* Codes by OS Table */}
-                    <div className="mt-8 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                                <Activity className="text-blue-500" size={20} />
-                                <h4 className="text-lg font-bold text-slate-800 dark:text-white">Códigos por Obra Social</h4>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="premium-card p-5 border-l-4 border-l-blue-500 shadow-xl">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-2 bg-blue-500/10 text-blue-500 rounded-xl">
+                                    <PieChart size={20} />
+                                </div>
+                                <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">Distribución de Estados</h4>
                             </div>
-                            
-                            <SearchableSelect 
-                                options={availableOS}
-                                value={selectedOSForCodes}
-                                onChange={setSelectedOSForCodes}
-                                placeholder="Elegir Obra Social..."
-                                icon={Search}
-                            />
-                        </div>
-                        
-                        <div className="overflow-x-auto">
-                            {selectedOSForCodes ? (
-                                statsByOS[selectedOSForCodes] ? (
-                                    <table className="w-full text-left border-collapse">
-                                        <thead>
-                                            <tr className="bg-slate-50 dark:bg-slate-800/30">
-                                                <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-slate-400">Obra Social</th>
-                                                <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-slate-400">Códigos / Prácticas</th>
-                                                <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-slate-400 text-right">Cant.</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                            <tr className="bg-blue-50/20 dark:bg-blue-900/10">
-                                                <td colSpan="2" className="px-6 py-3 font-black text-blue-600 dark:text-blue-400 text-sm">
-                                                    {selectedOSForCodes}
-                                                </td>
-                                                <td className="px-6 py-3 font-black text-blue-600 dark:text-blue-400 text-sm text-right">
-                                                    {Object.values(statsByOS[selectedOSForCodes]).reduce((sum, val) => sum + val, 0)}
-                                                </td>
-                                            </tr>
-                                            {Object.entries(statsByOS[selectedOSForCodes])
-                                                .sort((a, b) => b[1] - a[1])
-                                                .map(([code, count]) => (
-                                                <tr key={code} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                                    <td className="px-6 py-3 pl-12 text-slate-400 text-xs italic">
-                                                        —
-                                                    </td>
-                                                    <td className="px-6 py-3 text-slate-600 dark:text-slate-300 text-sm font-medium">
-                                                        {code}
-                                                    </td>
-                                                    <td className="px-6 py-3 text-slate-900 dark:text-white text-sm font-black text-right">
-                                                        {count}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                ) : (
-                                    <div className="p-12 text-center text-slate-500 font-medium">
-                                        No hay datos para {selectedOSForCodes} en este período.
-                                    </div>
-                                )
+                            {stats.totalCirugias > 0 ? (
+                                <div className="space-y-10">
+                                    {[
+                                        { label: 'Realizadas', value: stats.realizadas, color: 'emerald', bg: 'bg-emerald-500' },
+                                        { label: 'Próximas', value: stats.proximas, color: 'amber', bg: 'bg-amber-500' },
+                                        { label: 'Canceladas', value: stats.canceladas, color: 'rose', bg: 'bg-rose-500' }
+                                    ].map((item, i) => (
+                                        <div key={i} className="group">
+                                            <div className="flex justify-between items-end mb-4">
+                                                <div>
+                                                    <span className={`text-[10px] font-black uppercase tracking-[0.2em] text-${item.color === 'rose' ? 'red' : item.color}-500`}>{item.label}</span>
+                                                    <p className="text-2xl font-black text-slate-800 dark:text-white leading-none mt-1">{item.value} <span className="text-xs text-slate-400 font-bold tracking-normal opacity-50 ml-1">UNIDADES</span></p>
+                                                </div>
+                                                <span className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter opacity-20 group-hover:opacity-100 transition-opacity">
+                                                    {Math.round((item.value / stats.totalCirugias) * 100)}%
+                                                </span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 dark:bg-white/5 rounded-full h-5 overflow-hidden shadow-inner p-1">
+                                                <div 
+                                                    className={`${item.bg} h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(var(--${item.color}-rgb),0.4)] relative overflow-hidden`}
+                                                    style={{ width: `${(item.value / stats.totalCirugias) * 100}%` }}
+                                                >
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             ) : (
-                                <div className="p-12 text-center">
-                                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 mb-4">
-                                        <Search size={24} />
+                                <div className="py-24 text-center">
+                                    <div className="w-24 h-24 bg-slate-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                                        <AlertTriangle className="text-slate-300" size={48} />
                                     </div>
-                                    <p className="text-slate-500 font-medium">Selecciona una Obra Social para ver el desglose de códigos.</p>
+                                    <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Sin datos disponibles para el periodo</p>
                                 </div>
                             )}
                         </div>
+                        <div className="premium-card overflow-hidden border-l-4 border-l-purple-500 flex flex-col shadow-xl">
+                            <div className="p-5 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-purple-500/10 text-purple-500 rounded-xl">
+                                        <FileJson size={20} />
+                                    </div>
+                                    <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">Códigos por O.S.</h4>
+                                </div>
+                                <div className="scale-90 origin-right">
+                                    <SearchableSelect 
+                                        options={availableOS}
+                                        value={selectedOSForCodes}
+                                        onChange={setSelectedOSForCodes}
+                                        placeholder="Seleccionar O.S."
+                                        icon={Search}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto custom-scrollbar max-h-[500px]">
+                                {selectedOSForCodes && statsByOS[selectedOSForCodes] ? (
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10 shadow-sm">
+                                            <tr>
+                                                <th className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-white/5">Práctica / Código</th>
+                                                <th className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-white/5 text-right">Cantidad</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                                            {Object.entries(statsByOS[selectedOSForCodes])
+                                                .sort((a, b) => b[1] - a[1])
+                                                .map(([code, count], idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-all group">
+                                                        <td className="px-10 py-6 font-bold text-slate-700 dark:text-slate-200 text-sm tracking-tight uppercase group-hover:text-purple-500 transition-colors">{code}</td>
+                                                        <td className="px-10 py-6 text-right">
+                                                            <span className="inline-flex items-center justify-center min-w-[40px] px-4 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-black text-xs shadow-lg shadow-black/10">
+                                                                {count}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="p-24 text-center">
+                                        <div className="w-24 h-24 bg-purple-50 dark:bg-purple-900/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                                            <Search size={40} className="text-purple-300/50" />
+                                        </div>
+                                        <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Selecciona una Obra Social para analizar</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
-            ) : activeTab === 'roles' ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Create Role */}
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                        <h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Nuevo Rol</h3>
-                        <form onSubmit={handleCreateRole} className="space-y-4">
-                            <input
-                                type="text"
-                                value={roleName}
-                                onChange={(e) => setRoleName(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
-                                placeholder="Nombre (ej: Secretaria)"
-                                required
-                            />
-                            <div className="space-y-2">
-                                {Object.keys(rolePermissions).map(perm => (
-                                    <label key={perm} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                                        <input
-                                            type="checkbox"
-                                            checked={rolePermissions[perm]}
-                                            onChange={(e) => setRolePermissions(prev => ({ ...prev, [perm]: e.target.checked }))}
-                                            className="w-5 h-5 accent-blue-600"
-                                        />
-                                        <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                                            {translatePermission(perm)}
-                                        </span>
-                                    </label>
-                                ))}
+            )}
+
+            {/* Permissions Tab */}
+            {activeTab === 'permissions' && isSuperAdmin && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-purple-500/10 shadow-xl">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-3 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-xl shadow-inner-sm">
+                                <Key size={22} />
                             </div>
-                            <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">Guardar Rol</button>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Nuevo Rol</h3>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60">Matriz de permisos</p>
+                            </div>
+                        </div>
+                        <form onSubmit={handleCreateRole} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Identificador del Rol</label>
+                                <input
+                                    type="text"
+                                    value={roleName}
+                                    onChange={(e) => setRoleName(e.target.value)}
+                                    className="input-premium focus:ring-purple-500/10 focus:border-purple-500/50"
+                                    placeholder="Nombre del Rol (ej: Secretaria)"
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Matriz de Permisos</label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {Object.keys(rolePermissions).map(perm => (
+                                        <label key={perm} className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl cursor-pointer hover:bg-purple-500/5 dark:hover:bg-purple-500/10 transition-all border border-transparent hover:border-purple-500/20 group">
+                                            <div className="relative flex items-center justify-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={rolePermissions[perm]}
+                                                    onChange={(e) => setRolePermissions(prev => ({ ...prev, [perm]: e.target.checked }))}
+                                                    className="w-5 h-5 appearance-none border-2 border-slate-300 dark:border-slate-600 rounded-lg checked:bg-purple-600 checked:border-purple-600 transition-all cursor-pointer"
+                                                />
+                                                {rolePermissions[perm] && <div className="absolute text-white pointer-events-none text-[10px]">✓</div>}
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-tight group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                                                {translatePermission(perm)}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                            <button type="submit" className="w-full py-5 bg-purple-600 hover:bg-purple-700 text-white rounded-[2rem] font-black shadow-xl shadow-purple-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
+                                <CheckCircle2 size={20} />
+                                CREAR ROL PERSONALIZADO
+                            </button>
                         </form>
                     </div>
-
-                    {/* Roles List */}
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                        <h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Roles Existentes</h3>
-                        <div className="space-y-4">
+                    <div className="premium-card p-10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-blue-500/10">
+                        <div className="flex items-center justify-between mb-8">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-3">
+                                <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
+                                Roles Configurados
+                            </h3>
+                            <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-[10px] font-black text-slate-500 uppercase">
+                                {roles.length} TOTALES
+                            </span>
+                        </div>
+                        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                             {roles.map(role => (
-                                <div key={role.id} className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <h4 className="font-bold text-slate-800 dark:text-slate-100">{role.name}</h4>
-                                        {!role.isSystem && <button onClick={() => handleDeleteRole(role.id)} className="p-2 text-red-500"><Trash2 size={16} /></button>}
+                                <div key={role.id} className="p-6 border border-slate-100 dark:border-slate-800/50 rounded-3xl bg-white dark:bg-slate-800/20 hover:border-purple-500/30 hover:shadow-lg hover:shadow-purple-500/5 transition-all group">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-3 h-3 rounded-full ${role.isSystem ? 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]'}`}></div>
+                                            <div>
+                                                <h4 className="font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">{role.name}</h4>
+                                                {role.isSystem && <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase">Sistema</span>}
+                                            </div>
+                                        </div>
+                                        {!role.isSystem && (
+                                            <button 
+                                                onClick={() => handleDeleteRole(role.id)} 
+                                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        )}
                                     </div>
-                                    <div className="flex flex-wrap gap-2">
+                                    <div className="flex flex-wrap gap-1.5">
                                         {Object.entries(role.permissions || {}).map(([k, v]) => (
-                                            v && <span key={k} className="px-2 py-1 bg-green-100 text-green-700 rounded-md text-[9px] font-bold uppercase">
+                                            v && <span key={k} className="px-2.5 py-1 bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 rounded-lg text-[8px] font-black uppercase tracking-wider border border-slate-100 dark:border-slate-800 shadow-sm">
                                                 {translatePermission(k)}
                                             </span>
                                         ))}
@@ -1163,73 +1397,432 @@ const AdminView = () => {
                         </div>
                     </div>
                 </div>
-            ) : activeTab === 'maintenance' && isSuperAdmin ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Borrado por Rango */}
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                        <h3 className="text-xl font-bold mb-8 text-slate-800 dark:text-white">Borrado por Rango</h3>
-                        <div className="space-y-4">
-                            <select
-                                value={maintenanceUser}
-                                onChange={(e) => setMaintenanceUser(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                            >
-                                <option value="">Seleccionar cuenta...</option>
-                                {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
-                            </select>
-                            <div className="grid grid-cols-2 gap-4">
-                                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" />
-                                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" />
-                            </div>
-                            <button onClick={handleDeleteByRange} className="w-full py-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-100">
-                                Eliminar en Rango
-                            </button>
-                        </div>
-                    </div>
+            )}
 
-                    {/* Herramientas Globales */}
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Herramientas Globales</h3>
-                        <p className="text-sm text-slate-500 mb-6">Mantenimiento masivo de datos en toda la aplicación.</p>
-                        <div className="space-y-4">
-                            <div className="p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl">
-                                <h4 className="font-bold text-slate-800 dark:text-slate-100 mb-2">Estandarizar Obras Sociales</h4>
-                                <p className="text-xs text-slate-500 mb-4">Corrige errores de tipeo y mayúsculas en todas las obras sociales guardadas para mejorar las estadísticas.</p>
-                                <button onClick={handleNormalizeObraSocial} className="w-full py-3 bg-slate-800 text-white dark:bg-slate-700 dark:hover:bg-slate-600 rounded-xl font-bold hover:bg-slate-900 shadow-lg transition-all">
-                                    Normalizar Datos
+            {/* Notifications Tab */}
+            {activeTab === 'notifications' && isSuperAdmin && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-blue-500/10">
+                        <div className="flex items-center gap-4 mb-10">
+                            <div className="p-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl shadow-inner-sm">
+                                <Mail size={28} />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Alertas Automáticas</h3>
+                                <p className="text-sm text-slate-500 font-medium">Google Apps Script Integration</p>
+                            </div>
+                        </div>
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Destinatarios (separados por coma)</label>
+                                <input
+                                    type="text"
+                                    value={notificationEmails}
+                                    onChange={(e) => setNotificationEmails(e.target.value)}
+                                    className="input-premium focus:ring-blue-500/10 focus:border-blue-500/50"
+                                    placeholder="email1@test.com, email2@test.com"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">App Script Deployment URL</label>
+                                <input
+                                    type="text"
+                                    value={scriptUrl}
+                                    onChange={(e) => setScriptUrl(e.target.value)}
+                                    className="input-premium text-xs focus:ring-blue-500/10 focus:border-blue-500/50"
+                                    placeholder="https://script.google.com/macros/s/..."
+                                />
+                            </div>
+                            <div className="flex gap-4 pt-4">
+                                <button onClick={handleSaveEmailConfig} className="flex-1 py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[2rem] font-black shadow-xl shadow-blue-600/20 active:scale-[0.98] transition-all">
+                                    GUARDAR CONFIGURACIÓN
+                                </button>
+                                <button onClick={handleTestEmail} className="px-8 py-5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-[2rem] font-black hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700">
+                                    PROBAR
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            ) : activeTab === 'backup' && isSuperAdmin ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Exportar Datos</h3>
-                        <p className="text-sm text-slate-500 mb-6">Descarga un backup JSON completo de un usuario.</p>
-                        <select
-                            value={maintenanceUser}
-                            onChange={(e) => setMaintenanceUser(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl mb-4 text-slate-900 dark:text-white"
-                        >
-                            <option value="">Seleccionar cuenta...</option>
-                            {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
-                        </select>
-                        <button onClick={handleExportData} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700">
-                            <Download size={20} /> Exportar JSON
-                        </button>
-                    </div>
-                    <div className="p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Importar Datos</h3>
-                        <p className="text-sm text-slate-500 mb-6">Carga un backup JSON en una cuenta.</p>
-                        <div className="relative border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-8 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition min-h-[160px] flex flex-col items-center justify-center">
-                            <input type="file" onChange={handleImportData} className="absolute inset-0 opacity-0 cursor-pointer" />
-                            <FileJson size={32} className="text-slate-300 dark:text-slate-600 mb-2" />
-                            <span className="text-sm font-bold text-slate-400 dark:text-slate-500">Seleccionar Archivo</span>
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-emerald-500/10">
+                        <h3 className="text-xl font-black mb-8 text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-3">
+                            <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
+                            Estado del Servicio
+                        </h3>
+                        <div className="relative group">
+                            <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-[2.5rem] blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
+                            <div className="relative p-6 bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/50 rounded-[2rem] flex flex-col items-center text-center gap-6">
+                                <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-2xl shadow-emerald-500/40 animate-bounce-slow">
+                                    <CheckCircle2 size={40} />
+                                </div>
+                                <div>
+                                    <p className="text-emerald-700 dark:text-emerald-400 font-black text-2xl mb-2">Sistema Activo</p>
+                                    <p className="text-sm text-emerald-600/70 dark:text-emerald-400/60 font-medium max-w-[280px] mx-auto leading-relaxed">
+                                        Las notificaciones de caja se están procesando correctamente en la infraestructura cloud.
+                                    </p>
+                                </div>
+                                <div className="flex gap-2 items-center px-4 py-2 bg-emerald-500/10 rounded-full">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                    <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Latencia Óptima</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            ) : null}
+            )}
+
+            {/* Mantenimiento Tab */}
+            {activeTab === 'mantenimiento' && isSuperAdmin && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-red-500/10">
+                        <div className="flex items-center gap-4 mb-10">
+                            <div className="p-4 bg-red-500/10 text-red-600 dark:text-red-400 rounded-2xl shadow-inner-sm">
+                                <AlertTriangle size={28} />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Limpieza por Rango</h3>
+                                <p className="text-sm text-slate-500 font-medium">Eliminación masiva de órdenes (Irreversible)</p>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Cuenta de Usuario</label>
+                                <select
+                                    value={maintenanceUser}
+                                    onChange={(e) => setMaintenanceUser(e.target.value)}
+                                    className="input-premium focus:ring-red-500/10 focus:border-red-500/50"
+                                >
+                                    <option value="">Seleccionar cuenta...</option>
+                                    {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Desde</label>
+                                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input-premium focus:ring-red-500/10 focus:border-red-500/50" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Hasta</label>
+                                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input-premium focus:ring-red-500/10 focus:border-red-500/50" />
+                                </div>
+                            </div>
+                            <button 
+                                onClick={handleDeleteByRange} 
+                                className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-[2rem] font-black shadow-xl shadow-red-600/20 active:scale-[0.98] transition-all mt-4 flex items-center justify-center gap-3"
+                            >
+                                <Trash2 size={20} />
+                                EJECUTAR BORRADO MASIVO
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Firestore Usage Stats */}
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-orange-500/10">
+                        <div className="flex items-center gap-4 mb-10">
+                            <div className="p-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 rounded-2xl shadow-inner-sm">
+                                <Database size={28} />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Uso de Base de Datos</h3>
+                                <p className="text-sm text-slate-500 font-medium">Estadísticas de almacenamiento en la nube</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            <div className="p-5 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Documentos Totales</p>
+                                <p className="text-3xl font-black text-slate-800 dark:text-white">
+                                    {firestoreUsage.totalDocs.toLocaleString()}
+                                </p>
+                            </div>
+                            <div className="p-5 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Caja Diaria</p>
+                                <p className="text-xl font-black text-teal-600 dark:text-teal-400">{firestoreUsage?.collections?.caja?.count || 0}</p>
+                            </div>
+                            <div className="p-5 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Órdenes</p>
+                                <p className="text-xl font-black text-blue-600 dark:text-blue-400">{firestoreUsage?.collections?.ordenes?.count || 0}</p>
+                            </div>
+                            <div className="p-5 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Profesionales</p>
+                                <p className="text-xl font-black text-indigo-600 dark:text-indigo-400">{firestoreUsage?.collections?.profesionales?.count || 0}</p>
+                            </div>
+                            <div className="p-5 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Recordatorios</p>
+                                <p className="text-xl font-black text-amber-600 dark:text-amber-400">{firestoreUsage?.collections?.reminders?.count || 0}</p>
+                            </div>
+                            <div className="p-5 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Notas AI</p>
+                                <p className="text-xl font-black text-rose-600 dark:text-rose-400">{firestoreUsage?.collections?.notes?.count || 0}</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 p-6 bg-orange-500/5 rounded-3xl border border-orange-500/10 flex items-center gap-4">
+                            <div className="w-12 h-12 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500">
+                                <Activity size={24} />
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Cuota de Lectura/Escritura</p>
+                                <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                                    El sistema utiliza el Plan gratuito de Firebase (Spark). Límite: 50.000 lecturas/día.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Global Tools */}
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-blue-500/10">
+                        <div className="flex items-center gap-4 mb-10">
+                            <div className="p-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl shadow-inner-sm">
+                                <RefreshCw size={28} />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Herramientas Globales</h3>
+                                <p className="text-sm text-slate-500 font-medium">Mantenimiento y normalización de BD</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="p-8 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-700/50 rounded-[2rem] relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                    <Users size={80} />
+                                </div>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Users className="text-blue-500" size={20} />
+                                    <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-widest text-sm">Base de Pacientes</h4>
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-8 leading-relaxed relative z-10">
+                                    Genera la base de datos de pacientes a partir de la información contenida en las órdenes de internación. Ideal para recuperar el directorio si se borró la colección.
+                                </p>
+                                <button 
+                                    onClick={handleSyncPatientsFromOrders} 
+                                    className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black transition-all shadow-xl active:scale-[0.98] relative z-10 flex items-center justify-center gap-2"
+                                >
+                                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                                    {loading ? 'SINCRONIZANDO...' : 'SINCRONIZAR DIRECTORIO'}
+                                </button>
+                            </div>
+
+                            <div className="p-8 bg-slate-50/50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700/50 rounded-[2rem] relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <CheckCircle2 size={80} />
+                            </div>
+                            <div className="flex items-center gap-3 mb-4">
+                                <CheckCircle2 className="text-emerald-500" size={20} />
+                                <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-widest text-sm">Estandarizar Obras Sociales</h4>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-8 leading-relaxed relative z-10">
+                                Esta herramienta analiza toda la base de datos y unifica variaciones de nombres (ej: "Osde", "osde 210" &rarr; "OSDE") para asegurar que las estadísticas sean 100% precisas.
+                            </p>
+                            <button 
+                                onClick={handleNormalizeObraSocial} 
+                                className="w-full py-4 bg-slate-900 dark:bg-slate-700 hover:bg-slate-950 dark:hover:bg-slate-600 text-white rounded-2xl font-black transition-all shadow-xl active:scale-[0.98] relative z-10"
+                            >
+                                NORMALIZAR TODA LA BASE
+                            </button>
+                        </div>
+                    </div>
+
+                        <div className="mt-6 p-6 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-3xl flex items-center gap-4">
+                            <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
+                                <ShieldCheck size={20} />
+                            </div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Integridad de datos verificada</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Infrastructure Tab */}
+            {activeTab === 'infrastructure' && isSuperAdmin && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Export */}
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-indigo-500/10">
+                        <div className="flex items-center gap-4 mb-10">
+                            <div className="p-4 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl shadow-inner-sm">
+                                <Download size={28} />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Exportación JSON</h3>
+                                <p className="text-sm text-slate-500 font-medium">Backup completo por usuario o global</p>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Seleccionar Origen de Datos</label>
+                                <select
+                                    value={maintenanceUser}
+                                    onChange={(e) => setMaintenanceUser(e.target.value)}
+                                    className="input-premium focus:ring-indigo-500/10 focus:border-indigo-500/50"
+                                >
+                                    <option value="">Todo el sistema (Global)</option>
+                                    {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
+                                </select>
+                            </div>
+                            <button 
+                                onClick={handleExportData} 
+                                className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[2rem] font-black shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
+                            >
+                                <FileJson size={24} /> DESCARGAR BACKUP COMPLETO
+                            </button>
+                            <p className="text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest">
+                                El archivo descargado contendrá todas las órdenes registradas
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Import */}
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-emerald-500/10">
+                        <div className="flex items-center gap-4 mb-10">
+                            <div className="p-4 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl shadow-inner-sm">
+                                <Upload size={28} />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Restauración</h3>
+                                <p className="text-sm text-slate-500 font-medium">Carga de backups externos (.json)</p>
+                            </div>
+                        </div>
+
+                        <div className="relative group">
+                            <input 
+                                type="file" 
+                                onChange={handleImportData} 
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" 
+                            />
+                            <div className="border-4 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem] p-12 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-900/50 group-hover:bg-emerald-500/5 group-hover:border-emerald-500/30 transition-all duration-500 relative overflow-hidden">
+                                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-3xl flex items-center justify-center text-emerald-500 mb-6 shadow-xl group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 relative z-10">
+                                    <Upload size={36} />
+                                </div>
+                                <div className="text-center relative z-10">
+                                    <p className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest mb-2">Arrastrar o Seleccionar</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Solo archivos generados por este sistema</p>
+                                </div>
+                                
+                                {/* Status micro-indicator */}
+                                <div className="mt-8 flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-full">
+                                    <ShieldCheck size={14} className="text-emerald-500" />
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Validación Activa</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            )}
+            {/* Modal Crear Usuario */}
+            {showUserCreateModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                <UserPlus className="w-5 h-5 text-blue-500" />
+                                Nuevo Usuario
+                            </h3>
+                            <button onClick={() => setShowUserCreateModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2 space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Nombre Completo</label>
+                                    <input 
+                                        type="text" required
+                                        value={newUserForm.displayName}
+                                        onChange={e => setNewUserForm({...newUserForm, displayName: e.target.value})}
+                                        className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                                        placeholder="Dr. Juan Perez"
+                                    />
+                                </div>
+                                
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Email</label>
+                                    <input 
+                                        type="email" required
+                                        value={newUserForm.email}
+                                        onChange={e => setNewUserForm({...newUserForm, email: e.target.value})}
+                                        className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                                        placeholder="juan@ejemplo.com"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Contraseña</label>
+                                    <input 
+                                        type="password" required
+                                        value={newUserForm.password}
+                                        onChange={e => setNewUserForm({...newUserForm, password: e.target.value})}
+                                        className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+
+                                <div className="col-span-2 space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Rol del Sistema</label>
+                                    <select 
+                                        value={newUserForm.role}
+                                        onChange={e => setNewUserForm({...newUserForm, role: e.target.value})}
+                                        className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                                    >
+                                        <option value="user">Médico / Usuario</option>
+                                        <option value="admin">Administrador</option>
+                                        <option value="view">Solo Lectura</option>
+                                        {roles.filter(r => !['user', 'admin', 'view'].includes(r.id)).map(role => (
+                                            <option key={role.id} value={role.id}>{role.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="col-span-2 h-px bg-slate-100 dark:bg-slate-800 my-2"></div>
+
+                                <div className="col-span-2 space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Especialidad (Opcional)</label>
+                                    <input 
+                                        type="text"
+                                        value={newUserForm.specialty}
+                                        onChange={e => setNewUserForm({...newUserForm, specialty: e.target.value})}
+                                        className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                                        placeholder="Cirugía General"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Matrícula (MP)</label>
+                                    <input 
+                                        type="text"
+                                        value={newUserForm.mp}
+                                        onChange={e => setNewUserForm({...newUserForm, mp: e.target.value})}
+                                        className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                                        placeholder="12345"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Matrícula (ME)</label>
+                                    <input 
+                                        type="text"
+                                        value={newUserForm.me}
+                                        onChange={e => setNewUserForm({...newUserForm, me: e.target.value})}
+                                        className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                                        placeholder="6789"
+                                    />
+                                </div>
+                            </div>
+
+                            <button 
+                                type="submit"
+                                disabled={loading}
+                                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all disabled:opacity-50 mt-4"
+                            >
+                                {loading ? 'Creando Usuario...' : 'Crear Cuenta'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

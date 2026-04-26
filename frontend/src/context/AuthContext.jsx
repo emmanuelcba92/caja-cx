@@ -65,7 +65,6 @@ export const AuthProvider = ({ children }) => {
     };
 
     useEffect(() => {
-        seedDefaultRoles(); // Seed roles on mount
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             try {
                 if (user) {
@@ -110,6 +109,7 @@ export const AuthProvider = ({ children }) => {
                         authorized = true;
                         role = 'superadmin';
                         setCatalogOwnerUid(user.uid);
+                        seedDefaultRoles(); // Only superadmins can seed roles
                         // Super Manager has all permissions effectively, but let's give them a god object or just standard admin + extra
                         setPermissions({
                             can_view_admin: true,

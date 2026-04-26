@@ -1,5 +1,5 @@
 import { db, USE_LOCAL_DB, LOCAL_API_URL, isLocalEnv } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc } from 'firebase/firestore';
 
 const apiService = {
     // Methods for any collection
@@ -41,8 +41,15 @@ const apiService = {
             });
             return response.json();
         } else {
-            const docRef = await addDoc(collection(db, collectionName), data);
-            return { id: docRef.id, ...data };
+            if (data.id) {
+                const { id, ...rest } = data;
+                const docRef = doc(db, collectionName, id);
+                await setDoc(docRef, rest);
+                return { id, ...rest };
+            } else {
+                const docRef = await addDoc(collection(db, collectionName), data);
+                return { id: docRef.id, ...data };
+            }
         }
     },
 

@@ -3,13 +3,13 @@ import { useAuth } from '../context/AuthContext';
 import ModalPortal from './common/ModalPortal';
 import {
     User, Settings, LogOut, ChevronDown,
-    Shield, Mail, Key, Users, Check, Zap
+    Shield, Mail, Key, Users, Check, Zap, Sun, Moon
 } from 'lucide-react';
 import { updatePassword, updateEmail, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
-const UserMenu = ({ isCollapsed = false, lowPerfMode, setLowPerfMode }) => {
+const UserMenu = ({ isCollapsed = false, lowPerfMode, setLowPerfMode, theme, setTheme }) => {
     const { currentUser, logout, viewingUid, sharedAccounts, switchContext, linkEmailPassword, hasPasswordProvider } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
 
@@ -108,7 +108,7 @@ const UserMenu = ({ isCollapsed = false, lowPerfMode, setLowPerfMode }) => {
             {/* Trigger Button - Circle Avatar */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm group ${isOpen ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm group ${isOpen ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
                 title="Cuenta de Usuario"
             >
                 <span className="text-xs font-black tracking-tighter group-hover:scale-110 transition-transform">{userInitials}</span>
@@ -189,8 +189,21 @@ const UserMenu = ({ isCollapsed = false, lowPerfMode, setLowPerfMode }) => {
                             <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 opacity-50">Rendimiento</p>
                             
                             <button
+                                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all ${theme === 'dark' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                            >
+                                <span className="flex items-center gap-3">
+                                    {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />} 
+                                    Modo Oscuro
+                                </span>
+                                <div className={`w-8 h-4 rounded-full relative transition-colors ${theme === 'dark' ? 'bg-indigo-400' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                    <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all ${theme === 'dark' ? 'right-1' : 'left-1'}`} />
+                                </div>
+                            </button>
+
+                            <button
                                 onClick={() => setLowPerfMode(!lowPerfMode)}
-                                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all ${lowPerfMode ? 'bg-amber-500 text-white shadow-md shadow-amber-200/20 dark:shadow-none' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold mt-1 transition-all ${lowPerfMode ? 'bg-amber-500 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                             >
                                 <span className="flex items-center gap-3">
                                     <Zap size={18} fill={lowPerfMode ? "currentColor" : "none"} /> 
@@ -201,7 +214,7 @@ const UserMenu = ({ isCollapsed = false, lowPerfMode, setLowPerfMode }) => {
                                 </div>
                             </button>
                             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-2 px-1 leading-tight font-medium">
-                                Elimina sombras y efectos visuales para maximizar la velocidad en hardware limitado.
+                                Ajusta la interfaz para maximizar la velocidad y comodidad visual.
                             </p>
                         </div>
                     </div>

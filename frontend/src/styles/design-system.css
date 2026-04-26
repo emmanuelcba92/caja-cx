@@ -1,0 +1,128 @@
+/* 
+   CAJA V4 - PREMIUM DESIGN SYSTEM 
+   Optimized for High-End Aesthetics & Legacy Compatibility (Chrome 109)
+*/
+
+:root {
+    /* --- HSL BASE COLORS --- */
+    --h: 222;
+    --s: 47%;
+    
+    /* --- LIGHT THEME (Glassmorphism & Soft Shadows) --- */
+    --bg-main: hsl(var(--h), 30%, 98%);
+    --bg-card: #ffffff;
+    --bg-card-glass: rgba(255, 255, 255, 0.8);
+    --bg-accent: hsl(var(--h), 30%, 96%);
+    --bg-sidebar: #ffffff;
+    
+    --text-primary: hsl(var(--h), 47%, 11%);
+    --text-secondary: hsl(var(--h), 20%, 40%);
+    --text-muted: hsl(var(--h), 15%, 60%);
+    --text-on-accent: #ffffff;
+    
+    --brand-primary: hsl(221, 83%, 53%);
+    --brand-secondary: hsl(199, 89%, 48%);
+    --brand-success: hsl(142, 71%, 45%);
+    --brand-danger: hsl(0, 84%, 60%);
+    --brand-warning: hsl(38, 92%, 50%);
+    
+    --border-light: hsl(var(--h), 30%, 92%);
+    --border-medium: hsl(var(--h), 20%, 85%);
+    
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.02);
+    --shadow-md: 0 10px 25px -5px rgba(0,0,0,0.05);
+    --shadow-premium: 0 20px 50px -12px rgba(0,0,0,0.1);
+    --shadow-inner: inset 0 2px 4px 0 rgba(0,0,0,0.05);
+    
+    --radius-sm: 0.75rem;
+    --radius-md: 1.25rem;
+    --radius-lg: 2rem;
+    --radius-xl: 3rem; /* MASTER RADIUS */
+    
+    --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-standard: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme='dark'] {
+    /* --- DARK THEME (Deep Night & Glow) --- */
+    --bg-main: #020617;
+    --bg-card: #0f172a;
+    --bg-card-glass: rgba(15, 23, 42, 0.8);
+    --bg-accent: #1e293b;
+    --bg-sidebar: #0f172a;
+    
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #475569;
+    
+    --brand-primary: #3b82f6;
+    --brand-secondary: #38bdf8;
+    
+    --border-light: rgba(255, 255, 255, 0.05);
+    --border-medium: rgba(255, 255, 255, 0.1);
+    
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.3);
+    --shadow-md: 0 10px 25px -5px rgba(0,0,0,0.5);
+    --shadow-premium: 0 20px 50px -12px rgba(0,0,0,0.7);
+}
+
+/* 🚀 LOW PERFORMANCE OVERRIDES (For Windows 7 / Chrome 109) */
+.low-perf {
+    --shadow-sm: none !important;
+    --shadow-md: none !important;
+    --shadow-premium: none !important;
+    --shadow-inner: none !important;
+    --transition-fast: 0s !important;
+    --transition-standard: 0s !important;
+    --transition-slow: 0s !important;
+    --bg-card-glass: var(--bg-card);
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+.low-perf * {
+    box-shadow: none !important;
+    transition: none !important;
+    animation: none !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    text-shadow: none !important;
+}
+
+/* Fix for gray bar in print preview on legacy Chrome */
+.low-perf #preview-content {
+    box-shadow: none !important;
+    ring: 0 !important;
+    border: 1px solid #eee !important;
+    background: #fff !important;
+}
+
+.low-perf .print-preview-container {
+    background-color: #ffffff !important;
+    background: #fff !important;
+    padding: 0 !important;
+}
+
+
+/* Glassmorphism Utility */
+.glass-effect {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background-color: var(--bg-card-glass);
+}
+/* Premium Card Utility */
+.premium-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-premium);
+    transition: var(--transition-standard);
+}
+
+.dark .premium-card {
+    background-color: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}

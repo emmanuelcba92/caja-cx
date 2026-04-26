@@ -2,8 +2,9 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { db } from './firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { supabase } from './supabase/config';
 import { ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
-import { Users, LayoutDashboard, FileText, History, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { Users, LayoutDashboard, FileText, History as HistoryIcon, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon, FileBadge } from 'lucide-react';
 
 // Static immediately-needed components
 import NotificationBell from './components/NotificationBell';
@@ -19,6 +20,8 @@ const AccessManager = lazy(() => import('./components/AccessManager'));
 const NotesView = lazy(() => import('./components/NotesView'));
 const OrdenesView = lazy(() => import('./components/OrdenesView'));
 const AdminView = lazy(() => import('./components/AdminView'));
+const ConsentimientosView = lazy(() => import('./components/ConsentimientosView'));
+const PacientesView = lazy(() => import('./components/PacientesView'));
 import { createPortal } from 'react-dom';
 
 const ModalPortal = ({ children, onClose }) => {
@@ -38,12 +41,40 @@ function AuthenticatedApp() {
   const { isAuthorized, isSuperAdmin, userRole, permissions } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
   const [notesCount, setNotesCount] = useState(0);
-  const [lowPerfMode, setLowPerfMode] = useState(() => localStorage.getItem('low_perf_mode') === 'true');
+  const [lowPerfMode, setLowPerfMode] = useState(() => {
+    const saved = localStorage.getItem('low_perf_mode');
+    if (saved !== null) return saved === 'true';
+    // Auto-detect Chrome 109 or low-end environment
+    const isLegacy = /Chrome\/109/.test(navigator.userAgent) || /Windows NT 6.1/.test(navigator.userAgent);
+    return isLegacy;
+  });
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
+  // Supabase Heartbeat (Wake up server)
   useEffect(() => {
-    document.documentElement.classList.remove('dark');
-    localStorage.setItem('theme', 'light');
+    const sendHeartbeat = async () => {
+      try {
+        // Just a tiny list call to wake up the storage/api
+        await supabase.storage.from('Cirugias').list('', { limit: 1 });
+        console.log("Supabase heartbeat sent");
+      } catch (e) {
+        console.warn("Supabase heartbeat failed:", e.message);
+      }
+    };
+    sendHeartbeat();
   }, []);
+
+  // Theme & Performance Sync
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
 
   useEffect(() => {
     if (lowPerfMode) {
@@ -104,8 +135,8 @@ function AuthenticatedApp() {
       icon: LayoutDashboard,
       defaultTab: 'caja',
       tabs: [
-        { id: 'caja', label: 'Caja', icon: LayoutDashboard },
-        { id: 'historial', label: 'Historial', icon: History },
+        { id: 'caja', label: 'Caja de Cirugía', icon: LayoutDashboard },
+        { id: 'historial', label: 'Historial', icon: HistoryIcon },
         { id: 'liquidaciones', label: 'Liquidaciones', icon: FileText },
         { id: 'profesionales', label: 'Profesionales', icon: Users }
       ]
@@ -117,7 +148,9 @@ function AuthenticatedApp() {
       defaultTab: 'ordenes',
       tabs: [
         { id: 'ordenes', label: 'Órdenes', icon: ClipboardList },
-        { id: 'control', label: 'Control', icon: Printer }
+        { id: 'pacientes', label: 'Pacientes', icon: Users },
+        { id: 'control', label: 'Control', icon: Printer },
+        { id: 'consentimientos', label: 'Consentimientos', icon: FileBadge }
       ]
     },
     {
@@ -182,18 +215,18 @@ function AuthenticatedApp() {
 
   if (!isAuthorized) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white p-8 md:p-12 rounded-3xl shadow-xl max-w-md w-full text-center space-y-6 border border-slate-200 animate-in zoom-in-95 duration-300">
-          <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-slate-900 p-8 md:p-12 rounded-3xl shadow-xl max-w-md w-full text-center space-y-6 border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-300">
+          <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <ShieldAlert size={40} />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Acceso Restringido</h2>
-            <p className="text-slate-500 font-medium leading-relaxed">
-              Tu cuenta (<span className="text-slate-900 font-bold">{currentUser.email}</span>) no está autorizada para acceder a este sistema.
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Acceso Restringido</h2>
+            <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+              Tu cuenta (<span className="text-slate-900 dark:text-white font-bold">{currentUser.email}</span>) no está autorizada para acceder a este sistema.
             </p>
           </div>
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-600 space-y-2">
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 text-sm text-slate-600 dark:text-slate-400 space-y-2">
             <div className="flex items-center gap-2 justify-center">
               <CheckCircle2 size={16} className="text-emerald-500" />
               <span>Solicita acceso al administrador</span>
@@ -211,7 +244,7 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="h-screen font-sans text-slate-900 flex bg-slate-50 transition-colors duration-300 overflow-hidden">
+    <div className={`h-screen font-sans text-slate-900 dark:text-slate-100 flex bg-slate-50 dark:bg-slate-950 overflow-hidden ${lowPerfMode ? '' : 'transition-colors duration-300'}`}>
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -222,19 +255,21 @@ function AuthenticatedApp() {
       )}
 
       {/* Redesigned Sidebar (Fixed Width, Vertical Icons) */}
-      <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} fixed md:relative h-screen w-[85px] bg-white border-r border-slate-200 flex flex-col shadow-md md:shadow-none transition-all duration-300 z-30`}>
+      <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} fixed md:relative h-screen w-[100px] bg-white dark:bg-slate-950/80 backdrop-blur-xl border-r border-slate-200 dark:border-white/5 flex flex-col shadow-2xl transition-all duration-500 z-30`}>
         
         {/* Sidebar Logo */}
-        <div className="py-6 flex flex-col items-center flex-shrink-0">
-          <div className="flex flex-col items-center gap-1">
-            <img src="/c_logo.svg" alt="Logo" className="w-10 h-10 rounded-xl shadow-md shadow-blue-500/10" />
-            <span className="text-[8px] font-black text-blue-600 uppercase tracking-tighter mt-1">CIRUGÍAS</span>
+        <div className="py-10 flex flex-col items-center flex-shrink-0">
+          <div className="flex flex-col items-center gap-3 group cursor-pointer">
+            <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.3)] group-hover:scale-110 transition-all duration-500 transform -rotate-3 group-hover:rotate-0">
+              <img src="/c_logo.svg" alt="Logo" className={`w-10 h-10 ${theme === 'dark' ? 'brightness-0 invert' : ''}`} />
+            </div>
+            <span className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.2em] mt-2 group-hover:text-blue-400 transition-colors text-center px-1">CIRUGÍAS</span>
           </div>
         </div>
 
         {/* Sidebar Navigation */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden py-4">
-          <nav className="flex flex-col items-center gap-4">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 custom-scrollbar">
+          <nav className="flex flex-col items-center gap-5">
             {filteredNav.map((mod) => (
               <button
                 key={mod.id}
@@ -248,14 +283,16 @@ function AuthenticatedApp() {
                   }
                   if (window.innerWidth < 768 && mod.tabs.length === 1) setSidebarOpen(false);
                 }}
-                className={`w-16 h-16 flex flex-col items-center justify-center rounded-2xl transition-all group relative ${activeModuleId === mod.id
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-400/20'
-                  : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'
+                className={`w-16 h-16 flex flex-col items-center justify-center rounded-2xl transition-all duration-300 group relative ${activeModuleId === mod.id
+                  ? 'bg-blue-600 text-white shadow-[0_0_25px_rgba(37,99,235,0.4)] scale-110'
+                  : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-slate-300'
                   }`}
                 title={mod.label}
               >
-                <mod.icon size={22} className={`mb-1 transition-transform duration-300 ${activeModuleId === mod.id ? 'scale-110' : 'group-hover:scale-110'}`} />
-                <span className="text-[9px] font-bold uppercase tracking-tighter text-center leading-none px-1">
+                <div className={`transition-transform duration-500 ${activeModuleId === mod.id ? 'scale-110' : 'group-hover:scale-110'}`}>
+                  <mod.icon size={24} strokeWidth={activeModuleId === mod.id ? 2.5 : 2} />
+                </div>
+                <span className="text-[8px] font-black uppercase tracking-widest text-center leading-none px-1 mt-1.5 opacity-80 group-hover:opacity-100">
                   {mod.label}
                 </span>
 
@@ -263,10 +300,15 @@ function AuthenticatedApp() {
                 {mod.id === 'notas' && notesCount > 0 && (
                   <span className="absolute top-2 right-2 flex h-4 w-4">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[8px] font-black items-center justify-center shadow-sm">
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[8px] font-black items-center justify-center shadow-lg">
                       {notesCount}
                     </span>
                   </span>
+                )}
+                
+                {/* Active Indicator */}
+                {activeModuleId === mod.id && (
+                  <div className="absolute -left-3 w-1.5 h-8 bg-blue-500 dark:bg-blue-400 rounded-full shadow-[0_0_15px_rgba(96,165,250,0.8)]"></div>
                 )}
               </button>
             ))}
@@ -274,55 +316,58 @@ function AuthenticatedApp() {
         </div>
 
         {/* Sidebar Footer (Theme, User, Logout) */}
-        <div className="p-3 border-t border-slate-100 flex flex-col items-center gap-4 py-6">
+        <div className="p-4 border-t border-slate-100 dark:border-white/5 flex flex-col items-center gap-6 py-10 bg-slate-50/50 dark:bg-black/20">
 
           {/* User Profile */}
-          <div className="w-full flex justify-center">
-            <UserMenu 
-              isCollapsed={true} 
-              lowPerfMode={lowPerfMode}
-              setLowPerfMode={setLowPerfMode}
-            />
-          </div>
+          <UserMenu 
+            isCollapsed={true} 
+            lowPerfMode={lowPerfMode}
+            setLowPerfMode={setLowPerfMode}
+            theme={theme}
+            setTheme={setTheme}
+          />
 
           {/* Logout Icon */}
           <button
             onClick={logout}
-            className="w-10 h-10 flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 transition-all"
+            className="w-12 h-12 flex items-center justify-center rounded-2xl text-slate-400 dark:text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-all duration-300"
             title="Cerrar Sesión"
           >
-            <LogOut size={20} />
+            <LogOut size={22} />
           </button>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10 transition-colors duration-300">
-          <div className="flex items-center gap-6">
+        <header className={`h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-6 z-10 ${lowPerfMode ? '' : 'transition-all duration-300'}`}>
+          <div className="flex items-center gap-8">
             <button
               onClick={() => setSidebarOpen(true)}
-              className={`md:hidden mr-2 p-2 rounded-lg hover:bg-slate-100 transition-colors ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              className={`md:hidden p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-105 active:scale-95 transition-all ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
             >
-              <Menu size={24} className="text-slate-600" />
+              <Menu size={24} />
             </button>
             
-            <div className="flex items-baseline gap-2 shrink-0">
-              <span className="text-sm md:text-xl font-black text-slate-900 uppercase tracking-tight">
-                {filteredNav.find(m => m.id === activeModuleId)?.tabs.find(t => t.id === activeTab)?.label || activeTab}
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.3em] mb-1">
+                {filteredNav.find(m => m.id === activeModuleId)?.label || 'Módulo'}
               </span>
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                {filteredNav.find(m => m.id === activeModuleId)?.tabs.find(t => t.id === activeTab)?.label || activeTab}
+              </h1>
             </div>
 
-            {/* Sub-navigation Tabs for grouped modules */}
+            {/* Premium Tab Selector */}
             {filteredNav.find(m => m.id === activeModuleId)?.tabs.length > 1 && (
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl ml-2 md:ml-4 overflow-x-auto no-scrollbar max-w-[150px] sm:max-w-[300px] md:max-w-none">
+              <div className="hidden md:flex items-center bg-slate-100/50 dark:bg-white/5 p-1.5 rounded-2xl ml-8 border border-slate-200/50 dark:border-white/5">
                 {filteredNav.find(m => m.id === activeModuleId).tabs.map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`px-3 md:px-4 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${
+                    className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all duration-300 uppercase tracking-widest ${
                       activeTab === tab.id
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
+                        ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xl shadow-blue-500/10 scale-105'
+                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                     }`}
                   >
                     {tab.label}
@@ -331,20 +376,24 @@ function AuthenticatedApp() {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+            <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-white/5">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+              <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Sistema Operativo</span>
+            </div>
             <NotificationBell />
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto p-8 bg-slate-50 transition-colors duration-300">
-          <div className={`mx-auto space-y-6 transition-all duration-300 ${sidebarOpen ? 'max-w-7xl' : 'max-w-[1600px]'}`}>
+        <section className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+          <div className={`mx-auto space-y-6 ${lowPerfMode ? '' : 'transition-all duration-300'} ${activeTab === 'consentimientos' ? 'max-w-full px-4' : (sidebarOpen ? 'max-w-[1220px]' : 'max-w-[1280px]')}`}>
             <Suspense fallback={
-              <div className="flex flex-col items-center justify-center p-20 gap-4 text-slate-400">
-                <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+              <div className="flex flex-col items-center justify-center p-20 gap-4 text-slate-400 dark:text-slate-500">
+                <div className="w-8 h-8 border-4 border-blue-200 dark:border-blue-900/30 border-t-blue-600 rounded-full animate-spin"></div>
                 <p className="animate-pulse font-medium">Cargando módulo...</p>
               </div>
             }>
-              {activeTab === 'caja' && <CajaForm />}
+              {activeTab === 'caja' && <CajaForm lowPerfMode={lowPerfMode} />}
               {activeTab === 'notas' && <NotesView />}
               {activeTab === 'historial' && <HistorialCaja />}
               {activeTab === 'liquidaciones' && <LiquidacionView />}
@@ -355,6 +404,7 @@ function AuthenticatedApp() {
                   initialTab="internacion"
                   draftData={draftSurgery}
                   onDraftConsumed={() => setDraftSurgery(null)}
+                  lowPerfMode={lowPerfMode}
                 />
               )}
               {activeTab === 'control' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
@@ -362,8 +412,11 @@ function AuthenticatedApp() {
                   initialTab="control"
                   draftData={draftSurgery}
                   onDraftConsumed={() => setDraftSurgery(null)}
+                  lowPerfMode={lowPerfMode}
                 />
               )}
+              {activeTab === 'pacientes' && (isSuperAdmin || permissions?.can_view_ordenes) && <PacientesView lowPerfMode={lowPerfMode} />}
+              {activeTab === 'consentimientos' && (isSuperAdmin || permissions?.can_view_ordenes) && <ConsentimientosView />}
               {activeTab === 'admin' && (isSuperAdmin || permissions?.can_view_admin) && <AdminView />}
             </Suspense>
           </div>
@@ -372,13 +425,13 @@ function AuthenticatedApp() {
         {/* HISTORIAL DE CAMBIOS MODAL */}
         {showNextFeatures && (
           <ModalPortal onClose={() => setShowNextFeatures(false)}>
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-xl w-full max-w-lg border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl w-full max-w-lg border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Historial de Cambios 📓</h3>
-                  <p className="text-xs text-slate-400 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
+                  <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Historial de Cambios 📓</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
                 </div>
-                <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
                   <Menu size={20} className="rotate-45" />
                 </button>
               </div>
@@ -387,24 +440,24 @@ function AuthenticatedApp() {
                 <div className="space-y-3">
                   <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">19 de Enero, 2026</h4>
                   <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900">Compatibilidad W7:</strong>
+                        <strong className="text-slate-900 dark:text-white">Compatibilidad W7:</strong>
                         <p className="text-xs opacity-70">Añadidos fallbacks de colores y estilos para soportar Chrome 109 y navegadores antiguos.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900">Diseño Responsivo:</strong>
+                        <strong className="text-slate-900 dark:text-white">Diseño Responsivo:</strong>
                         <p className="text-xs opacity-70">Menú de botones adaptativo en Liquidaciones y mejoras de visualización en móviles.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900">URL Corta:</strong>
+                        <strong className="text-slate-900 dark:text-white">URL Corta:</strong>
                         <p className="text-xs opacity-70">Migración al nuevo dominio corto: cajacx.web.app.</p>
                       </div>
                     </li>
@@ -414,31 +467,31 @@ function AuthenticatedApp() {
                 <div className="space-y-3">
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-l-2 border-slate-300 pl-3">18 de Enero, 2026</h4>
                   <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900">Sistema de Fechas Seguro:</strong>
+                        <strong className="text-slate-900 dark:text-white">Sistema de Fechas Seguro:</strong>
                         <p className="text-xs opacity-70">Implementación de escudos contra errores de renderizado por fechas inválidas.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900">Deducciones Detalladas:</strong>
+                        <strong className="text-slate-900 dark:text-white">Deducciones Detalladas:</strong>
                         <p className="text-xs opacity-70">Añadida fecha individual a cada ítem de "Agregar Detalle".</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900">Liquidación Multi-profesional:</strong>
+                        <strong className="text-slate-900 dark:text-white">Liquidación Multi-profesional:</strong>
                         <p className="text-xs opacity-70">Nueva funcionalidad para dividir honorarios manuales entre múltiples médicos.</p>
                       </div>
                     </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600">
+                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <div>
-                        <strong className="text-slate-900">Recibos Dinámicos:</strong>
+                        <strong className="text-slate-900 dark:text-white">Recibos Dinámicos:</strong>
                         <p className="text-xs opacity-70">La fecha del recibo ahora coincide con el periodo de liquidación seleccionado.</p>
                       </div>
                     </li>
@@ -448,7 +501,7 @@ function AuthenticatedApp() {
 
               <button
                 onClick={() => setShowNextFeatures(false)}
-                className="w-full mt-8 py-4 bg-slate-900 text-white font-black rounded-2xl hover:opacity-90 transition-opacity uppercase text-xs tracking-widest shadow-md shadow-slate-200"
+                className="w-full mt-8 py-4 bg-slate-900 dark:bg-blue-600 text-white font-black rounded-2xl hover:opacity-90 transition-opacity uppercase text-xs tracking-widest shadow-md shadow-slate-200 dark:shadow-none"
               >
                 Cerrar Registro
               </button>

@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Lock as LockIcon, Mail, AlertCircle, LogIn, UserPlus } from 'lucide-react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase/config';
+import { Lock as LockIcon, Mail, AlertCircle, LogIn, ShieldCheck, Zap } from 'lucide-react';
 
 const LoginView = () => {
-    const { login, loginWithGoogle } = useAuth();
-    const [isRegistering, setIsRegistering] = useState(false);
+    const { login } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -17,148 +13,109 @@ const LoginView = () => {
         e.preventDefault();
         setError('');
 
-        // Automatically append domain if it's just a username
         let effectiveEmail = email;
         if (!email.includes('@')) {
             effectiveEmail = `${email}@coat.com.ar`;
         }
 
-        if (isRegistering && password !== confirmPassword) {
-            return setError("Las contraseñas no coinciden");
-        }
-
         try {
             setLoading(true);
-            if (isRegistering) {
-                await createUserWithEmailAndPassword(auth, effectiveEmail, password);
-            } else {
-                await login(effectiveEmail, password);
-            }
+            await login(effectiveEmail, password);
         } catch (err) {
             console.error(err);
             let msg = err.message;
-            if (msg.includes('auth/email-already-in-use')) msg = "Este correo ya está registrado.";
-            if (msg.includes('auth/weak-password')) msg = "La contraseña debe tener al menos 6 caracteres.";
-            if (msg.includes('auth/invalid-credential')) msg = "Credenciales incorrectas.";
+            if (msg.includes('auth/invalid-credential') || msg.includes('auth/user-not-found')) msg = "Credenciales incorrectas.";
+            if (msg.includes('auth/wrong-password')) msg = "Contraseña incorrecta.";
             setError(msg);
             setLoading(false);
         }
     };
 
-    const handleGoogleLogin = async () => {
-        try {
-            setError('');
-            setLoading(true);
-            await loginWithGoogle();
-        } catch (err) {
-            console.error(err);
-            setError('Error con Google Login: ' + err.message);
-            setLoading(false);
-        }
-    };
-
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
-                <div className="text-center mb-8">
-                    <h1 className="text-2xl font-bold text-slate-900 mb-2">CIRUGIAS COAT</h1>
-                    <p className="text-slate-500">{isRegistering ? "Crea una cuenta nueva" : "Inicia sesión para continuar"}</p>
-                    <p className="text-[10px] text-amber-600 font-bold uppercase mt-2 tracking-widest bg-amber-50 py-1 rounded-full px-4 inline-block border border-amber-100 italic">Acceso restringido por autorización</p>
-                </div>
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6 relative overflow-hidden font-['Outfit']">
+            {/* Ambient Background Glows */}
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 dark:bg-blue-600/20 blur-[120px] rounded-full animate-pulse"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-500/10 dark:bg-indigo-600/20 blur-[120px] rounded-full animate-pulse" style={{ animationDelay: '2s' }}></div>
 
-                {error && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 flex items-center gap-2 text-sm">
-                        <AlertCircle size={16} />
-                        {error}
-                    </div>
-                )}
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Usuario / Email</label>
-                        <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                            <input
-                                type="text"
-                                required
-                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                                placeholder="ej: coat_admin o tu@email.com"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
-                        <div className="relative">
-                            <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                            <input
-                                type="password"
-                                required
-                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                                placeholder="••••••••"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    {isRegistering && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Confirmar Contraseña</label>
-                            <div className="relative">
-                                   <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                <input
-                                    type="password"
-                                    required
-                                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                                    placeholder="••••••••"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                />
+            <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in-95 duration-700">
+                <div className="premium-card p-1 bg-white/50 dark:bg-slate-900/50 backdrop-blur-2xl border-none shadow-2xl">
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.9rem] p-10 md:p-12">
+                        {/* Header Section */}
+                        <div className="text-center mb-10">
+                            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-[2rem] text-white shadow-2xl shadow-blue-500/30 mb-6 group hover:scale-110 transition-transform duration-500">
+                                <Zap size={36} className="group-hover:animate-bounce-slow" />
+                            </div>
+                            <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter uppercase mb-2">CIRUGIAS COAT</h1>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+                                Plataforma de Gestión Quirúrgica
+                            </p>
+                            
+                            <div className="mt-4 inline-flex items-center gap-2 px-4 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full">
+                                <ShieldCheck size={12} className="text-amber-500" />
+                                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-black uppercase tracking-widest">Acceso Restringido</span>
                             </div>
                         </div>
-                    )}
 
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-50 disabled:opacity-50"
-                    >
-                        {loading ? 'Procesando...' : (isRegistering ? <><UserPlus size={18} /> Crear Cuenta</> : <><LogIn size={18} /> Ingresar</>)}
-                    </button>
-                </form>
+                        {error && (
+                            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-2xl mb-8 flex items-center gap-3 text-xs font-bold border border-red-100 dark:border-red-900/30 animate-in slide-in-from-top-2">
+                                <AlertCircle size={18} className="shrink-0" />
+                                {error}
+                            </div>
+                        )}
 
-                <div className="mt-4 text-center">
-                    <button
-                        onClick={() => setIsRegistering(!isRegistering)}
-                        className="text-sm text-teal-600 font-medium hover:underline"
-                    >
-                        {isRegistering ? "¿Ya tienes cuenta? Inicia sesión" : "¿No tienes cuenta? Regístrate"}
-                    </button>
-                </div>
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 ml-4">Identificación</label>
+                                <div className="relative group">
+                                    <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
+                                    <input
+                                        type="text"
+                                        required
+                                        className="input-premium pl-14 h-16 text-lg focus:ring-blue-500/10 focus:border-blue-500/50"
+                                        placeholder="usuario o email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                    />
+                                </div>
+                            </div>
 
-                <div className="mt-6">
-                    <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-gray-300"></div>
-                        </div>
-                        <div className="relative flex justify-center text-sm">
-                            <span className="px-2 bg-white text-gray-500">O continuar con</span>
-                        </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 ml-4">Contraseña</label>
+                                <div className="relative group">
+                                    <LockIcon className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
+                                    <input
+                                        type="password"
+                                        required
+                                        className="input-premium pl-14 h-16 text-lg focus:ring-blue-500/10 focus:border-blue-500/50"
+                                        placeholder="••••••••"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-[2rem] font-black text-lg shadow-2xl shadow-blue-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 mt-4 group"
+                            >
+                                {loading ? (
+                                    <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                ) : (
+                                    <>
+                                        <LogIn size={22} />
+                                        <span className="uppercase tracking-widest">Entrar al Sistema</span>
+                                    </>
+                                )}
+                            </button>
+                        </form>
                     </div>
-
-                    <div className="mt-6">
-                        <button
-                            onClick={handleGoogleLogin}
-                            disabled={loading}
-                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 disabled:opacity-50"
-                        >
-                            Acceder con Google
-                        </button>
-                    </div>
                 </div>
+                
+                {/* Footer Info */}
+                <p className="mt-8 text-center text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.3em]">
+                    v4.0.0 PREMIUM &copy; 2026 COAT DEVELOPMENT
+                </p>
             </div>
         </div>
     );

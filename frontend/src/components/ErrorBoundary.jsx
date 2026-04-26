@@ -14,6 +14,17 @@ class ErrorBoundary extends React.Component {
     componentDidCatch(error, errorInfo) {
         this.setState({ error, errorInfo });
         console.error("Uncaught Error:", error, errorInfo);
+
+        // Auto-fix for "Failed to fetch dynamically imported module"
+        // This usually happens after a new deployment when the user has an old index.html
+        if (error?.message?.includes("dynamically imported module") || 
+            error?.message?.includes("Loading chunk") ||
+            (error?.stack && error.stack.includes("dynamically imported module"))) {
+            console.log("Detectado error de carga de módulo. Recargando para obtener versión nueva...");
+            setTimeout(() => {
+                window.location.reload(true);
+            }, 1000);
+        }
     }
 
     render() {

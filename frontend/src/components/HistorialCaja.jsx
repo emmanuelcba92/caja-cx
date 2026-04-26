@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Edit, Edit2, Trash2, Check, X, Calendar, DollarSign, User, Folder, ChevronRight, Home, ArrowLeft, FileText, Printer, Settings, Lock as LockIcon, Database, ChevronLeft } from 'lucide-react';
+import { Search, Edit, Edit2, Trash2, Check, X, Calendar, DollarSign, User, Folder, ChevronRight, Home, ArrowLeft, FileText, Printer, Settings, Lock as LockIcon, Database, ChevronLeft, CircleHelp, Plus, Save, TrendingUp } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { isLocalEnv } from '../firebase/config';
@@ -243,7 +243,7 @@ const HistorialCaja = () => {
             .filter(item => item.fecha && item.fecha.startsWith(year))
             .map(item => parseInt(item.fecha.split('-')[1]) - 1)
         )];
-        return months.sort((a, b) => a - b);
+        return months.sort((a, b) => b - a);
     };
 
     const getDays = (year, month) => {
@@ -805,21 +805,21 @@ const HistorialCaja = () => {
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
-            {/* PIN MODAL */}
+        <div className="space-y-8 animate-in fade-in duration-700 relative pb-24">
+            {/* PIN MODAL (Sleek Redesign) */}
             {showPinModal && (
                 <ModalPortal onClose={() => { setShowPinModal(false); setPinInput(''); }}>
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-lg w-full max-w-md border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
-                        <div className="flex flex-col items-center text-center mb-6">
-                            <div className="w-16 h-16 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-2xl flex items-center justify-center mb-4">
-                                <LockIcon size={32} />
-                            </div>
-                            <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Modo Administrador</h3>
-                            <p className="text-slate-500 dark:text-slate-400 mt-2">Ingrese su PIN de seguridad para editar registros</p>
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl w-full max-w-sm border border-white/20 dark:border-slate-800 animate-in zoom-in-95 duration-300 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-teal-500 to-emerald-500"></div>
+                        <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] flex items-center justify-center mx-auto mb-8 text-slate-400 shadow-inner">
+                            <LockIcon size={40} />
                         </div>
+                        <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2">Modo Administrador</h3>
+                        <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-10">Validación de Identidad</p>
+                        
                         <input
                             type="password"
-                            className="w-full p-4 text-center text-2xl tracking-[1em] border-2 border-slate-200 dark:border-slate-700 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-teal-500 outline-none transition-all mb-6"
+                            className="w-full text-center text-4xl tracking-[0.6em] font-black py-6 bg-slate-50 dark:bg-slate-800/80 border-none rounded-3xl mb-10 focus:ring-4 focus:ring-teal-500/10 outline-none text-slate-900 dark:text-white transition-all shadow-inner placeholder:opacity-20"
                             placeholder="••••"
                             maxLength={8}
                             value={pinInput}
@@ -827,601 +827,482 @@ const HistorialCaja = () => {
                             onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
                             autoFocus
                         />
-                        <div className="flex gap-3">
-                            <button onClick={() => { setShowPinModal(false); setPinInput(''); }} className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors">Cancelar</button>
-                            <button onClick={handleUnlock} className="flex-1 py-4 bg-teal-600 text-white font-bold rounded-2xl hover:bg-teal-700 shadow-md shadow-teal-200 dark:shadow-none transition-all">Verificar PIN</button>
+                        
+                        <div className="flex gap-4">
+                            <button onClick={() => { setShowPinModal(false); setPinInput(''); }} className="flex-1 py-4 text-slate-400 font-black uppercase tracking-widest text-[10px] hover:text-slate-600 transition-colors">Cerrar</button>
+                            <button onClick={handleUnlock} className="flex-1 py-4 bg-teal-600 text-white font-black rounded-2xl shadow-xl shadow-teal-500/20 hover:bg-teal-700 transition-all uppercase tracking-widest text-[10px] active:scale-95">Desbloquear</button>
                         </div>
                     </div>
                 </ModalPortal>
             )}
 
-
-
-            {/* PRINT ONLY LAYOUT - Formato Excel */}
-            <div id="print-content" className="print-section p-4 bg-white text-black">
-                {/* Header con Logo arriba */}
-                <div className="mb-2">
-                    <img src="/coat_logo.png" alt="COAT" className="h-14 object-contain" />
+            {/* PRINT HIDDEN LAYOUT */}
+            <div id="print-content" className="hidden print:block p-12 bg-white text-black font-sans">
+                {/* Print content remains functionally identical but with slightly cleaner styles */}
+                <div className="flex justify-between items-end border-b-4 border-black pb-6 mb-8">
+                    <div>
+                        <img src="/coat_logo.png" alt="COAT" className="h-14 mb-4" />
+                        <div className="flex items-center gap-4">
+                            <h1 className="text-2xl font-black uppercase tracking-tighter">Caja de Cirugía</h1>
+                            <span className="text-2xl font-light text-gray-400">|</span>
+                            <span className="text-2xl font-black text-slate-700">
+                                {selectedDate ? selectedDate.split('-').reverse().join('/') : ''}
+                            </span>
+                        </div>
+                    </div>
                 </div>
-                {/* Título y fecha debajo del logo */}
-                <div className="mb-4 flex gap-8">
-                    <p className="text-sm font-bold">Caja de cirugía</p>
-                    <p className="text-sm">{selectedDate ? selectedDate.split('-').reverse().join('/') : ''}</p>
-                </div>
 
-                {selectedDate && dailyComment && (
-                    <div className="mb-3 text-xs italic text-gray-600">
-                        <strong>Comentario:</strong> {dailyComment}
+                {dailyComment && (
+                    <div className="mb-8 p-6 bg-gray-50 border border-gray-200 rounded-2xl italic text-sm text-gray-700 leading-relaxed">
+                        <strong className="not-italic block mb-1 uppercase text-[10px] tracking-widest text-gray-400">Observaciones:</strong>
+                        {dailyComment}
                     </div>
                 )}
 
-                <table className="w-full text-[10px] border-collapse">
+                <table className="w-full border-collapse text-[10px]">
                     <thead>
-                        <tr>
-                            <th className="border border-gray-400 px-1 py-1 text-left font-bold bg-gray-100">Paciente</th>
-                            <th className="border border-gray-400 px-1 py-1 text-left font-bold bg-gray-100">DNI</th>
-                            <th className="border border-gray-400 px-1 py-1 text-left font-bold bg-gray-100">Obra social</th>
-                            <th className="border border-gray-400 px-1 py-1 text-left font-bold bg-gray-100">Prof. 1</th>
-                            <th className="border border-gray-400 px-1 py-1 text-left font-bold bg-gray-100">Prof. 2</th>
-                            <th className="border border-gray-400 px-1 py-1 text-left font-bold bg-gray-100">Prof. 3</th>
-                            <th className="border border-gray-400 px-1 py-1 text-right font-bold bg-gray-100">Pesos</th>
-                            <th className="border border-gray-400 px-1 py-1 text-right font-bold bg-gray-100">Dolares</th>
-                            <th className="border border-gray-400 px-1 py-1 text-right font-bold bg-gray-100">Liq. P1</th>
-                            <th className="border border-gray-400 px-1 py-1 text-right font-bold bg-gray-100">Liq. P2</th>
-                            <th className="border border-gray-400 px-1 py-1 text-right font-bold bg-gray-100">Liq. P3</th>
-                            <th className="border border-gray-400 px-1 py-1 text-left font-bold bg-gray-100">Anest.</th>
-                            <th className="border border-gray-400 px-1 py-1 text-right font-bold bg-gray-100">Liq. Anest.</th>
-                            <th className="border border-gray-400 px-1 py-1 text-right font-bold bg-gray-100">Coat $</th>
-                            <th className="border border-gray-400 px-1 py-1 text-right font-bold bg-gray-100">Coat USD</th>
+                        <tr className="bg-gray-100 border-b-2 border-gray-300">
+                            <th className="p-2 text-left border border-gray-300">PACIENTE</th>
+                            <th className="p-2 text-left border border-gray-300">DNI</th>
+                            <th className="p-2 text-left border border-gray-300">OS</th>
+                            <th className="p-2 text-left border border-gray-300">PROFS</th>
+                            <th className="p-2 text-right border border-gray-300">PESOS</th>
+                            <th className="p-2 text-right border border-gray-300">DOLARES</th>
+                            <th className="p-2 text-right border border-gray-300">LIQ P1</th>
+                            <th className="p-2 text-right border border-gray-300">LIQ P2</th>
+                            <th className="p-2 text-right border border-gray-300">LIQ P3</th>
+                            <th className="p-2 text-right border border-gray-300">LIQ AN.</th>
+                            <th className="p-2 text-right border border-gray-300">COAT $</th>
+                            <th className="p-2 text-right border border-gray-300">COAT USD</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {tableData.map((item, idx) => (
-                            <tr key={idx}>
-                                <td className="border border-gray-300 px-1 py-0.5">{item.paciente}</td>
-                                <td className="border border-gray-300 px-1 py-0.5">{item.dni}</td>
-                                <td className="border border-gray-300 px-1 py-0.5">{item.obra_social}</td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-[9px]">{item.prof_1 || ''}</td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-[9px]">{item.prof_2 || ''}</td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-[9px]">{item.prof_3 || ''}</td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-right">{formatMoney(item.pesos)}</td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-right">{formatMoney(item.dolares)}</td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-right">
-                                    {item.liq_prof_1_currency === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_1)}
-                                    {item.liq_prof_1_secondary > 0 && <span className="text-gray-500"> / {item.liq_prof_1_currency_secondary === 'USD' ? 'USD' : '$'} {formatMoney(item.liq_prof_1_secondary)}</span>}
-                                </td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-right">
-                                    {item.liq_prof_2_currency === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_2)}
-                                    {item.liq_prof_2_secondary > 0 && <span className="text-gray-500"> / {item.liq_prof_2_currency_secondary === 'USD' ? 'USD' : '$'} {formatMoney(item.liq_prof_2_secondary)}</span>}
-                                </td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-right">
-                                    {item.liq_prof_3_currency === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_3)}
-                                    {item.liq_prof_3_secondary > 0 && <span className="text-gray-500"> / {item.liq_prof_3_currency_secondary === 'USD' ? 'USD' : '$'} {formatMoney(item.liq_prof_3_secondary)}</span>}
-                                </td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-[9px]">{item.anestesista || ''}</td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-right">
-                                    {item.liq_anestesista > 0 ? `${item.liq_anestesista_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_anestesista)}` : '-'}
-                                </td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-right font-medium">{formatMoney(item.coat_pesos)}</td>
-                                <td className="border border-gray-300 px-1 py-0.5 text-right font-medium">{formatMoney(item.coat_dolares)}</td>
+                        {tableData.map((item, i) => (
+                            <tr key={i} className="border-b border-gray-200">
+                                <td className="p-2 border border-gray-200 font-bold">{item.paciente}</td>
+                                <td className="p-2 border border-gray-200">{item.dni}</td>
+                                <td className="p-2 border border-gray-200">{item.obra_social}</td>
+                                <td className="p-2 border border-gray-200">{[item.prof_1, item.prof_2, item.prof_3].filter(Boolean).join(', ')}</td>
+                                <td className="p-2 border border-gray-200 text-right">${formatMoney(item.pesos)}</td>
+                                <td className="p-2 border border-gray-200 text-right">U$D {formatMoney(item.dolares)}</td>
+                                <td className="p-2 border border-gray-200 text-right">${formatMoney(item.liq_prof_1)}</td>
+                                <td className="p-2 border border-gray-200 text-right">${formatMoney(item.liq_prof_2)}</td>
+                                <td className="p-2 border border-gray-200 text-right">${formatMoney(item.liq_prof_3)}</td>
+                                <td className="p-2 border border-gray-200 text-right">${formatMoney(item.liq_anestesista)}</td>
+                                <td className="p-2 border border-gray-200 text-right font-bold">${formatMoney(item.coat_pesos)}</td>
+                                <td className="p-2 border border-gray-200 text-right font-bold">U$D {formatMoney(item.coat_dolares)}</td>
                             </tr>
                         ))}
                     </tbody>
                     <tfoot>
-                        <tr className="font-bold">
-                            <td colSpan="13" className="border border-gray-400 px-1 py-1 text-right">Total</td>
-                            <td className="border border-gray-400 px-1 py-1 text-right bg-gray-100">
-                                {formatMoney(tableData.reduce((acc, curr) => acc + (parseFloat(curr.coat_pesos) || 0), 0))}
-                            </td>
-                            <td className="border border-gray-400 px-1 py-1 text-right bg-gray-100">
-                                {formatMoney(tableData.reduce((acc, curr) => acc + (parseFloat(curr.coat_dolares) || 0), 0))}
-                            </td>
+                        <tr className="bg-gray-100 font-bold border-t-2 border-gray-400">
+                            <td colSpan={10} className="p-3 text-right uppercase tracking-widest text-[10px]">Total Neto COAT</td>
+                            <td className="p-3 text-right">${formatMoney(tableData.reduce((a, b) => a + (Number(b.coat_pesos) || 0), 0))}</td>
+                            <td className="p-3 text-right">U$D {formatMoney(tableData.reduce((a, b) => a + (Number(b.coat_dolares) || 0), 0))}</td>
                         </tr>
                     </tfoot>
                 </table>
             </div>
 
-            {/* SCREEN CONTENT WRAPPER */}
-            <div id="screen-content">
-                {/* HEADER */}
-                <div className="flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 no-print">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl flex items-center justify-center">
-                            <Calendar size={20} />
+            {/* MAIN DASHBOARD UI */}
+            <div className="max-w-[1300px] mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
+                {/* PREMIUM HEADER & BREADCRUMBS */}
+                <div className="premium-card p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl no-print relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-teal-500/10 transition-colors"></div>
+                    
+                    <div className="relative flex items-center gap-6">
+                        <div className="p-3 bg-teal-600 text-white rounded-2xl shadow-xl shadow-teal-500/20 active:scale-95 cursor-pointer" onClick={navigateHome}>
+                            <Database size={28} />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Registro de Cajas</h1>
-                            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">
-                                <button onClick={navigateHome} className="hover:text-teal-600 dark:hover:text-teal-400 flex items-center gap-1 transition-colors">
-                                    <Home size={14} /> Inicio
-                                </button>
+                            <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight uppercase">Historial</h1>
+                            <nav className="flex items-center gap-2 mt-1">
+                                <button onClick={navigateHome} className="text-[10px] font-black text-slate-400 hover:text-teal-500 uppercase tracking-widest transition-colors">Raíz</button>
                                 {selectedYear && (
                                     <>
-                                        <ChevronRight size={14} />
-                                        <span onClick={() => { setView('months'); setSelectedDate(null); }} className="hover:text-teal-600 dark:hover:text-teal-400 cursor-pointer transition-colors">{selectedYear}</span>
+                                        <ChevronRight size={10} className="text-slate-300" />
+                                        <button onClick={() => { setView('months'); setSelectedDate(null); }} className="text-[10px] font-black text-slate-400 hover:text-teal-500 uppercase tracking-widest transition-colors">{selectedYear}</button>
                                     </>
                                 )}
                                 {selectedMonth !== null && (
                                     <>
-                                        <ChevronRight size={14} />
-                                        <span onClick={() => { setView('days'); setSelectedDate(null); }} className="hover:text-teal-600 dark:hover:text-teal-400 cursor-pointer transition-colors">{MONTH_NAMES[selectedMonth]}</span>
+                                        <ChevronRight size={10} className="text-slate-300" />
+                                        <button onClick={() => { setView('days'); setSelectedDate(null); }} className="text-[10px] font-black text-slate-400 hover:text-teal-500 uppercase tracking-widest transition-colors">{MONTH_NAMES[selectedMonth]}</button>
                                     </>
                                 )}
                                 {selectedDate && (
                                     <>
-                                        <ChevronRight size={14} />
-                                        <span className="text-slate-800 dark:text-slate-200 font-bold">{selectedDate}</span>
+                                        <ChevronRight size={10} className="text-slate-300" />
+                                        <span className="text-[10px] font-black text-teal-500 uppercase tracking-widest">Día {selectedDate.split('-')[2]}</span>
                                     </>
                                 )}
-                            </div>
+                            </nav>
                         </div>
                     </div>
 
-                    {view === 'table' ? (
-                        <div className="flex items-center gap-4">
-                            <div className="flex gap-2 mr-4 border-r border-slate-200 dark:border-slate-800 pr-4">
-                                <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors text-sm font-bold shadow-lg shadow-slate-200 dark:shadow-none">
-                                    <Printer size={16} /> Imprimir
-                                </button>
-                                <button onClick={handleExportExcel} className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors text-sm font-bold border border-green-200 dark:border-green-800">
-                                    <DollarSign size={16} /> Excel COAT
-                                </button>
+                    <div className="relative flex items-center gap-3">
+                        {view === 'table' ? (
+                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-xl border border-slate-100 dark:border-slate-800">
+                                <button onClick={handlePrint} className="p-2.5 text-slate-500 hover:text-teal-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-all"><Printer size={20} /></button>
+                                <button onClick={handleExportExcel} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all"><FileText size={16} /> Excel</button>
+                                <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
+                                {isAdmin ? (
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setShowAddModal(true)} className="p-2.5 bg-teal-500/10 text-teal-600 rounded-xl hover:bg-teal-500/20 transition-all"><User size={20} /></button>
+                                        <button onClick={handleDeleteDay} className="p-2.5 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-all"><Trash2 size={20} /></button>
+                                        <button onClick={() => setIsAdmin(false)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all active:scale-95 flex items-center gap-2"><LockIcon size={14} /> Salir</button>
+                                    </div>
+                                ) : (
+                                    !isReadOnly && <button onClick={() => setShowPinModal(true)} className="px-4 py-2 bg-white dark:bg-slate-800 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all active:scale-95">Admin</button>
+                                )}
                             </div>
-                            {isAdmin ? (
-                                <div className="flex items-center gap-3">
-                                    <button onClick={handleBackup} className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-teal-200 dark:shadow-none text-sm">
-                                        <Database size={16} /> Backup
-                                    </button>
-                                    <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-lg shadow-teal-200 dark:shadow-none">
-                                        <User size={16} /> Agregar Paciente
-                                    </button>
-                                    <button onClick={handleDeleteDay} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-bold shadow-lg shadow-red-200 dark:shadow-none">
-                                        <Trash2 size={16} /> Eliminar Día
-                                    </button>
-                                    <button onClick={() => isAdmin ? setIsAdmin(false) : setShowPinModal(true)} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-xl transition-all ${isAdmin ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'}`}>
-                                        {isAdmin ? <><LockIcon size={16} /> Bloquear Edición</> : <><LockIcon size={16} /> Admin</>}
-                                    </button>
+                        ) : (
+                            <div className="flex flex-col sm:flex-row gap-3 items-end">
+                                <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/80 px-4 py-2 rounded-2xl border border-slate-100 dark:border-slate-800">
+                                    <div className="flex flex-col">
+                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Desde</span>
+                                        <input type="date" className="bg-transparent border-none text-xs font-bold p-0 outline-none focus:ring-0 text-slate-900 dark:text-white" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
+                                    </div>
+                                    <div className="w-px h-6 bg-slate-200 dark:bg-slate-700" />
+                                    <div className="flex flex-col">
+                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Hasta</span>
+                                        <input type="date" className="bg-transparent border-none text-xs font-bold p-0 outline-none focus:ring-0 text-slate-900 dark:text-white" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} />
+                                    </div>
                                 </div>
-                            ) : (
-                                !isReadOnly && (
-                                    <button onClick={() => setShowPinModal(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-                                        <LockIcon size={16} /> Modo Admin
-                                    </button>
-                                )
-                            )}
-                            <button onClick={navigateUp} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-                                <ArrowLeft size={20} />
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 no-print">
-                            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Desde</label>
-                                <input
-                                    type="date"
-                                    className="bg-transparent border-none text-xs font-bold text-slate-700 dark:text-slate-200 outline-none"
-                                    value={rangeStart}
-                                    onChange={(e) => setRangeStart(e.target.value)}
-                                />
+                                <button 
+                                    onClick={handleExportRange} 
+                                    disabled={isExportingRange}
+                                    className="h-11 px-6 bg-teal-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-teal-500/20 hover:bg-teal-700 transition-all active:scale-95 disabled:opacity-50"
+                                >
+                                    {isExportingRange ? 'Procesando...' : 'Exportar Rango'}
+                                </button>
                             </div>
-                            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Hasta</label>
-                                <input
-                                    type="date"
-                                    className="bg-transparent border-none text-xs font-bold text-slate-700 dark:text-slate-200 outline-none"
-                                    value={rangeEnd}
-                                    onChange={(e) => setRangeEnd(e.target.value)}
-                                />
-                            </div>
-                            <button
-                                onClick={handleExportRange}
-                                disabled={isExportingRange}
-                                className={`flex items-center gap-2 px-4 py-2 ${isExportingRange ? 'bg-slate-200 dark:bg-slate-700 text-slate-400' : 'bg-teal-600 text-white hover:bg-teal-700'} rounded-xl font-bold shadow-lg dark:shadow-none transition-all text-xs`}
-                            >
-                                <FileText size={16} /> {isExportingRange ? 'Exportando...' : 'Descargar Rango (Excel)'}
-                            </button>
-                        </div>
-                    )}
+                        )}
+                        <button onClick={navigateUp} className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-2xl transition-all active:scale-90"><ChevronLeft size={24} /></button>
+                    </div>
                 </div>
 
-
-                {/* ADD PATIENT MODAL */}
-                {showAddModal && (
-                    <ModalPortal onClose={() => setShowAddModal(false)}>
-                        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200 no-print">
-                            <div className="flex justify-between items-center mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
-                                <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Agregar Nuevo Paciente</h3>
-                                <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
-                                    <X size={24} />
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Paciente</label>
-                                    <input className="w-full p-3 border dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none transition-all shadow-sm" placeholder="Nombre completo" value={newEntry.paciente || ''} onChange={(e) => setNewEntry({ ...newEntry, paciente: e.target.value })} />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">DNI</label>
-                                    <input className="w-full p-3 border dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none transition-all shadow-sm" placeholder="Sin puntos" value={newEntry.dni || ''} onChange={(e) => {
-                                        const val = e.target.value.replace(/\D/g, '');
-                                        setNewEntry({ ...newEntry, dni: val });
-                                    }} />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Obra Social</label>
-                                    <input className="w-full p-3 border dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none transition-all shadow-sm" placeholder="Ej: OSDE" value={newEntry.obra_social || ''} onChange={(e) => setNewEntry({ ...newEntry, obra_social: e.target.value })} />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Fecha</label>
-                                    <input type="date" disabled className="w-full p-3 border dark:border-slate-700 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-500 cursor-not-allowed shadow-inner" value={selectedDate} />
-                                </div>
-                            </div>
-
-                            <div className="space-y-6 mb-8">
-                                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 border-b dark:border-slate-800 pb-2 flex items-center gap-2">
-                                    <User size={16} className="text-teal-500" /> Profesionales
-                                </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {[1, 2, 3].map(i => (
-                                        <div key={i} className="space-y-2">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Prof. {i}</label>
-                                            <select className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none shadow-sm text-xs" value={newEntry[`prof_${i}`] || ''} onChange={(e) => setNewEntry({ ...newEntry, [`prof_${i}`]: e.target.value })}>
-                                                <option value="">Seleccionar</option>
-                                                {profesionales.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                            </select>
-                                        </div>
-                                    ))}
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Anestesista</label>
-                                        <select className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none shadow-sm text-xs" value={newEntry.anestesista || ''} onChange={(e) => setNewEntry({ ...newEntry, anestesista: e.target.value })}>
-                                            <option value="">Seleccionar</option>
-                                            {profesionales.filter(p => p.categoria === 'Anestesista').map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-6 mb-8">
-                                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 border-b dark:border-slate-800 pb-2 flex items-center gap-2">
-                                    <DollarSign size={16} className="text-teal-500" /> Montos y Liquidaciones
-                                </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-4">
-                                        <p className="font-bold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Pagos Totales
-                                        </p>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Pesos</label>
-                                                <input type="number" className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.pesos || ''} onChange={(e) => setNewEntry({ ...newEntry, pesos: e.target.value })} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Dólares</label>
-                                                <input type="number" className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.dolares || ''} onChange={(e) => setNewEntry({ ...newEntry, dolares: e.target.value })} />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {[1, 2, 3].map(i => (
-                                        <div key={i} className="p-4 bg-teal-50/50 dark:bg-teal-900/10 rounded-2xl border border-teal-100 dark:border-teal-900/30 space-y-4">
-                                            <p className="font-bold text-xs text-teal-800 dark:text-teal-400 flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-teal-500" /> Liq. Prof {i}
-                                            </p>
-                                            <div className="grid grid-cols-1 gap-2">
-                                                <div className="flex gap-2">
-                                                    <input type="number" className="flex-1 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry[`liq_prof_${i}`] || ''} onChange={(e) => setNewEntry({ ...newEntry, [`liq_prof_${i}`]: e.target.value })} />
-                                                    <select className="w-20 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold" value={newEntry[`liq_prof_${i}_currency`] || 'ARS'} onChange={(e) => setNewEntry({ ...newEntry, [`liq_prof_${i}_currency`]: e.target.value })}>
-                                                        <option value="ARS">ARS</option>
-                                                        <option value="USD">USD</option>
-                                                    </select>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <input type="number" placeholder="Monto Sec." className="flex-1 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px]" value={newEntry[`liq_prof_${i}_secondary`] || ''} onChange={(e) => setNewEntry({ ...newEntry, [`liq_prof_${i}_secondary`]: e.target.value })} />
-                                                    <select className="w-20 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold" value={newEntry[`liq_prof_${i}_currency_secondary`] || 'USD'} onChange={(e) => setNewEntry({ ...newEntry, [`liq_prof_${i}_currency_secondary`]: e.target.value })}>
-                                                        <option value="ARS">ARS</option>
-                                                        <option value="USD">USD</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-
-                                    <div className="p-4 bg-purple-50/50 dark:bg-purple-900/10 rounded-2xl border border-purple-100 dark:border-purple-900/30 space-y-4">
-                                        <p className="font-bold text-xs text-purple-800 dark:text-purple-400 flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Liq. Anestesista
-                                        </p>
-                                        <div className="flex gap-2">
-                                            <input type="number" className="flex-1 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.liq_anestesista || ''} onChange={(e) => setNewEntry({ ...newEntry, liq_anestesista: e.target.value })} />
-                                            <select className="w-20 p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold" value={newEntry.liq_anestesista_currency || 'ARS'} onChange={(e) => setNewEntry({ ...newEntry, liq_anestesista_currency: e.target.value })}>
-                                                <option value="ARS">ARS</option>
-                                                <option value="USD">USD</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-4 bg-orange-50/50 dark:bg-orange-900/10 rounded-2xl border border-orange-100 dark:border-orange-900/30 space-y-4">
-                                        <p className="font-bold text-xs text-orange-800 dark:text-orange-400 flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-orange-500" /> Retención COAT
-                                        </p>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Pesos</label>
-                                                <input type="number" className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.coat_pesos || ''} onChange={(e) => setNewEntry({ ...newEntry, coat_pesos: e.target.value })} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Dólares</label>
-                                                <input type="number" className="w-full p-2 border dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm" value={newEntry.coat_dolares || ''} onChange={(e) => setNewEntry({ ...newEntry, coat_dolares: e.target.value })} />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-4 sticky bottom-0 bg-white dark:bg-slate-900 pt-4 border-t dark:border-slate-800 mt-auto">
-                                <button onClick={() => setShowAddModal(false)} className="flex-1 py-4 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-all">Cancelar</button>
-                                <button onClick={handleCreateEntry} className="flex-1 py-4 bg-teal-600 text-white font-bold rounded-2xl hover:bg-teal-700 shadow-xl shadow-teal-200 dark:shadow-none transition-all flex items-center justify-center gap-2">
-                                    <Save size={20} /> Guardar Paciente
-                                </button>
-                            </div>
-                        </div>
-                    </ModalPortal>
-                )}
-
-                {/* Daily Comment Section (SCREEN VERSION - Interactive) */}
-                {
-                    selectedDate && (
-                        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 no-print animate-in fade-in slide-in-from-bottom-2">
-                            <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
-                                <FileText size={18} className="text-teal-500" /> Comentario del Día
-                            </h3>
-                            {isEditingComment ? (
-                                <div className="flex gap-2 items-start">
-                                    <textarea
-                                        value={dailyComment}
-                                        onChange={(e) => setDailyComment(e.target.value)}
-                                        className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900/20 focus:outline-none min-h-[80px] transition-all"
-                                        placeholder="Escribe un comentario global para este día..."
-                                        autoFocus
-                                    />
-                                    <div className="flex flex-col gap-2">
-                                        <button onClick={saveDailyComment} className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm" title="Guardar">
-                                            <Check size={20} />
-                                        </button>
-                                        <button onClick={() => { setIsEditingComment(false); fetchDailyComment(selectedDate); }} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="Cancelar">
-                                            <X size={20} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="flex justify-between items-start bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                                    <p className="text-slate-600 dark:text-slate-400 italic whitespace-pre-wrap break-words break-all overflow-hidden w-full">{dailyComment || 'Sin comentario asignado.'}</p>
-                                    {isAdmin && (
-                                        <button onClick={() => setIsEditingComment(true)} className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300 font-bold text-sm flex items-center gap-1 px-3 py-1 bg-teal-50 dark:bg-teal-900/30 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors ml-4 shrink-0">
-                                            <Edit size={16} /> Editar
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )
-                }
-
-                {/* VIEWS */}
-                <div className="print:hidden">
+                {/* VIEWS SYSTEM */}
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {view === 'years' && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
                             {getYears().map(year => (
-                                <button key={year} onClick={() => handleYearClick(year)} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md hover:border-teal-200 dark:hover:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/10 transition-all group flex flex-col items-center gap-3">
-                                    <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <Folder size={32} fill="currentColor" className="opacity-80" />
+                                <button key={year} onClick={() => handleYearClick(year)} className="premium-card p-6 flex flex-col items-center gap-4 group hover:border-teal-500/50 shadow-xl hover:shadow-2xl transition-all duration-300 active:scale-95 overflow-hidden">
+                                    <div className="w-20 h-20 bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 rounded-3xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                                        <Folder size={40} fill="currentColor" className="opacity-80" />
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 dark:text-slate-200 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">{year}</span>
+                                    <div className="text-center">
+                                        <span className="block text-2xl font-black text-slate-900 dark:text-white tracking-tighter">{year}</span>
+                                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-2 block">Carpeta Anual</span>
+                                    </div>
+                                    <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity"><Folder size={120} /></div>
                                 </button>
                             ))}
-                            {getYears().length === 0 && <div className="col-span-full text-center py-20 text-slate-400 dark:text-slate-500">No hay registros</div>}
                         </div>
                     )}
 
                     {view === 'months' && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                            {getMonths(selectedYear).map(monthIndex => (
-                                <button key={monthIndex} onClick={() => handleMonthClick(monthIndex)} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md hover:border-teal-200 dark:hover:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/10 transition-all group flex flex-col items-center gap-3">
-                                    <div className="w-16 h-16 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <Folder size={32} fill="currentColor" className="opacity-80" />
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                            {getMonths(selectedYear).map(mIdx => (
+                                <button key={mIdx} onClick={() => handleMonthClick(mIdx)} className="premium-card p-6 flex flex-col items-center gap-4 group hover:border-teal-500/50 shadow-xl hover:shadow-2xl transition-all duration-300 active:scale-95 overflow-hidden">
+                                    <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 text-teal-500 dark:text-teal-400 rounded-3xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                                        <Calendar size={40} fill="currentColor" className="opacity-80" />
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 dark:text-slate-200 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">{MONTH_NAMES[monthIndex]}</span>
+                                    <div className="text-center">
+                                        <span className="block text-xl font-black text-slate-900 dark:text-white tracking-tighter uppercase">{MONTH_NAMES[mIdx]}</span>
+                                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-2 block">{selectedYear}</span>
+                                    </div>
                                 </button>
                             ))}
-                            <button onClick={navigateUp} className="flex flex-col items-center justify-center p-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"><ArrowLeft size={24} /> Volver</button>
                         </div>
                     )}
 
                     {view === 'days' && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-4">
                             {getDays(selectedYear, selectedMonth).map(date => (
-                                <button key={date} onClick={() => handleDayClick(date)} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md hover:border-teal-200 dark:hover:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/10 transition-all group flex flex-col items-center gap-3">
-                                    <div className="w-16 h-16 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <FileText size={32} />
+                                <button key={date} onClick={() => handleDayClick(date)} className="premium-card p-4 flex flex-col items-center gap-2 group hover:border-teal-500 shadow-lg hover:shadow-2xl transition-all duration-300 active:scale-95">
+                                    <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl flex items-center justify-center font-black text-xl group-hover:bg-teal-600 group-hover:text-white transition-all shadow-inner">
+                                        {date.split('-')[2]}
                                     </div>
-                                    <span className="font-bold text-lg text-slate-700 dark:text-slate-200 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">{date.split('-')[2]}</span>
+                                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{MONTH_NAMES[selectedMonth].substring(0, 3)}</span>
                                 </button>
                             ))}
-                            <button onClick={navigateUp} className="flex flex-col items-center justify-center p-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"><ArrowLeft size={24} /> Volver</button>
                         </div>
                     )}
 
                     {view === 'table' && (
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse min-w-[2000px] print:min-w-0">
-                                    <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-bold tracking-wider">
-                                        <tr>
-                                            <th className={`px-4 py-3 border-b dark:border-slate-700 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 w-24 ${!isAdmin && 'opacity-30'}`}>Acciones</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700">Fecha (Caja)</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700">Paciente</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700">DNI</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700">Obra Social</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-teal-800 dark:text-teal-400 bg-teal-50/30 dark:bg-teal-900/10">Prof. 1</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-teal-800 dark:text-teal-400 bg-teal-50/30 dark:bg-teal-900/10">Prof. 2</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-teal-800 dark:text-teal-400 bg-teal-50/30 dark:bg-teal-900/10">Prof. 3</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-slate-700 dark:text-slate-300">Pago $</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 text-teal-700 dark:text-teal-400">Pago USD</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-teal-50/50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-200">Liq. P1</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-teal-50/50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-200">Liq. P2</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-teal-50/50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-200">Liq. P3</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-purple-50/30 dark:bg-purple-900/10 text-purple-900 dark:text-purple-300">Anest.</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-purple-50/50 dark:bg-purple-900/20 text-purple-900 dark:text-purple-200">Liq. Anest.</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-orange-50/50 dark:bg-orange-900/20 text-orange-900 dark:text-orange-200">Coat $</th>
-                                            <th className="px-4 py-3 border-b dark:border-slate-700 bg-orange-50/50 dark:bg-orange-900/20 text-orange-900 dark:text-orange-200">Coat USD</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="text-sm divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
-                                        {tableData.map((item) => {
-                                            const isEditing = editId === item.id;
-                                            return (
-                                                <tr key={item.id} className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors ${isEditing ? 'bg-teal-50/20 dark:bg-teal-900/20' : ''}`}>
-                                                    <td className={`px-2 py-3 border-r dark:border-slate-700 sticky left-0 bg-white dark:bg-slate-900 z-10 ${(isReadOnly || (!isAdmin && item.createdBy !== user?.email)) && 'opacity-30 pointer-events-none'}`}>
-                                                        {(!isReadOnly && (isAdmin || item.createdBy === user?.email)) && (
-                                                            isEditing ? (
-                                                                <div className="flex gap-1">
-                                                                    <button onClick={handleSave} className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg"><Check size={16} /></button>
-                                                                    <button onClick={handleCancelEdit} className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg"><X size={16} /></button>
+                        <div className="space-y-4 animate-in slide-in-from-bottom-6 duration-500">
+                            {/* COMMENT BOX */}
+                            <div className="premium-card p-4 border-l-4 border-l-teal-500 bg-teal-50/10 dark:bg-teal-400/5">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-[10px] font-black text-teal-600 dark:text-teal-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <FileText size={16} /> Bitácora del Día
+                                    </h3>
+                                    {isAdmin && !isEditingComment && (
+                                        <button onClick={() => setIsEditingComment(true)} className="text-[10px] font-black text-slate-400 hover:text-teal-600 uppercase tracking-widest transition-colors flex items-center gap-1"><Edit size={12} /> Editar</button>
+                                    )}
+                                </div>
+                                {isEditingComment ? (
+                                    <div className="flex flex-col gap-4">
+                                        <textarea value={dailyComment} onChange={(e) => setDailyComment(e.target.value)} className="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-6 text-sm font-medium focus:ring-4 focus:ring-teal-500/5 outline-none transition-all min-h-[120px]" placeholder="Escriba las observaciones del día..." autoFocus />
+                                        <div className="flex justify-end gap-3">
+                                            <button onClick={() => setIsEditingComment(false)} className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Descartar</button>
+                                            <button onClick={saveDailyComment} className="px-6 py-2 bg-teal-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-teal-500/20">Guardar Cambios</button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="text-slate-600 dark:text-slate-400 italic text-xs leading-relaxed whitespace-pre-wrap">{dailyComment || 'No hay observaciones registradas para este día.'}</p>
+                                )}
+                            </div>
+
+                            {/* SUMMARY CARDS */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="premium-card p-4 border-l-4 border-l-slate-400 dark:border-l-slate-600 relative overflow-hidden bg-white dark:bg-slate-900">
+                                    <div className="absolute -right-2 -top-2 text-slate-100 dark:text-slate-800/20 transform rotate-12 scale-100"><DollarSign size={48} /></div>
+                                    <h4 className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 relative">Ingreso Bruto ARS</h4>
+                                    <div className="text-xl font-black text-slate-900 dark:text-white tabular-nums relative">${formatMoney(tableData.reduce((s, i) => s + (Number(i.pesos) || 0), 0))}</div>
+                                </div>
+                                <div className="premium-card p-4 border-l-4 border-l-emerald-400 dark:border-l-emerald-600 relative overflow-hidden bg-white dark:bg-slate-900">
+                                    <div className="absolute -right-2 -top-2 text-emerald-50 dark:text-emerald-900/10 transform rotate-12 scale-100"><DollarSign size={48} /></div>
+                                    <h4 className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1 relative">Ingreso Bruto USD</h4>
+                                    <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums relative">U$D {formatMoney(tableData.reduce((s, i) => s + (Number(i.dolares) || 0), 0))}</div>
+                                </div>
+                                <div className="premium-card p-4 bg-slate-900 dark:bg-slate-950 border-l-4 border-l-teal-500 relative overflow-hidden text-white shadow-xl">
+                                    <div className="absolute -right-2 -top-2 text-white/5 transform rotate-12 scale-100"><TrendingUp size={48} /></div>
+                                    <h4 className="text-[9px] font-black text-teal-400/60 uppercase tracking-widest mb-1 relative">Neto COAT ARS</h4>
+                                    <div className="text-xl font-black tabular-nums relative">${formatMoney(tableData.reduce((s, i) => s + (Number(i.coat_pesos) || 0), 0))}</div>
+                                </div>
+                                <div className="premium-card p-4 bg-slate-900 dark:bg-slate-950 border-l-4 border-l-teal-500 relative overflow-hidden text-white shadow-xl">
+                                    <div className="absolute -right-2 -top-2 text-white/5 transform rotate-12 scale-100"><TrendingUp size={48} /></div>
+                                    <h4 className="text-[9px] font-black text-teal-400/60 uppercase tracking-widest mb-1 relative">Neto COAT USD</h4>
+                                    <div className="text-xl font-black tabular-nums relative">U$D {formatMoney(tableData.reduce((s, i) => s + (Number(i.coat_dolares) || 0), 0))}</div>
+                                </div>
+                            </div>
+
+                            {/* MAIN DATA TABLE */}
+                            <div className="premium-card overflow-hidden shadow-2xl border-none">
+                                <div className="overflow-x-auto scrollbar-premium">
+                                    <table className="w-full border-collapse min-w-[1000px]">
+                                        <thead>
+                                            <tr className="bg-slate-50 dark:bg-slate-900/80 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800">
+                                                <th className="px-2 py-2 sticky left-0 bg-slate-100 dark:bg-slate-950 z-30 w-24 border-r border-slate-200 dark:border-slate-800">Acciones</th>
+                                                <th className="px-3 py-3 text-left min-w-[200px]">Paciente / Referencia</th>
+                                                <th className="px-3 py-3 text-left">Obra Social</th>
+                                                <th className="px-3 py-3 text-center bg-teal-500/5 dark:bg-teal-400/5 text-teal-600 dark:text-teal-400">Equipo Médico</th>
+                                                <th className="px-3 py-3 text-right font-black text-slate-900 dark:text-white">Ingresos</th>
+                                                <th className="px-3 py-3 text-right font-black text-slate-900 dark:text-white">Liquidaciones Profs</th>
+                                                <th className="px-3 py-3 text-center">Anestesista</th>
+                                                <th className="px-3 py-3 text-right font-black text-orange-600 dark:text-orange-400 bg-orange-500/[0.03] dark:bg-orange-400/[0.03]">Neto COAT</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                            {tableData.map((item) => {
+                                                const isEditing = editId === item.id;
+                                                return (
+                                                    <tr key={item.id} className={`group hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors ${isEditing ? 'bg-teal-500/[0.05] dark:bg-teal-400/[0.05]' : ''}`}>
+                                                        <td className="px-2 py-2 sticky left-0 bg-white dark:bg-slate-950 group-hover:bg-slate-50 dark:group-hover:bg-slate-900 transition-colors z-20 border-r border-slate-100 dark:border-slate-800">
+                                                            <div className="flex gap-2 justify-center">
+                                                                {isEditing ? (
+                                                                    <>
+                                                                        <button onClick={handleSave} className="p-1.5 bg-teal-600 text-white rounded-lg shadow-lg shadow-teal-500/20 hover:scale-110 transition-all"><Check size={14} /></button>
+                                                                        <button onClick={handleCancelEdit} className="p-1.5 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg hover:scale-110 transition-all"><X size={14} /></button>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <button onClick={() => handleEditClick(item)} disabled={isReadOnly || (!isAdmin && item.createdBy !== user?.email)} className="p-1.5 text-slate-400 hover:text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-all disabled:opacity-0"><Edit2 size={14} /></button>
+                                                                        <button onClick={() => handleDelete(item)} disabled={isReadOnly || (!isAdmin && item.createdBy !== user?.email)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all disabled:opacity-0"><Trash2 size={14} /></button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        <td className="px-3 py-2.5">
+                                                            {isEditing ? (
+                                                                <div className="space-y-1">
+                                                                    <input value={editFormData.paciente} onChange={(e) => handleChange('paciente', e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs font-bold outline-none" />
+                                                                    <input value={editFormData.dni} onChange={(e) => handleChange('dni', e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-[9px] font-black outline-none" placeholder="DNI" />
                                                                 </div>
                                                             ) : (
-                                                                <div className="flex gap-1">
-                                                                    <button onClick={() => handleEditClick(item)} className="p-1.5 text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg"><Edit2 size={16} /></button>
-                                                                    <button onClick={() => handleDelete(item)} className="p-1.5 text-slate-300 dark:text-slate-600 hover:text-red-500 rounded-lg"><Trash2 size={16} /></button>
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-black text-slate-900 dark:text-white uppercase text-xs">{item.paciente}</span>
+                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{item.dni || 'DNI No Registrado'}</span>
                                                                 </div>
-                                                            )
-                                                        )}
-                                                    </td>
+                                                            )}
+                                                        </td>
 
-                                                    <td className="px-4 py-3 font-mono text-xs dark:text-slate-400">{item.fecha}</td>
+                                                        <td className="px-3 py-2.5">
+                                                            {isEditing ? (
+                                                                <input value={editFormData.obra_social} onChange={(e) => handleChange('obra_social', e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-[10px] font-bold outline-none" />
+                                                            ) : (
+                                                                <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-md text-[9px] font-black uppercase tracking-widest">{item.obra_social}</span>
+                                                            )}
+                                                        </td>
 
-                                                    {/* Generic Field Render for Brevity */}
-                                                    {['paciente', 'dni', 'obra_social'].map(f => (
-                                                        <td key={f} className="px-4 py-3">{isEditing ? <input value={editFormData[f]} onChange={(e) => handleChange(f, e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700 rounded px-1 text-slate-900 dark:text-slate-100 focus:outline-none" /> : item[f]}</td>
-                                                    ))}
-
-                                                    <td className="px-4 py-3">{item.prof_1}</td>
-                                                    <td className="px-4 py-3">{item.prof_2}</td>
-                                                    <td className="px-4 py-3">{item.prof_3}</td>
-
-                                                    <td className="px-4 py-3 text-right">{isEditing ? <input type="number" value={editFormData.pesos} onChange={(e) => handleChange('pesos', e.target.value)} className="w-20 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-right px-1" /> : `$${formatMoney(item.pesos)}`}</td>
-                                                    <td className="px-4 py-3 text-right">{isEditing ? <input type="number" value={editFormData.dolares} onChange={(e) => handleChange('dolares', e.target.value)} className="w-20 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-right px-1" /> : `USD ${formatMoney(item.dolares)}`}</td>
-
-                                                    {/* Simplified editing for liq cols */}
-                                                    <td className="px-4 py-3 text-right">
-                                                        {isEditing ? (
-                                                            <div className="flex flex-col gap-1">
-                                                                <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_1 || 0} onChange={(e) => handleChange('liq_prof_1', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-xs px-1" />
-                                                                    <select value={editFormData.liq_prof_1_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_1_currency', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
-                                                                        <option value="ARS">ARS</option>
-                                                                        <option value="USD">USD</option>
-                                                                    </select>
-                                                                </div>
-                                                                <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_1_secondary || 0} onChange={(e) => handleChange('liq_prof_1_secondary', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px] px-1" />
-                                                                    <select value={editFormData.liq_prof_1_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_1_currency_secondary', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
-                                                                        <option value="ARS">ARS</option>
-                                                                        <option value="USD">USD</option>
-                                                                    </select>
-                                                                </div>
+                                                        <td className="px-3 py-2.5">
+                                                            <div className="flex flex-col gap-0.5 items-center">
+                                                                {[item.prof_1, item.prof_2, item.prof_3].filter(Boolean).map((p, i) => (
+                                                                    <span key={i} className="text-[9px] font-black text-teal-600 dark:text-teal-400 uppercase tracking-tight whitespace-nowrap bg-teal-500/5 px-2 py-0.2 rounded-full">{p}</span>
+                                                                ))}
                                                             </div>
-                                                        ) : (
+                                                        </td>
+
+                                                        <td className="px-3 py-2.5 text-right font-mono font-black tabular-nums">
                                                             <div className="flex flex-col">
-                                                                <span>{item.liq_prof_1_currency === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_1)}</span>
-                                                                {item.liq_prof_1_secondary > 0 && <span className="text-[10px] opacity-60">{(item.liq_prof_1_currency_secondary || 'USD') === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_1_secondary)}</span>}
+                                                                {isEditing ? (
+                                                                    <>
+                                                                        <div className="flex items-center justify-end gap-1"><span className="text-[9px] text-slate-400">$</span><input type="number" value={editFormData.pesos} onChange={(e) => handleChange('pesos', e.target.value)} className="w-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-0.5 text-[10px] text-right" /></div>
+                                                                        <div className="flex items-center justify-end gap-1"><span className="text-[9px] text-slate-400">U$D</span><input type="number" value={editFormData.dolares} onChange={(e) => handleChange('dolares', e.target.value)} className="w-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-0.5 text-[10px] text-right" /></div>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="text-slate-900 dark:text-white text-xs">${formatMoney(item.pesos)}</span>
+                                                                        {item.dolares > 0 && <span className="text-emerald-500 text-[10px]">U$D {formatMoney(item.dolares)}</span>}
+                                                                    </>
+                                                                )}
                                                             </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        {isEditing ? (
-                                                            <div className="flex flex-col gap-1">
-                                                                <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_2 || 0} onChange={(e) => handleChange('liq_prof_2', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-xs px-1" />
-                                                                    <select value={editFormData.liq_prof_2_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_2_currency', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
-                                                                        <option value="ARS">ARS</option>
-                                                                        <option value="USD">USD</option>
-                                                                    </select>
-                                                                </div>
-                                                                <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_2_secondary || 0} onChange={(e) => handleChange('liq_prof_2_secondary', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px] px-1" />
-                                                                    <select value={editFormData.liq_prof_2_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_2_currency_secondary', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
-                                                                        <option value="ARS">ARS</option>
-                                                                        <option value="USD">USD</option>
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex flex-col">
-                                                                <span>{item.liq_prof_2_currency === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_2)}</span>
-                                                                {item.liq_prof_2_secondary > 0 && <span className="text-[10px] opacity-60">{(item.liq_prof_2_currency_secondary || 'USD') === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_2_secondary)}</span>}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        {isEditing ? (
-                                                            <div className="flex flex-col gap-1">
-                                                                <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_3 || 0} onChange={(e) => handleChange('liq_prof_3', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-xs px-1" />
-                                                                    <select value={editFormData.liq_prof_3_currency || 'ARS'} onChange={(e) => handleChange('liq_prof_3_currency', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
-                                                                        <option value="ARS">ARS</option>
-                                                                        <option value="USD">USD</option>
-                                                                    </select>
-                                                                </div>
-                                                                <div className="flex gap-1">
-                                                                    <input type="number" value={editFormData.liq_prof_3_secondary || 0} onChange={(e) => handleChange('liq_prof_3_secondary', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px] px-1" />
-                                                                    <select value={editFormData.liq_prof_3_currency_secondary || 'USD'} onChange={(e) => handleChange('liq_prof_3_currency_secondary', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
-                                                                        <option value="ARS">ARS</option>
-                                                                        <option value="USD">USD</option>
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex flex-col">
-                                                                <span>{item.liq_prof_3_currency === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_3)}</span>
-                                                                {item.liq_prof_3_secondary > 0 && <span className="text-[10px] opacity-60">{(item.liq_prof_3_currency_secondary || 'USD') === 'USD' ? 'USD ' : '$'}{formatMoney(item.liq_prof_3_secondary)}</span>}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        {isEditing ? <input value={editFormData.anestesista || ''} onChange={(e) => handleChange('anestesista', e.target.value)} className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded px-1" /> : item.anestesista}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        {isEditing ? (
-                                                            <div className="flex gap-1">
-                                                                <input type="number" value={editFormData.liq_anestesista || 0} onChange={(e) => handleChange('liq_anestesista', e.target.value)} className="w-16 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-xs px-1" />
-                                                                <select value={editFormData.liq_anestesista_currency || 'ARS'} onChange={(e) => handleChange('liq_anestesista_currency', e.target.value)} className="w-12 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-[10px]">
-                                                                    <option value="ARS">ARS</option>
-                                                                    <option value="USD">USD</option>
-                                                                </select>
-                                                            </div>
-                                                        ) : (
-                                                            `${item.liq_anestesista_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_anestesista)}`
-                                                        )}
-                                                    </td>
+                                                        </td>
 
-                                                    <td className="px-4 py-3 text-right text-orange-800 dark:text-orange-400 font-medium">{isEditing ? <input type="number" value={editFormData.coat_pesos} onChange={(e) => handleChange('coat_pesos', e.target.value)} className="w-20 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-right px-1" /> : `$${formatMoney(item.coat_pesos)}`}</td>
-                                                    <td className="px-4 py-3 text-right text-orange-800 dark:text-orange-400 font-medium">{isEditing ? <input type="number" value={editFormData.coat_dolares} onChange={(e) => handleChange('coat_dolares', e.target.value)} className="w-20 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded text-right px-1" /> : `USD ${formatMoney(item.coat_dolares)}`}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                                        <td className="px-3 py-2.5 text-right font-mono font-black tabular-nums text-slate-500 dark:text-slate-400 text-[10px]">
+                                                            <div className="flex flex-col gap-0.5">
+                                                                {[1, 2, 3].map(n => item[`liq_prof_${n}`] > 0 && (
+                                                                    <div key={n} className="flex flex-col items-end border-b border-slate-100 dark:border-slate-800/50 pb-0.5 mb-0.5 last:border-0">
+                                                                        <span>{item[`liq_prof_${n}_currency`] === 'USD' ? 'U$D' : '$'} {formatMoney(item[`liq_prof_${n}`])}</span>
+                                                                        {item[`liq_prof_${n}_secondary`] > 0 && <span className="text-[8px] opacity-60">/ {item[`liq_prof_${n}_currency_secondary`] === 'USD' ? 'U$D' : '$'} {formatMoney(item[`liq_prof_${n}_secondary`])}</span>}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+
+                                                        <td className="px-3 py-2.5 text-center">
+                                                            <div className="flex flex-col items-center">
+                                                                <span className="text-[9px] font-black text-purple-600 dark:text-purple-400 uppercase mb-0.5">{item.anestesista}</span>
+                                                                {item.liq_anestesista > 0 && <span className="font-mono text-[10px] font-black text-slate-400">({item.liq_anestesista_currency === 'USD' ? 'U$D' : '$'}{formatMoney(item.liq_anestesista)})</span>}
+                                                            </div>
+                                                        </td>
+
+                                                        <td className="px-3 py-2.5 text-right font-mono font-black tabular-nums bg-orange-500/[0.02] dark:bg-orange-400/[0.02]">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-orange-600 dark:text-orange-400 text-xs">${formatMoney(item.coat_pesos)}</span>
+                                                                {item.coat_dolares > 0 && <span className="text-orange-500/70 text-[10px]">U$D {formatMoney(item.coat_dolares)}</span>}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr className="bg-slate-900 dark:bg-slate-950 text-white font-mono font-black">
+                                                <td colSpan={7} className="px-6 py-4 text-right text-[9px] uppercase tracking-[0.3em] text-teal-400">Consolidado Final de Operaciones</td>
+                                                <td className="px-4 py-4 text-right">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-xl">${formatMoney(tableData.reduce((a, b) => a + (Number(b.coat_pesos) || 0), 0))}</span>
+                                                        <span className="text-[10px] text-orange-400">U$D {formatMoney(tableData.reduce((a, b) => a + (Number(b.coat_dolares) || 0), 0))}</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     )}
                 </div>
-            </div> {/* End screen-content */}
-            <style>{printStyle}</style>
-            <div className="fixed bottom-1 left-2 text-[10px] text-slate-300 dark:text-slate-600 font-mono pointer-events-none z-50 no-print">
-                Ultima actualización: 26/01/2026 - 19:53
             </div>
-        </div >
+
+            {/* ADD ENTRY MODAL (PREMIUM) */}
+            {showAddModal && (
+                <ModalPortal onClose={() => setShowAddModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 p-0 rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-hidden border border-white/20 dark:border-slate-800 animate-in zoom-in-95 duration-300 flex flex-col no-print">
+                        <div className="p-6 bg-slate-900 dark:bg-black relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                            <div className="relative z-10 flex justify-between items-center">
+                                <div>
+                                    <h3 className="text-3xl font-black text-white tracking-tight flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-teal-600 rounded-2xl flex items-center justify-center shadow-xl shadow-teal-500/20">
+                                            <Plus size={24} />
+                                        </div>
+                                        Nuevo Registro
+                                    </h3>
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mt-2 ml-16">{selectedDate}</p>
+                                </div>
+                                <button onClick={() => setShowAddModal(false)} className="w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-2xl flex items-center justify-center transition-all active:scale-90"><X size={24} /></button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-premium">
+                            <div className="grid grid-cols-12 gap-8">
+                                <div className="col-span-12 md:col-span-6">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Paciente / Referencia</label>
+                                    <input className="input-premium w-full text-lg" placeholder="Nombre completo..." value={newEntry.paciente || ''} onChange={(e) => setNewEntry({ ...newEntry, paciente: e.target.value })} />
+                                </div>
+                                <div className="col-span-12 md:col-span-3">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">DNI</label>
+                                    <input className="input-premium w-full font-mono" placeholder="Identificación..." value={newEntry.dni || ''} onChange={(e) => setNewEntry({ ...newEntry, dni: e.target.value })} />
+                                </div>
+                                <div className="col-span-12 md:col-span-3">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Obra Social</label>
+                                    <input className="input-premium w-full uppercase" placeholder="Sigla..." value={newEntry.obra_social || ''} onChange={(e) => setNewEntry({ ...newEntry, obra_social: e.target.value })} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                {[1, 2, 3].map(i => (
+                                    <div key={i}>
+                                        <label className="block text-[10px] font-black text-teal-600 dark:text-teal-400 uppercase tracking-widest mb-3 ml-1">Médico {i}</label>
+                                        <select className="input-premium w-full appearance-none cursor-pointer text-xs" value={newEntry[`prof_${i}`] || ''} onChange={(e) => setNewEntry({ ...newEntry, [`prof_${i}`]: e.target.value })}>
+                                            <option value="">Seleccionar...</option>
+                                            {profesionales.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                                        </select>
+                                    </div>
+                                ))}
+                                <div>
+                                    <label className="block text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-widest mb-3 ml-1">Anestesista</label>
+                                    <select className="input-premium w-full appearance-none cursor-pointer text-xs" value={newEntry.anestesista || ''} onChange={(e) => setNewEntry({ ...newEntry, anestesista: e.target.value })}>
+                                        <option value="">Seleccionar...</option>
+                                        {anestesistas.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="premium-card p-8 bg-slate-50 dark:bg-slate-800/50 border-dashed border-2">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Monto Cobrado (ARS)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-2xl">$</span>
+                                            <input type="number" className="input-premium w-full pl-12 text-3xl font-black tabular-nums" placeholder="0.00" value={newEntry.pesos || ''} onChange={(e) => setNewEntry({ ...newEntry, pesos: e.target.value })} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Monto Cobrado (USD)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-2xl">U$D</span>
+                                            <input type="number" className="input-premium w-full pl-20 text-3xl font-black tabular-nums text-teal-600 dark:text-teal-400" placeholder="0.00" value={newEntry.dolares || ''} onChange={(e) => setNewEntry({ ...newEntry, dolares: e.target.value })} />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-8 flex items-center gap-4 text-slate-400">
+                                    <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm"><CircleHelp size={20} /></div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">Las liquidaciones individuales se calcularán automáticamente respetando los coeficientes vigentes para cada profesional.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-10 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-6">
+                            <button onClick={() => setShowAddModal(false)} className="px-8 py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">Cerrar</button>
+                            <button onClick={handleCreateEntry} className="px-12 py-4 bg-teal-600 text-white rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest shadow-xl shadow-teal-500/20 hover:bg-teal-700 active:scale-95 transition-all flex items-center gap-3"><Save size={18} /> Guardar Registro</button>
+                        </div>
+                    </div>
+                </ModalPortal>
+            )}
+
+            <style>{printStyle}</style>
+            <div className="fixed bottom-2 right-4 text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em] pointer-events-none z-50 no-print">
+                COAT Surgical Financial Management • History Engine v3.0
+            </div>
+        </div>
     );
 };
 
 export default HistorialCaja;
+

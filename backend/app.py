@@ -9,9 +9,19 @@ from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
+import json
 
 # Database configuration
 db_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'caja_v3.db')
+
+# File Storage Configuration
+UPLOAD_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'uploads')
+UPLOAD_FOLDER_FIRMAS = os.path.join(UPLOAD_ROOT, 'firmas')
+UPLOAD_FOLDER_CONSENTS = os.path.join(UPLOAD_ROOT, 'consentimientos')
+
+for folder in [UPLOAD_ROOT, UPLOAD_FOLDER_FIRMAS, UPLOAD_FOLDER_CONSENTS]:
+    if not os.path.exists(folder):
+        os.makedirs(folder)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -64,10 +74,78 @@ class DailyComment(db.Model):
     date = db.Column(db.String(10), primary_key=True)
     comment = db.Column(db.Text)
 
+class ConsentMapping(db.Model):
+    code = db.Column(db.String(20), primary_key=True)
+    name = db.Column(db.String(100))
+    adult_file = db.Column(db.String(200))
+    child_file = db.Column(db.String(200))
+
+class OrdenInternacion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    profesional = db.Column(db.String(100))
+    afiliado = db.Column(db.String(100))
+    obraSocial = db.Column(db.String(100))
+    numeroAfiliado = db.Column(db.String(50))
+    dni = db.Column(db.String(20))
+    edad = db.Column(db.String(10))
+    telefono = db.Column(db.String(50))
+    habitacion = db.Column(db.String(50))
+    tutor = db.Column(db.String(100))
+    codigosCirugia = db.Column(db.Text) # JSON string
+    tipoAnestesia = db.Column(db.String(50))
+    fechaCirugia = db.Column(db.String(20))
+    horaCirugia = db.Column(db.String(20))
+    salaCirugia = db.Column(db.String(50))
+    anotacionCalendario = db.Column(db.Text)
+    incluyeMaterial = db.Column(db.Boolean, default=False)
+    descripcionMaterial = db.Column(db.Text)
+    diagnostico = db.Column(db.Text)
+    observaciones = db.Column(db.Text)
+    suspendida = db.Column(db.Boolean, default=False)
+    fechaDocumento = db.Column(db.String(20))
+    status = db.Column(db.String(50))
+    auditedAt = db.Column(db.String(50))
+    updatedAt = db.Column(db.String(50))
+    createdAt = db.Column(db.String(50))
+    userId = db.Column(db.String(100))
+
 with app.app_context():
     db.create_all()
+    # Initialize defaults if empty
+    if not AppConfig.query.get('admin_pin'):
+        db.session.add(AppConfig(key='admin_pin', value='1234'))
+        db.session.commit()
 
-@app.route('/profesionales', methods=['GET', 'POST'])
+@app.route('/get-consent-mappings', methods=['GET'])
+def get_consent_mappings():
+    mappings = ConsentMapping.query.all()
+    return jsonify([{
+        "code": m.code,
+        "name": m.name,
+        "adult_file": m.adult_file,
+        "child_file": m.child_file
+    } for m in mappings])
+
+@app.route('/save-consent-mapping', methods=['POST'])
+def save_consent_mapping():
+    data = request.json
+    code = data.get('code')
+    if not code:
+        return jsonify({"status": "error", "message": "Code is required"}), 400
+    
+    mapping = ConsentMapping.query.get(code)
+    if not mapping:
+        mapping = ConsentMapping(code=code)
+        db.session.add(mapping)
+    
+    mapping.name = data.get('name', mapping.name)
+    mapping.adult_file = data.get('adult_file', mapping.adult_file)
+    mapping.child_file = data.get('child_file', mapping.child_file)
+    
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+@app.route('/data/profesionales', methods=['GET', 'POST'])
 def handle_profesionales():
     if request.method == 'POST':
         data = request.json
@@ -81,7 +159,7 @@ def handle_profesionales():
     profs = Profesional.query.all()
     return jsonify([{"id": p.id, "nombre": p.nombre, "categoria": p.categoria} for p in profs])
 
-@app.route('/profesionales/<int:id>', methods=['DELETE'])
+@app.route('/data/profesionales/<int:id>', methods=['DELETE'])
 def delete_profesional(id):
     try:
         prof = Profesional.query.get(id)
@@ -93,7 +171,7 @@ def delete_profesional(id):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
-@app.route('/guardar-caja', methods=['POST'])
+@app.route('/data/caja', methods=['POST'])
 def guardar_caja():
     data = request.json
     try:
@@ -232,7 +310,7 @@ def get_liquidacion(profesional):
 
 # --- New Endpoints for History (CRUD) ---
 
-@app.route('/caja', methods=['GET'])
+@app.route('/data/caja', methods=['GET'])
 def get_caja_history():
     date_str = request.args.get('date')
     query = CajaDiaria.query
@@ -293,7 +371,7 @@ def get_caja_history():
         })
     return jsonify(res)
 
-@app.route('/caja/<int:id>', methods=['PUT'])
+@app.route('/data/caja/<int:id>', methods=['PUT'])
 def update_caja_entry(id):
     data = request.json
     entry = CajaDiaria.query.get(id)
@@ -340,7 +418,7 @@ def update_caja_entry(id):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
-@app.route('/caja/<int:id>', methods=['DELETE'])
+@app.route('/data/caja/<int:id>', methods=['DELETE'])
 def delete_caja_entry(id):
     try:
         entry = CajaDiaria.query.get(id)
@@ -352,7 +430,7 @@ def delete_caja_entry(id):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
-@app.route('/caja/dia/<string:date_str>', methods=['DELETE'])
+@app.route('/data/caja/dia/<string:date_str>', methods=['DELETE'])
 def delete_caja_day(date_str):
     try:
         date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -367,6 +445,69 @@ def delete_caja_day(date_str):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 400
+
+# --- New Endpoints for Ordenes Internacion ---
+
+@app.route('/data/ordenes_internacion', methods=['GET', 'POST'])
+def handle_ordenes_internacion():
+    if request.method == 'POST':
+        data = request.json
+        try:
+            # Handle JSON serialization for codigosCirugia
+            if 'codigosCirugia' in data and not isinstance(data['codigosCirugia'], str):
+                data['codigosCirugia'] = json.dumps(data['codigosCirugia'])
+            
+            orden = OrdenInternacion(**data)
+            db.session.add(orden)
+            db.session.commit()
+            return jsonify({"status": "success", "id": orden.id}), 201
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 400
+    
+    ordenes = OrdenInternacion.query.all()
+    res = []
+    for o in ordenes:
+        o_dict = {column.name: getattr(o, column.name) for column in o.__table__.columns}
+        # Deserialize JSON for codigosCirugia
+        if o_dict.get('codigosCirugia'):
+            try:
+                o_dict['codigosCirugia'] = json.loads(o_dict['codigosCirugia'])
+            except:
+                pass
+        res.append(o_dict)
+    return jsonify(res)
+
+@app.route('/data/ordenes_internacion/<int:id>', methods=['GET', 'PUT', 'DELETE'])
+def handle_orden_detail(id):
+    orden = OrdenInternacion.query.get(id)
+    if not orden:
+        return jsonify({"status": "error", "message": "Orden no encontrada"}), 404
+        
+    if request.method == 'GET':
+        o_dict = {column.name: getattr(orden, column.name) for column in orden.__table__.columns}
+        if o_dict.get('codigosCirugia'):
+            try: o_dict['codigosCirugia'] = json.loads(o_dict['codigosCirugia'])
+            except: pass
+        return jsonify(o_dict)
+        
+    elif request.method == 'PUT':
+        data = request.json
+        try:
+            if 'codigosCirugia' in data and not isinstance(data['codigosCirugia'], str):
+                data['codigosCirugia'] = json.dumps(data['codigosCirugia'])
+                
+            for key, value in data.items():
+                if hasattr(orden, key):
+                    setattr(orden, key, value)
+            db.session.commit()
+            return jsonify({"status": "success"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 400
+            
+    elif request.method == 'DELETE':
+        db.session.delete(orden)
+        db.session.commit()
+        return jsonify({"status": "success"})
 
 # --- CONFIG & DAILY COMMENT ---
 
@@ -474,14 +615,46 @@ def handle_notification_config():
         config = AppConfig.query.get('notification_emails')
         return jsonify({'emails': config.value if config else 'emmanuel.ag92@gmail.com'}), 200
 
-def init_defaults():
-    with app.app_context():
-        # Ensure default PIN exists
-        if not AppConfig.query.get('admin_pin'):
-            db.session.add(AppConfig(key='admin_pin', value='1234'))
-            db.session.commit()
 
-init_defaults()
+
+@app.route('/upload-signature', methods=['POST'])
+def upload_signature():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file part"}), 400
+    file = request.files['file']
+    filename = request.form.get('filename')
+    if not filename:
+        return jsonify({"status": "error", "message": "Filename not provided"}), 400
+    
+    # Secure filename and save to frontend public/firmas
+    # Since we are in the same parent dir, we can go up and into frontend
+    target_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'frontend', 'public', 'firmas', filename)
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    file.save(target_path)
+    return jsonify({"status": "success", "message": f"Firma {filename} guardada"}), 200
+
+@app.route('/upload-consent', methods=['POST'])
+def upload_consent():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file part"}), 400
+    file = request.files['file']
+    filename = request.form.get('filename')
+    if not filename:
+        return jsonify({"status": "error", "message": "Filename not provided"}), 400
+    
+    target_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'frontend', 'public', 'consentimientos', filename)
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    file.save(target_path)
+    return jsonify({"status": "success", "message": f"Consentimiento {filename} guardado"}), 200
+
+@app.route('/list-files/<type>', methods=['GET'])
+def list_files(type):
+    folder = 'firmas' if type == 'signatures' else 'consentimientos'
+    path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'frontend', 'public', folder)
+    if not os.path.exists(path):
+        return jsonify([])
+    files = os.listdir(path)
+    return jsonify(files)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True, port=5000)

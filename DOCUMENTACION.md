@@ -4,82 +4,48 @@ Este documento explica de manera detallada el funcionamiento de cada módulo de 
 
 ---
 
-## 1. Módulo de Caja (Caja Diaria) 💰
-Es el corazón de la aplicación. Aquí se registran los ingresos por cada cirugía realizada.
+## 💰 1. Módulo de Caja (Caja Diaria)
+Es el núcleo financiero de la aplicación. Permite liquidar honorarios entre múltiples médicos de forma inmediata.
 
-- **Carga de Datos**: Se ingresan los datos del paciente (Nombre, DNI, Obra Social).
-- **Honorarios Médicos**: Permite asignar pagos hasta a 3 profesionales por cirugía.
-  - El sistema calcula automáticamente el porcentaje para cada médico.
-  - Soporta pagos en **Pesos (ARS)** y **Dólares (USD)**.
-- **Anestesista**: Campo específico para registrar la liquidación del anestesiólogo.
-- **Saldo COAT**: El sistema calcula automáticamente el resto que queda para la institución (COAT) después de restar los honorarios profesionales.
-- **Cierre de Caja**: Al presionar "Cerrar Caja", los datos se guardan en el historial y se limpia el formulario para un nuevo día.
+- **Multiprofesional (1 a 3)**: Puedes asignar la cirugía a 1, 2 o 3 profesionales. El sistema permite dividir los honorarios de forma equitativa o manual.
+- **Doble Divisa (ARS/USD)**: Maneja balances independientes en Pesos y Dólares. El cierre de caja muestra ambos totales por separado.
+- **Saldo COAT**: Se calcula restando los honorarios profesionales del total recibido (`Total - Honorarios = Saldo COAT`).
+- **Cierre de Caja**: Guarda el día en el historial y reinicia el formulario.
 
 ---
 
-## 2. Módulo de Historial 📜
-Permite auditar y revisar todos los registros guardados anteriormente.
+## 📋 2. Módulo de Órdenes (Surgical Orders)
+Automatiza la generación de pedidos de internación y consentimientos.
 
-- **Búsqueda por Fecha**: Se pueden filtrar los registros por día.
-- **Seguridad (PIN)**: Para editar o eliminar un registro del historial, el sistema solicitará un **PIN de seguridad** (personalizable por cada usuario).
-- **Resumen Diario**: Muestra los totales acumulados de ingresos en Pesos y Dólares del día seleccionado.
-
----
-
-## 3. Módulo de Liquidaciones 📄
-Diseñado para la rendición de cuentas a los profesionales al finalizar un periodo (mensual o quincenal).
-
-- **Generación de Planillas**: Agrupa todas las cirugías de un mes específico para un profesional.
-- **Gestión de Deducciones**: Permite agregar "extras" (ej. gastos de materiales) o "deducciones" (ej. pagos adelantados) con fecha y detalle.
-- **Exportación**:
-  - **Planilla General**: Vista resumida de todas las cirugías del mes.
-  - **Recibo Individual**: Genera un documento PDF formal con el detalle de lo que el profesional debe percibir.
-  - **Excel**: Permite descargar los datos para uso contable externo.
+- **Buscador Inteligente**: Al poner un código, el sistema trae el nombre automáticamente si existe en el catálogo o en tus asociaciones personalizadas.
+- **Firmas Automáticas**: El sistema inserta la firma del profesional seleccionado (si el archivo PNG está registrado en el sistema).
+- **Consentimientos Dinámicos**: Los botones de "Adulto" y "Menor" se activan si la cirugía tiene PDFs vinculados en el Panel Admin.
 
 ---
 
-## 4. Módulo de Profesionales 👥
-Es el catálogo maestro de los médicos que operan en la institución.
+## ⚙️ 3. Panel de Administración y Archivos
+Controla la "inteligencia" y los recursos de la App.
 
-- **Alta y Baja**: Permite agregar nuevos profesionales o eliminar los que ya no están activos.
-- **Categorías**: Se clasifican por especialidad o rol (ej. Anestesista).
-- **Matriz de Liquidaciones**: Una vista avanzada que muestra el estado de las liquidaciones de todos los profesionales de un mes en una sola pantalla.
-
----
-
-## 5. Módulo de Órdenes (Cirugías) 📋
-Gestiona la documentación previa a la cirugía.
-
-- **Órdenes de Internación**: Formulario para crear pedidos de cirugía.
-- **Previsualización**: Genera una vista previa del documento tal cual se imprimirá.
-- **Estado**: Permite dar seguimiento a las órdenes pendientes y realizadas.
+- **Gestión de Archivos**: Lista todas las firmas y consentimientos disponibles. 
+- **Mapeo de Consentimientos**: Permite vincular códigos de cirugía con archivos PDF específicos y nombres personalizados.
+- **Roles y Permisos**: Define quién puede editar, ver o borrar datos (SuperAdmin, Administrador, Viewer).
 
 ---
 
-## 6. Módulo de Notas 📝
-Sistema de comunicación y recordatorios internos.
-
-- **Recordatorios**: Tareas pendientes que aparecen en el panel principal.
-- **Notas Compartidas**: Permite dejar mensajes para otros administradores o usuarios del sistema.
-- **Notificaciones**: El icono de la campana indica si hay notas nuevas sin leer.
-
----
-
-## 7. Módulo de Sistema (Administración) ⚙️
-Control total de la aplicación.
-
-- **Gestión de Accesos**: El administrador puede autorizar nuevos correos electrónicos para que ingresen al sistema.
+## 🔒 4. Seguridad (PIN y Roles)
+- **PIN de Seguridad**: Cada usuario debe configurar un PIN en su perfil. Es obligatorio para **Editar o Borrar** registros del historial.
 - **Roles**:
-  - **SuperAdmin**: Control total.
-  - **Administrador**: Puede editar caja e historial.
-  - **Viewer (Invitado)**: Solo puede ver los datos, sin permiso para editar o borrar.
-- **Configuración de Seguridad**: Cada usuario puede cambiar su contraseña, su email y su **PIN de seguridad** desde el menú de usuario (icono con iniciales abajo a la izquierda).
+  - **SuperAdmin**: Control total y gestión de archivos.
+  - **Administrador**: Gestión diaria de caja y órdenes.
+  - **Viewer**: Solo lectura.
 
 ---
 
-## Tips de Rendimiento ⚡
-- **Modo PC Antigua**: Si la aplicación se siente lenta (especialmente en equipos con Windows 7), activa el **"Modo PC Antigua"** en el menú de usuario. Esto desactivará efectos visuales pesados para que el sistema vuele.
-- **Atajos**: Usa la tecla `Enter` para moverte rápido entre campos en el formulario de caja.
+## 🚀 5. Sincronización de Nuevos Archivos
+Para añadir una nueva firma o consentimiento:
+1. Pela el archivo en `frontend/public/firmas/` o `consentimientos/`.
+2. Ejecuta el despliegue a Firebase.
+3. Registra el nombre del archivo en el Panel Admin (o pídeme que lo registre yo).
 
 ---
-*Documentación generada el 25 de Abril, 2026.*
+*Documentación actualizada: 25 de Abril, 2026.*

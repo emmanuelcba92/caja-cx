@@ -1447,7 +1447,7 @@ const LiquidacionView = () => {
             )}
 
             {showReceipt ? (
-                <div className="bg-white min-h-screen p-8 print:hidden animate-in fade-in duration-300 relative force-light-preview">
+                <div className="bg-slate-50 dark:bg-slate-950 min-h-screen p-8 print:hidden animate-in fade-in duration-300 relative force-light-preview">
                     <div className="flex gap-4 mb-8 border-b border-slate-100 dark:border-slate-800 pb-4">
                         <button onClick={() => setShowReceipt(false)} className="flex items-center gap-2 px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 font-bold transition-colors">
                             <Search size={16} /> Volver a Liquidación
@@ -1789,7 +1789,7 @@ const LiquidacionView = () => {
                                     <label className="block text-xs font-bold text-teal-600 dark:text-teal-400 uppercase mb-2 ml-1">Total Abonado</label>
                                     <input
                                         type="number"
-                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-teal-100 dark:border-teal-800 rounded-xl font-bold text-teal-900 dark:text-teal-100 text-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
+                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-teal-100 dark:border-teal-800 rounded-xl font-bold text-teal-900 dark:teal-100 text-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
                                         placeholder="Monto"
                                         value={manualForm.totalPayment}
                                         onChange={(e) => setManualForm({ ...manualForm, totalPayment: e.target.value })}
