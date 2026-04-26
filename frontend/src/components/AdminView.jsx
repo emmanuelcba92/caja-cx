@@ -404,7 +404,7 @@ const AdminView = () => {
     };
 
     useEffect(() => {
-        if (activeTab === 'dashboard' && !dashboardLoaded) {
+        if ((activeTab === 'dashboard' || activeTab === 'intelligence') && !dashboardLoaded) {
             fetchData();
             setDashboardLoaded(true);
         }

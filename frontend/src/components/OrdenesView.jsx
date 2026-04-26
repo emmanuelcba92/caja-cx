@@ -707,11 +707,7 @@ const OrdenesView = (props) => {
                                                 setFormData(prev => {
                                                     const merged = { ...prev };
                                                     if (result.profesional) {
-                                                        const getSignature = (profName) => {
-                                                            if (!profName) return null;
-                                                            return dynamicSignatures[profName] || dynamicSignatures[profName.toUpperCase()];
-                                                        };
-                                                        const signatureUrl = getSignature(result.profesional);
+                                                        const signatureUrl = getSignatureUrl(result.profesional);
                                                         const extracted = result.profesional;
                                                         const normalizedExtracted = extracted.toLowerCase().replace(/^(dr\.|dra\.|lic\.|dr|dra|lic)\s+/i, '').trim();
                                                         const match = profesionales.find(p => {
@@ -723,6 +719,7 @@ const OrdenesView = (props) => {
                                                                    (normalizedExtracted.length > 4 && normalizedExtracted.includes(nameWithoutPrefix));
                                                         });
                                                         merged.profesional = match ? match.nombre : extracted;
+                                                        merged.firmaUrl = signatureUrl;
                                                     }
                                                     if (result.afiliado) merged.afiliado = result.afiliado.toUpperCase();
                                                     if (result.obraSocial) merged.obraSocial = result.obraSocial;

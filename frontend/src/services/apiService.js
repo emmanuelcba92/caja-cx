@@ -1,6 +1,26 @@
 import { db, USE_LOCAL_DB, LOCAL_API_URL, isLocalEnv } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc } from 'firebase/firestore';
 
+const sanitizeData = (data) => {
+    if (data === null || typeof data !== 'object') return data;
+    
+    // Handle arrays
+    if (Array.isArray(data)) {
+        return data.map(item => sanitizeData(item));
+    }
+
+    const sanitized = {};
+    Object.keys(data).forEach(key => {
+        const value = data[key];
+        if (value !== undefined) {
+            sanitized[key] = (typeof value === 'object' && value !== null) 
+                ? sanitizeData(value) 
+                : value;
+        }
+    });
+    return sanitized;
+};
+
 const apiService = {
     // Methods for any collection
     async getCollection(collectionName, filters = {}) {
@@ -33,38 +53,40 @@ const apiService = {
     },
 
     async addDocument(collectionName, data) {
+        const cleanData = sanitizeData(data);
         if (USE_LOCAL_DB) {
             const response = await fetch(`${LOCAL_API_URL}/data/${collectionName}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: JSON.stringify(cleanData)
             });
             return response.json();
         } else {
-            if (data.id) {
-                const { id, ...rest } = data;
+            if (cleanData.id) {
+                const { id, ...rest } = cleanData;
                 const docRef = doc(db, collectionName, id);
                 await setDoc(docRef, rest);
                 return { id, ...rest };
             } else {
-                const docRef = await addDoc(collection(db, collectionName), data);
-                return { id: docRef.id, ...data };
+                const docRef = await addDoc(collection(db, collectionName), cleanData);
+                return { id: docRef.id, ...cleanData };
             }
         }
     },
 
     async updateDocument(collectionName, id, data) {
+        const cleanData = sanitizeData(data);
         if (USE_LOCAL_DB) {
             const response = await fetch(`${LOCAL_API_URL}/data/${collectionName}/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: JSON.stringify(cleanData)
             });
             return response.json();
         } else {
             const docRef = doc(db, collectionName, id);
-            await updateDoc(docRef, data);
-            return { id, ...data };
+            await updateDoc(docRef, cleanData);
+            return { id, ...cleanData };
         }
     },
 
