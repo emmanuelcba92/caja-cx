@@ -1250,28 +1250,7 @@ const OrdenesView = (props) => {
         );
     };
 
-    const Caratula = ({ previewData, profInfo }) => {
-        return (
-            <div className="hidden print:flex max-w-[210mm] mx-auto bg-white p-20 flex-col items-center justify-center text-center overflow-hidden" style={{ height: '297mm', fontFamily: 'Arial, sans-serif' }}>
-                <div className="space-y-8 uppercase">
-                    <h2 className="text-[16pt] font-black leading-tight tracking-tighter" style={{ color: '#000' }}>
-                        {previewData.afiliado}
-                    </h2>
 
-                    <div className="space-y-4 text-[12pt] font-bold" style={{ color: '#000' }}>
-                        <p>DNI {previewData.dni}</p>
-                        <p>{previewData.obraSocial}</p>
-                        <p>{profInfo ? profInfo.nombre : previewData.profesional}</p>
-                        <p>{formatDate(previewData.fechaCirugia)}</p>
-                    </div>
-
-                    <div className="mt-12 text-[11pt] font-medium" style={{ color: '#000' }}>
-                        ALERGIA ({previewData.alergias || '-'})
-                    </div>
-                </div>
-            </div>
-        );
-    };
 
     const handleCodigoChangeAndSearch = (index, field, value) => {
         // Update form state directly
@@ -2010,7 +1989,7 @@ const OrdenesView = (props) => {
                             <img
                                 src={getSignatureUrl(previewData.profesional)}
                                 alt={`Firma`}
-                                className="h-28 object-contain mb-1"
+                                className="h-20 object-contain mb-1"
                                 onError={(e) => { e.target.style.display = 'none'; }}
                             />
                             <div className="text-[8pt] font-black uppercase leading-tight" style={{fontFamily: '"Arial Black", Arial, sans-serif'}}>
@@ -2094,7 +2073,7 @@ const OrdenesView = (props) => {
                         <img
                             src={getSignatureUrl(previewData.profesional)}
                             alt={`Firma`}
-                            className="h-28 object-contain mb-1"
+                            className="h-20 object-contain mb-1"
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
                         <div className="text-[8pt] font-black uppercase leading-tight" style={{fontFamily: '"Arial Black", Arial, sans-serif'}}>

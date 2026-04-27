@@ -84,17 +84,19 @@ const apiService = {
 
     async updateDocument(collectionName, id, data) {
         const cleanData = sanitizeData(data);
+        const { id: _, ...restData } = cleanData; // Remove id to prevent Firestore errors
+        
         if (USE_LOCAL_DB) {
             const response = await fetch(`${LOCAL_API_URL}/data/${collectionName}/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(cleanData)
+                body: JSON.stringify(restData)
             });
             return response.json();
         } else {
             const docRef = doc(db, collectionName, id);
-            await updateDoc(docRef, cleanData);
-            return { id, ...cleanData };
+            await updateDoc(docRef, restData);
+            return { id, ...restData };
         }
     },
 

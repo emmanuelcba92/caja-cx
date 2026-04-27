@@ -615,6 +615,40 @@ def handle_notification_config():
         config = AppConfig.query.get('notification_emails')
         return jsonify({'emails': config.value if config else 'emmanuel.ag92@gmail.com'}), 200
 
+@app.route('/config/settings', methods=['GET', 'POST'])
+def handle_app_settings():
+    if request.method == 'POST':
+        data = request.json
+        settings_json = json.dumps(data)
+        config = AppConfig.query.get('app_settings')
+        if not config:
+            config = AppConfig(key='app_settings', value=settings_json)
+            db.session.add(config)
+        else:
+            config.value = settings_json
+        db.session.commit()
+        return jsonify({'message': 'Ajustes actualizados', 'settings': data}), 200
+    else:
+        config = AppConfig.query.get('app_settings')
+        if config and config.value:
+            try:
+                return jsonify(json.loads(config.value)), 200
+            except:
+                pass
+        
+        # Default settings if none exist
+        default_settings = {
+            "messages": {
+                "paciente": "Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n*{paciente}* tiene agendada una cirugía el día *{fecha}* con *{profesional}*.\n\nLe informamos que en el caso de su obra social, la autorización debe ser gestionada personalmente por el paciente ante la misma. Cualquier duda quedamos a su disposición.",
+                "institucional": "Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n*{paciente}* tiene agendada una cirugía el día *{fecha}* con *{profesional}*.\n\nEn el caso de su obra social, la autorización la gestionamos nosotros.\n\nPara poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído."
+            },
+            "notifications": {
+                "weekly": { "name": "Control Semanal", "active": True, "emails": "emmanuel.ag92@gmail.com" },
+                "monthly": { "name": "Control Mensual", "active": True, "emails": "emmanuel.ag92@gmail.com" },
+                "unauthorized": { "name": "Cirugías sin autorizar", "active": True, "emails": "emmanuel.ag92@gmail.com" }
+            }
+        }
+        return jsonify(default_settings), 200
 
 
 @app.route('/upload-signature', methods=['POST'])

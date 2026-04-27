@@ -213,6 +213,12 @@ const AdminView = () => {
     const [notificationEmails, setNotificationEmails] = useState('');
     const [scriptUrl, setScriptUrl] = useState('');
     const [appNotificationUids, setAppNotificationUids] = useState([]);
+    const [notificationConfigs, setNotificationConfigs] = useState({
+        weekly: { active: true, name: "Control Semanal", emails: "" },
+        monthly: { active: true, name: "Control Mensual", emails: "" },
+        unauthorized: { active: true, name: "Cirugías sin autorizar", emails: "" },
+        daily_caja: { active: true, name: "Cierre de Caja Diario", emails: "" }
+    });
     const [stats, setStats] = useState({ totalCirugias: 0, realizadas: 0, proximas: 0, canceladas: 0 });
     const [firestoreUsage, setFirestoreUsage] = useState({ 
         totalDocs: 0, 
@@ -292,7 +298,7 @@ const AdminView = () => {
         } catch (e) { return 0; }
     };
 
-    const fetchData = async () => {
+    const fetchData = async (loadHeavy = false) => {
         setLoading(true);
         const usage = {
             totalSizeKB: 0,
@@ -322,27 +328,9 @@ const AdminView = () => {
             } catch (e) { console.error("Error fetching profiles:", e); }
 
             try {
-                const cajaCount = await getCountFromServer(collection(db, "caja"));
-                usage.collections.caja.count = cajaCount.data().count;
-                const cajaSample = await getDocs(query(collection(db, "caja"), limit(10)));
-                const actualSampleSize = cajaSample.docs.length;
-                const avgSize = actualSampleSize > 0 ? estimateSize(cajaSample.docs.map(d => d.data())) / actualSampleSize : 0;
-                usage.collections.caja.size = avgSize * usage.collections.caja.count;
-            } catch (e) { console.error("Error counting/estimating caja:", e); }
-
-            try {
                 const rolesSnap = await getDocs(collection(db, "roles"));
                 setRoles(rolesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
             } catch (e) { console.error("Error fetching roles:", e); }
-
-            try {
-                const profsCount = await getCountFromServer(collection(db, "profesionales"));
-                usage.collections.profesionales.count = profsCount.data().count;
-                const profsSnap = await getDocs(collection(db, "profesionales"));
-                const profsData = profsSnap.docs.map(doc => doc.data());
-                setAllProfessionals([...new Set(profsData.map(d => d.nombre))].sort());
-                usage.collections.profesionales.size = estimateSize(profsData);
-            } catch (e) { console.error("Error fetching profesionales:", e); }
 
             try {
                 const emailDoc = await getDoc(doc(db, "settings", "notifications"));
@@ -350,65 +338,88 @@ const AdminView = () => {
                     setNotificationEmails(emailDoc.data().emails || '');
                     setScriptUrl(emailDoc.data().scriptUrl || '');
                     setAppNotificationUids(emailDoc.data().appNotificationUids || []);
+                    if (emailDoc.data().configs) {
+                        setNotificationConfigs(prev => ({...prev, ...emailDoc.data().configs}));
+                    }
                 }
             } catch (e) { console.error("Error fetching settings:", e); }
 
-            try {
-                const patientsCount = await getCountFromServer(collection(db, "pacientes"));
-                usage.collections.pacientes.count = patientsCount.data().count;
-                const patientsSample = await getDocs(query(collection(db, "pacientes"), limit(10)));
-                const actualSampleSize = patientsSample.docs.length;
-                const avgSize = actualSampleSize > 0 ? estimateSize(patientsSample.docs.map(d => d.data())) / actualSampleSize : 0;
-                usage.collections.pacientes.size = avgSize * usage.collections.pacientes.count;
-            } catch (e) { console.error("Error counting/estimating pacientes:", e); }
+            if (loadHeavy) {
+                try {
+                    const cajaCount = await getCountFromServer(collection(db, "caja"));
+                    usage.collections.caja.count = cajaCount.data().count;
+                    const cajaSample = await getDocs(query(collection(db, "caja"), limit(10)));
+                    const actualSampleSize = cajaSample.docs.length;
+                    const avgSize = actualSampleSize > 0 ? estimateSize(cajaSample.docs.map(d => d.data())) / actualSampleSize : 0;
+                    usage.collections.caja.size = avgSize * usage.collections.caja.count;
+                } catch (e) { console.error("Error counting/estimating caja:", e); }
 
-            try {
-                const ordenesCount = await getCountFromServer(collection(db, "ordenes_internacion"));
-                usage.collections.ordenes.count = ordenesCount.data().count;
-                const ordenesSnap = await getDocs(collection(db, "ordenes_internacion"));
-                const ordenesData = ordenesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                setAllSurgeries(ordenesData);
-                usage.collections.ordenes.size = estimateSize(ordenesData);
-            } catch (e) { console.error("Error fetching ordenes:", e); }
+                try {
+                    const profsCount = await getCountFromServer(collection(db, "profesionales"));
+                    usage.collections.profesionales.count = profsCount.data().count;
+                    const profsSnap = await getDocs(collection(db, "profesionales"));
+                    const profsData = profsSnap.docs.map(doc => doc.data());
+                    setAllProfessionals([...new Set(profsData.map(d => d.nombre))].sort());
+                    usage.collections.profesionales.size = estimateSize(profsData);
+                } catch (e) { console.error("Error fetching profesionales:", e); }
 
-            try {
-                const fetchStorageStats = async () => {
-                    let totalFiles = 0;
-                    let totalSizeBytes = 0;
-                    const listRecursive = async (path = '') => {
-                        const { data, error } = await supabase.storage.from('Cirugias').list(path);
-                        if (error) throw error;
-                        for (const item of data) {
-                            if (item.id === null) {
-                                await listRecursive(path ? `${path}/${item.name}` : item.name);
-                            } else {
-                                totalFiles++;
-                                totalSizeBytes += item.metadata.size || 0;
+                try {
+                    const patientsCount = await getCountFromServer(collection(db, "pacientes"));
+                    usage.collections.pacientes.count = patientsCount.data().count;
+                    const patientsSample = await getDocs(query(collection(db, "pacientes"), limit(10)));
+                    const actualSampleSize = patientsSample.docs.length;
+                    const avgSize = actualSampleSize > 0 ? estimateSize(patientsSample.docs.map(d => d.data())) / actualSampleSize : 0;
+                    usage.collections.pacientes.size = avgSize * usage.collections.pacientes.count;
+                } catch (e) { console.error("Error counting/estimating pacientes:", e); }
+
+                try {
+                    const ordenesCount = await getCountFromServer(collection(db, "ordenes_internacion"));
+                    usage.collections.ordenes.count = ordenesCount.data().count;
+                    const ordenesSnap = await getDocs(collection(db, "ordenes_internacion"));
+                    const ordenesData = ordenesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    setAllSurgeries(ordenesData);
+                    usage.collections.ordenes.size = estimateSize(ordenesData);
+                } catch (e) { console.error("Error fetching ordenes:", e); }
+
+                try {
+                    const fetchStorageStats = async () => {
+                        let totalFiles = 0;
+                        let totalSizeBytes = 0;
+                        const listRecursive = async (path = '') => {
+                            const { data, error } = await supabase.storage.from('Cirugias').list(path);
+                            if (error) throw error;
+                            for (const item of data) {
+                                if (item.id === null) {
+                                    await listRecursive(path ? `${path}/${item.name}` : item.name);
+                                } else {
+                                    totalFiles++;
+                                    totalSizeBytes += item.metadata.size || 0;
+                                }
                             }
-                        }
+                        };
+                        await listRecursive('');
+                        setSupabaseStats({
+                            count: totalFiles,
+                            sizeMB: totalSizeBytes / (1024 * 1024)
+                        });
                     };
-                    await listRecursive('');
-                    setSupabaseStats({
-                        count: totalFiles,
-                        sizeMB: totalSizeBytes / (1024 * 1024)
-                    });
-                };
-                fetchStorageStats();
-            } catch (e) { console.error("Error fetching Supabase stats:", e); }
+                    fetchStorageStats();
+                } catch (e) { console.error("Error fetching Supabase stats:", e); }
 
-            try {
-                const remindersCount = await getCountFromServer(collection(db, "reminders"));
-                usage.collections.reminders.count = remindersCount.data().count;
-            } catch (e) { console.warn("Reminders restricted:", e); }
+                try {
+                    const remindersCount = await getCountFromServer(collection(db, "reminders"));
+                    usage.collections.reminders.count = remindersCount.data().count;
+                } catch (e) { console.warn("Reminders restricted:", e); }
 
-            try {
-                const notesCount = await getCountFromServer(collection(db, "notes"));
-                usage.collections.notes.count = notesCount.data().count;
-            } catch (e) { console.warn("Notes restricted:", e); }
+                try {
+                    const notesCount = await getCountFromServer(collection(db, "notes"));
+                    usage.collections.notes.count = notesCount.data().count;
+                } catch (e) { console.warn("Notes restricted:", e); }
 
-            usage.totalDocs = Object.values(usage.collections).reduce((sum, col) => sum + col.count, 0);
-            usage.totalSizeKB = Object.values(usage.collections).reduce((sum, col) => sum + (col.size || 0), 0);
-            setFirestoreUsage(usage);
+                usage.totalDocs = Object.values(usage.collections).reduce((sum, col) => sum + col.count, 0);
+                usage.totalSizeKB = Object.values(usage.collections).reduce((sum, col) => sum + (col.size || 0), 0);
+                setFirestoreUsage(usage);
+            }
 
         } catch (error) {
             console.error("Critical Admin Fetch Error:", error);
@@ -435,8 +446,15 @@ const AdminView = () => {
     };
 
     useEffect(() => {
+        // Initial light fetch
+        if (authorizedEmails.length === 0 && !loading) {
+            fetchData(false);
+        }
+    }, []);
+
+    useEffect(() => {
         if ((activeTab === 'dashboard' || activeTab === 'intelligence') && !dashboardLoaded) {
-            fetchData();
+            fetchData(true);
             setDashboardLoaded(true);
         }
     }, [activeTab, dashboardLoaded]);
@@ -834,6 +852,7 @@ const AdminView = () => {
                 emails: notificationEmails,
                 scriptUrl: scriptUrl,
                 appNotificationUids: appNotificationUids,
+                configs: notificationConfigs,
                 updatedAt: new Date().toISOString()
             });
             alert("Configuración de notificaciones guardada correctamente.");
@@ -1468,6 +1487,46 @@ const AdminView = () => {
                                     placeholder="https://script.google.com/macros/s/..."
                                 />
                             </div>
+                            
+                            <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                                <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4">Configuración por tipo</h4>
+                                <div className="space-y-4">
+                                    {Object.entries(notificationConfigs).map(([key, config]) => (
+                                        <div key={key} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`w-2 h-2 rounded-full ${config.active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-400'}`}></div>
+                                                    <span className="font-bold text-sm text-slate-700 dark:text-slate-200">{config.name}</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => setNotificationConfigs({
+                                                        ...notificationConfigs,
+                                                        [key]: { ...config, active: !config.active }
+                                                    })}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
+                                                        config.active 
+                                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+                                                        : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
+                                                    }`}
+                                                >
+                                                    {config.active ? 'Activo' : 'Inactivo'}
+                                                </button>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={config.emails}
+                                                onChange={(e) => setNotificationConfigs({
+                                                    ...notificationConfigs,
+                                                    [key]: { ...config, emails: e.target.value }
+                                                })}
+                                                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
+                                                placeholder="Emails específicos (vacío = usa global)"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
                             <div className="flex gap-4 pt-4">
                                 <button onClick={handleSaveEmailConfig} className="flex-1 py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[2rem] font-black shadow-xl shadow-blue-600/20 active:scale-[0.98] transition-all">
                                     GUARDAR CONFIGURACIÓN
