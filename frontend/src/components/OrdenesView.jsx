@@ -89,6 +89,25 @@ const OrdenesView = (props) => {
     const [aiLoading, setAiLoading] = useState(false); // AI processing spinner
     const [aiError, setAiError] = useState(''); // AI error message
     const [activeTab, setActiveTab] = useState(initialTab); // 'internacion' | 'control'
+    const [whatsappTemplates, setWhatsappTemplates] = useState({
+        paciente: 'Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *{paciente}* tiene agendada una cirugía el día *{fecha}* con *{profesional}*.\n\nLe informamos que en el caso de su obra social, la autorización debe ser gestionada personalmente por el paciente ante la misma. Cualquier duda quedamos a su disposición.',
+        institucional: 'Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *{paciente}* tiene agendada una cirugía el día *{fecha}* con *{profesional}*.\n\nEn el caso de su obra social, la autorización la gestionamos nosotros.\n\nPara poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.'
+    });
+
+    // Load WhatsApp Templates
+    useEffect(() => {
+        const fetchTemplates = async () => {
+            try {
+                const docSnap = await getDoc(doc(db, "settings", "whatsapp_templates"));
+                if (docSnap.exists()) {
+                    setWhatsappTemplates(docSnap.data());
+                }
+            } catch (error) {
+                console.error("Error fetching templates:", error);
+            }
+        };
+        fetchTemplates();
+    }, []);
     const [previewOrdenes, setPreviewOrdenes] = useState([]); // Preview for control tab
     const [selectedConsent, setSelectedConsent] = useState(null); // 'caratula', 'generico', or {code, type}
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
@@ -2922,7 +2941,12 @@ const OrdenesView = (props) => {
                                         const fecha = whatsappModal.fechaCirugia ?
                                             new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
                                             : 'sin fecha';
-                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*.\n\nLe informamos que en el caso de su obra social, la autorización debe ser gestionada personalmente por el paciente ante la misma. Cualquier duda quedamos a su disposición.`;
+                                        
+                                        const mensaje = whatsappTemplates.paciente
+                                            .replace(/{paciente}/g, whatsappModal.afiliado || '')
+                                            .replace(/{fecha}/g, fecha)
+                                            .replace(/{profesional}/g, whatsappModal.profesional || '');
+
                                         await navigator.clipboard.writeText(mensaje);
                                         setWhatsappModal(null);
                                         setCopiedToast(true);
@@ -2939,7 +2963,12 @@ const OrdenesView = (props) => {
                                         const fecha = whatsappModal.fechaCirugia ?
                                             new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
                                             : 'sin fecha';
-                                        const mensaje = `Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *${whatsappModal.afiliado}* tiene agendada una cirugía el día *${fecha}* con *${whatsappModal.profesional}*.\n\nEn el caso de su obra social, la autorización la gestionamos nosotros.\n\nPara poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.`;
+                                        
+                                        const mensaje = whatsappTemplates.institucional
+                                            .replace(/{paciente}/g, whatsappModal.afiliado || '')
+                                            .replace(/{fecha}/g, fecha)
+                                            .replace(/{profesional}/g, whatsappModal.profesional || '');
+
                                         await navigator.clipboard.writeText(mensaje);
                                         setWhatsappModal(null);
                                         setCopiedToast(true);

@@ -14,7 +14,7 @@ import {
     Download, Upload, Database, FileJson, AlertTriangle, PieChart, 
     ChevronDown, Filter, CheckCircle2, UserCheck, ShieldCheck, 
     Calendar, RefreshCw, Layers, HardDrive, Key, LayoutDashboard, FileText, X,
-    History as HistoryIcon, ShieldAlert, Zap
+    History as HistoryIcon, ShieldAlert, Zap, MessageCircle, Save, Building2, User, AlertCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -118,7 +118,10 @@ const AdminView = () => {
         me: ''
     });
     const [dashboardLoaded, setDashboardLoaded] = useState(false);
-
+    const [whatsappTemplates, setWhatsappTemplates] = useState({
+        paciente: 'Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *{paciente}* tiene agendada una cirugía el día *{fecha}* con *{profesional}*.\n\nLe informamos que en el caso de su obra social, la autorización debe ser gestionada personalmente por el paciente ante la misma. Cualquier duda quedamos a su disposición.',
+        institucional: 'Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *{paciente}* tiene agendada una cirugía el día *{fecha}* con *{profesional}*.\n\nEn el caso de su obra social, la autorización la gestionamos nosotros.\n\nPara poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.'
+    });
     const handleCreateUser = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -170,6 +173,34 @@ const AdminView = () => {
         } catch (error) {
             console.error("Error creando usuario:", error);
             alert("Error: " + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Load WhatsApp Templates
+    useEffect(() => {
+        const fetchTemplates = async () => {
+            try {
+                const docSnap = await getDoc(doc(db, "settings", "whatsapp_templates"));
+                if (docSnap.exists()) {
+                    setWhatsappTemplates(docSnap.data());
+                }
+            } catch (error) {
+                console.error("Error fetching templates:", error);
+            }
+        };
+        fetchTemplates();
+    }, []);
+
+    const handleSaveTemplates = async () => {
+        setLoading(true);
+        try {
+            await setDoc(doc(db, "settings", "whatsapp_templates"), whatsappTemplates);
+            toast.success("Templates guardados correctamente");
+        } catch (error) {
+            console.error("Error saving templates:", error);
+            toast.error("Error al guardar templates");
         } finally {
             setLoading(false);
         }
@@ -850,6 +881,7 @@ const AdminView = () => {
         { id: 'permissions', label: 'Permisos', icon: Key, show: isSuperAdmin, color: 'emerald' },
         { id: 'mantenimiento', label: 'Mantenimiento', icon: RefreshCw, show: isSuperAdmin, color: 'amber' },
         { id: 'infrastructure', label: 'Infraestructura', icon: HardDrive, show: isSuperAdmin, color: 'indigo' },
+        { id: 'messages', label: 'Mensajes', icon: MessageCircle, show: isSuperAdmin, color: 'blue' },
         { id: 'notifications', label: 'Alertas', icon: Mail, show: isSuperAdmin, color: 'rose' },
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: isSuperAdmin || permissions?.can_view_stats, color: 'cyan' }
     ];
@@ -1710,6 +1742,83 @@ const AdminView = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+            )}
+
+            {/* Messages Tab */}
+            {activeTab === 'messages' && isSuperAdmin && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Paciente Template */}
+                        <div className="premium-card p-6 bg-white dark:bg-slate-900 border-blue-500/10">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-3 bg-blue-500/10 text-blue-500 rounded-xl">
+                                    <User size={20} />
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-widest text-sm">Mensaje Paciente</h4>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Autorización gestionada por el paciente</p>
+                                </div>
+                            </div>
+                            <textarea
+                                value={whatsappTemplates.paciente}
+                                onChange={(e) => setWhatsappTemplates({...whatsappTemplates, paciente: e.target.value})}
+                                className="w-full h-64 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-sm text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none font-medium leading-relaxed"
+                                placeholder="Escribe el template aquí..."
+                            />
+                        </div>
+
+                        {/* Institucional Template */}
+                        <div className="premium-card p-6 bg-white dark:bg-slate-900 border-emerald-500/10">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
+                                    <Building2 size={20} />
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-widest text-sm">Mensaje Institucional</h4>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Autorización gestionada por la institución</p>
+                                </div>
+                            </div>
+                            <textarea
+                                value={whatsappTemplates.institucional}
+                                onChange={(e) => setWhatsappTemplates({...whatsappTemplates, institucional: e.target.value})}
+                                className="w-full h-64 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-sm text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all resize-none font-medium leading-relaxed"
+                                placeholder="Escribe el template aquí..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 p-6 rounded-3xl">
+                        <div className="flex items-start gap-4">
+                            <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm text-blue-500">
+                                <AlertCircle size={20} />
+                            </div>
+                            <div>
+                                <h5 className="text-sm font-black text-blue-900 dark:text-blue-200 uppercase tracking-widest mb-2">Variables Disponibles</h5>
+                                <p className="text-xs text-blue-700/70 dark:text-blue-300/60 leading-relaxed font-medium">
+                                    Puedes usar las siguientes etiquetas que serán reemplazadas automáticamente:
+                                    <br />
+                                    <span className="font-black text-blue-600 dark:text-blue-400">{"{paciente}"}</span>: Nombre del afiliado
+                                    <br />
+                                    <span className="font-black text-blue-600 dark:text-blue-400">{"{fecha}"}</span>: Fecha de la cirugía
+                                    <br />
+                                    <span className="font-black text-blue-600 dark:text-blue-400">{"{profesional}"}</span>: Nombre del médico
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-center pt-4">
+                        <button
+                            onClick={handleSaveTemplates}
+                            disabled={loading}
+                            className="px-12 py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[2rem] font-black shadow-xl shadow-blue-600/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
+                        >
+                            <Save size={24} />
+                            {loading ? 'GUARDANDO...' : 'GUARDAR CAMBIOS'}
+                        </button>
                     </div>
                 </div>
 
