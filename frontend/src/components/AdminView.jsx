@@ -1748,7 +1748,7 @@ const AdminView = () => {
             )}
 
             {/* Messages Tab */}
-            {activeTab === 'messages' && isSuperAdmin && (
+            {activeTab === 'messages' && (isSuperAdmin || permissions.can_manage_users) && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {/* Paciente Template */}
@@ -1805,6 +1805,12 @@ const AdminView = () => {
                                     <span className="font-black text-blue-600 dark:text-blue-400">{"{fecha}"}</span>: Fecha de la cirugía
                                     <br />
                                     <span className="font-black text-blue-600 dark:text-blue-400">{"{profesional}"}</span>: Nombre del médico
+                                    <br />
+                                    <span className="font-black text-blue-600 dark:text-blue-400">{"{obra_social}"}</span>: Obra Social del paciente
+                                    <br />
+                                    <span className="font-black text-blue-600 dark:text-blue-400">{"{dni}"}</span>: DNI del paciente
+                                    <br />
+                                    <span className="font-black text-blue-600 dark:text-blue-400">{"{cirugia}"}</span>: Detalle de las prácticas agendadas
                                 </p>
                             </div>
                         </div>

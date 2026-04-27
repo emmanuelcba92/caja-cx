@@ -151,8 +151,8 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
             try {
                 const sigData = await optimizeImage(signatureUrl, 400);
                 if (sigData) {
-                    // Move signature slightly higher (sigY - 30 instead of -25)
-                    targetDoc.addImage(sigData.data, 'PNG', sigX - 15, sigY - 32, 50, 50 / sigData.ratio, undefined, 'FAST');
+                    // Reduce size to 35mm and adjust Y to be slightly higher if needed
+                    targetDoc.addImage(sigData.data, 'PNG', sigX - 7, sigY - 28, 35, 35 / sigData.ratio, undefined, 'FAST');
                 }
             } catch (e) {
                 console.error("Error loading signature image:", e);
@@ -186,24 +186,37 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
 
     if (type === 'caratula') {
         const drawCaratula = (targetDoc) => {
-            targetDoc.setFontSize(26);
-            targetDoc.setFont("helvetica", "bold");
-            let cy = 80;
-            targetDoc.text((previewData.afiliado || '').toUpperCase(), centerX, cy, { align: 'center' });
-            cy += 15;
-            targetDoc.text(`DNI ${previewData.dni || '-'}`, centerX, cy, { align: 'center' });
-            cy += 15;
-            targetDoc.text((previewData.obraSocial || '').toUpperCase(), centerX, cy, { align: 'center' });
-            cy += 15;
-            targetDoc.text((previewData.profesional || '').toUpperCase(), centerX, cy, { align: 'center' });
-            cy += 15;
-            targetDoc.text(formatDate(previewData.fechaCirugia || previewData.fechaDocumento), centerX, cy, { align: 'center' });
-            cy += 15;
-            targetDoc.text(`ALERGIA (${previewData.alergias?.toUpperCase() || '-'})`, centerX, cy, { align: 'center' });
+            targetDoc.setFontSize(24);
+            targetDoc.setFont("helvetica", "normal");
+            targetDoc.setTextColor(0);
+            
+            let cy = 55; // Starting lower than 45mm to account for text baseline
+            
+            // Function to center text and move cursor
+            const addLine = (text) => {
+                targetDoc.text((text || '').toUpperCase(), centerX, cy, { align: 'center' });
+                cy += 12; // Adjusted spacing
+            };
+
+            addLine(previewData.afiliado);
+            addLine(`DNI ${previewData.dni || '-'}`);
+            addLine(previewData.obraSocial);
+            
+            // Match the short name logic from OrdenesView
+            const shortName = (name) => {
+                if (!name) return '';
+                const parts = name.split(' ');
+                if (parts.length <= 2) return name;
+                return `${parts[0]} ${parts[parts.length - 1]}`;
+            };
+            addLine(shortName(previewData.profesional));
+            
+            addLine(formatDate(previewData.fechaCirugia || previewData.fechaDocumento));
+            addLine(`ALERGIA (${previewData.alergias?.toUpperCase() || '-'})`);
             
             if (previewData.habitacion) {
-                targetDoc.setFontSize(30);
-                targetDoc.text(previewData.habitacion, pageWidth - 30, 30, { align: 'right' });
+                targetDoc.setFontSize(20);
+                targetDoc.text(previewData.habitacion, pageWidth - 20, 10, { align: 'right' });
             }
         };
         drawCaratula(doc);

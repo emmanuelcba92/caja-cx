@@ -122,7 +122,8 @@ const OrdenesView = (props) => {
     const [filterStatus, setFilterStatus] = useState('');
     const [filterAudit, setFilterAudit] = useState(''); // 'auditadas' | 'pendientes' | ''
     const [searchPaciente, setSearchPaciente] = useState('');
-    const [visibleCount, setVisibleCount] = useState(15); // Limite inicial de items
+    const [localSearchTerm, setLocalSearchTerm] = useState('');
+    const [visibleCount, setVisibleCount] = useState(15);
 
     // Autocomplete State
     const [suggestions, setSuggestions] = useState([]);
@@ -151,6 +152,14 @@ const OrdenesView = (props) => {
         };
         fetchStorageFiles();
     }, []);
+
+    // Debounce search effect
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearchPaciente(localSearchTerm);
+        }, 400); // 400ms delay for performance
+        return () => clearTimeout(timer);
+    }, [localSearchTerm]);
 
     // State for PDF library (Firebase Storage URLs)
     const [consentPdfs, setConsentPdfs] = useState({});
@@ -510,9 +519,12 @@ const OrdenesView = (props) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleDniBlur = async (dni) => {
+    const handleDniLookup = async (dni, force = false) => {
         if (!dni || dni.length < 7) return;
         
+        // Don't search if we already have a name (unless forced)
+        if (!force && formData.afiliado && formData.afiliado.length > 3) return;
+
         try {
             const q = query(collection(db, 'pacientes'), where('dni', '==', dni));
             const querySnapshot = await getDocs(q);
@@ -528,7 +540,11 @@ const OrdenesView = (props) => {
                     telefono: pacienteData.telefono || prev.telefono,
                     edad: pacienteData.edad || prev.edad
                 }));
-                toast.success('Paciente encontrado: datos completados', { icon: '👤', duration: 2000 });
+                toast.success('Paciente encontrado', { 
+                    icon: '👤', 
+                    duration: 2000,
+                    style: { borderRadius: '12px', background: '#333', color: '#fff', fontSize: '12px' }
+                });
             }
         } catch (error) {
             console.error("Error searching patient by DNI:", error);
@@ -911,12 +927,15 @@ const OrdenesView = (props) => {
                                 onChange={(e) => {
                                     const val = e.target.value.replace(/\D/g, '');
                                     handleInputChange('dni', val);
+                                    if (val.length >= 7 && val.length <= 9) {
+                                        handleDniLookup(val);
+                                    }
                                 }}
-                                onBlur={() => handleDniBlur(formData.dni)}
+                                onBlur={() => handleDniLookup(formData.dni)}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
-                                        handleDniBlur(formData.dni);
+                                        handleDniLookup(formData.dni, true); // Force lookup on Enter
                                     }
                                 }}
                                 className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all ${ringClass} text-slate-900 dark:text-slate-100`}
@@ -1561,27 +1580,11 @@ const OrdenesView = (props) => {
         }
 
         setFormData({
-            profesional: orden.profesional || '',
-            afiliado: orden.afiliado || '',
-            obraSocial: orden.obraSocial || '',
-            numeroAfiliado: orden.numeroAfiliado || '',
-            dni: orden.dni || '',
-            edad: orden.edad || '',
-            telefono: orden.telefono || '',
-            habitacion: orden.habitacion || '',
-            tutor: orden.tutor || '',
-            codigosCirugia,
-            practicas: emptyForm.practicas,
-            tipoAnestesia: orden.tipoAnestesia || 'general',
-            fechaCirugia: orden.fechaCirugia || '',
-            horaCirugia: orden.horaCirugia || '',
-            salaCirugia: orden.salaCirugia || '',
-            anotacionCalendario: orden.anotacionCalendario || '',
-            incluyeMaterial: orden.incluyeMaterial || false,
-            descripcionMaterial: orden.descripcionMaterial || '',
-            diagnostico: orden.diagnostico || '',
-            observaciones: orden.observaciones || '',
-            suspendida: orden.suspendida || false,
+            ...emptyForm, // Start with defaults
+            ...orden,     // Overwrite with order data
+            // Ensure specific fields that might be nested or have different structures are handled
+            codigosCirugia: codigosCirugia,
+            practicas: (orden.practicas && Array.isArray(orden.practicas)) ? orden.practicas : emptyForm.practicas,
             fechaDocumento: orden.fechaDocumento || new Date().toISOString().split('T')[0]
         });
         setEditingId(orden.id);
@@ -2165,7 +2168,7 @@ const OrdenesView = (props) => {
         const todayLocal = new Date(today.getTime() - (offset * 60 * 1000));
         const todayStr = todayLocal.toISOString().split('T')[0];
 
-        const checkUrgency = (orden) => {
+        const getUrgency = (orden) => {
             if (orden.autorizada) return false;
             const surgeryDateStr = orden.fechaCirugia || orden.fechaDocumento;
             if (!surgeryDateStr) return false;
@@ -2176,7 +2179,8 @@ const OrdenesView = (props) => {
             return diffDays <= 15;
         };
 
-        const filtered = listToFilter.filter(orden => {
+        // Filter and calculate urgency once
+        const filtered = ordenes.filter(orden => {
             // IF CONTROL TAB: Only filter by range
             if (activeTab === 'control') {
                 if (orden.suspendida) return false;
@@ -2223,17 +2227,17 @@ const OrdenesView = (props) => {
             }
 
             return matchProfesional && matchObraSocial && matchDate && matchStatus && matchAudit && matchPaciente && matchPeriodo;
-        });
+        }).map(o => ({
+            ...o,
+            _isUrgent: getUrgency(o) // Pre-calculate for sorting
+        }));
 
         return filtered.sort((a, b) => {
-            const urgentA = checkUrgency(a);
-            const urgentB = checkUrgency(b);
-            
-            // Prioridad 1: Urgentes primero
-            if (urgentA && !urgentB) return -1;
-            if (!urgentA && urgentB) return 1;
+            // Priority 1: Urgent
+            if (a._isUrgent && !b._isUrgent) return -1;
+            if (!a._isUrgent && b._isUrgent) return 1;
 
-            // Prioridad 2: Fecha (más recientes primero)
+            // Priority 2: Date
             const dateA = a.fechaCirugia || a.createdAt || a.fechaDocumento;
             const dateB = b.fechaCirugia || b.createdAt || b.fechaDocumento;
             return new Date(dateB) - new Date(dateA);
@@ -2450,8 +2454,8 @@ const OrdenesView = (props) => {
                                         <input
                                             type="text"
                                             placeholder="Paciente o DNI..."
-                                            value={searchPaciente}
-                                            onChange={(e) => setSearchPaciente(e.target.value)}
+                                            value={localSearchTerm}
+                                            onChange={(e) => setLocalSearchTerm(e.target.value)}
                                             className="pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-teal-500/5 transition-all w-64 shadow-inner"
                                         />
                                     </div>
@@ -2942,10 +2946,16 @@ const OrdenesView = (props) => {
                                             new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
                                             : 'sin fecha';
                                         
+                                        const cirugiaDetail = (whatsappModal.practicas || []).filter(p => p).join(', ') || 
+                                                              (whatsappModal.codigosCirugia || []).map(c => c.nombre).filter(n => n).join(', ');
+
                                         const mensaje = whatsappTemplates.paciente
                                             .replace(/{paciente}/g, whatsappModal.afiliado || '')
                                             .replace(/{fecha}/g, fecha)
-                                            .replace(/{profesional}/g, whatsappModal.profesional || '');
+                                            .replace(/{profesional}/g, whatsappModal.profesional || '')
+                                            .replace(/{obra_social}/g, whatsappModal.obraSocial || '')
+                                            .replace(/{dni}/g, whatsappModal.dni || '')
+                                            .replace(/{cirugia}/g, cirugiaDetail || '');
 
                                         await navigator.clipboard.writeText(mensaje);
                                         setWhatsappModal(null);
@@ -2964,10 +2974,16 @@ const OrdenesView = (props) => {
                                             new Date(whatsappModal.fechaCirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
                                             : 'sin fecha';
                                         
+                                        const cirugiaDetail = (whatsappModal.practicas || []).filter(p => p).join(', ') || 
+                                                              (whatsappModal.codigosCirugia || []).map(c => c.nombre).filter(n => n).join(', ');
+
                                         const mensaje = whatsappTemplates.institucional
                                             .replace(/{paciente}/g, whatsappModal.afiliado || '')
                                             .replace(/{fecha}/g, fecha)
-                                            .replace(/{profesional}/g, whatsappModal.profesional || '');
+                                            .replace(/{profesional}/g, whatsappModal.profesional || '')
+                                            .replace(/{obra_social}/g, whatsappModal.obraSocial || '')
+                                            .replace(/{dni}/g, whatsappModal.dni || '')
+                                            .replace(/{cirugia}/g, cirugiaDetail || '');
 
                                         await navigator.clipboard.writeText(mensaje);
                                         setWhatsappModal(null);

@@ -23,6 +23,7 @@ const AdminView = lazy(() => import('./components/AdminView'));
 const ConsentimientosView = lazy(() => import('./components/ConsentimientosView'));
 const PacientesView = lazy(() => import('./components/PacientesView'));
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 
 const ModalPortal = ({ children, onClose }) => {
   return createPortal(
@@ -244,272 +245,242 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className={`h-screen font-sans text-slate-900 dark:text-slate-100 flex bg-slate-50 dark:bg-slate-950 overflow-hidden ${lowPerfMode ? '' : 'transition-colors duration-300'}`}>
-
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-20 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Redesigned Sidebar (Fixed Width, Vertical Icons) */}
-      <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} fixed md:relative h-screen w-[100px] bg-white dark:bg-slate-950/80 backdrop-blur-xl border-r border-slate-200 dark:border-white/5 flex flex-col shadow-2xl transition-all duration-500 z-30`}>
-        
-        {/* Sidebar Logo */}
-        <div className="py-10 flex flex-col items-center flex-shrink-0">
-          <div className="flex flex-col items-center gap-3 group cursor-pointer">
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.3)] group-hover:scale-110 transition-all duration-500 transform -rotate-3 group-hover:rotate-0">
-              <img src="/c_logo.svg" alt="Logo" className={`w-10 h-10 ${theme === 'dark' ? 'brightness-0 invert' : ''}`} />
-            </div>
-            <span className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.2em] mt-2 group-hover:text-blue-400 transition-colors text-center px-1">CIRUGÍAS</span>
-          </div>
-        </div>
-
-        {/* Sidebar Navigation */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 custom-scrollbar">
-          <nav className="flex flex-col items-center gap-5">
-            {filteredNav.map((mod) => (
-              <button
-                key={mod.id}
-                onClick={() => {
-                  setActiveModuleId(mod.id);
-                  if (mod.tabs.length > 0) {
-                    // Switch to the first tab of the module if the current tab isn't in it
-                    if (!mod.tabs.find(t => t.id === activeTab)) {
-                      setActiveTab(mod.tabs[0].id);
-                    }
-                  }
-                  if (window.innerWidth < 768 && mod.tabs.length === 1) setSidebarOpen(false);
-                }}
-                className={`w-16 h-16 flex flex-col items-center justify-center rounded-2xl transition-all duration-300 group relative ${activeModuleId === mod.id
-                  ? 'bg-blue-600 text-white shadow-[0_0_25px_rgba(37,99,235,0.4)] scale-110'
-                  : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-slate-300'
-                  }`}
-                title={mod.label}
-              >
-                <div className={`transition-transform duration-500 ${activeModuleId === mod.id ? 'scale-110' : 'group-hover:scale-110'}`}>
-                  <mod.icon size={24} strokeWidth={activeModuleId === mod.id ? 2.5 : 2} />
-                </div>
-                <span className="text-[8px] font-black uppercase tracking-widest text-center leading-none px-1 mt-1.5 opacity-80 group-hover:opacity-100">
-                  {mod.label}
-                </span>
-
-                {/* Notifications Badges for specific modules */}
-                {mod.id === 'notas' && notesCount > 0 && (
-                  <span className="absolute top-2 right-2 flex h-4 w-4">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[8px] font-black items-center justify-center shadow-lg">
-                      {notesCount}
-                    </span>
-                  </span>
-                )}
-                
-                {/* Active Indicator */}
-                {activeModuleId === mod.id && (
-                  <div className="absolute -left-3 w-1.5 h-8 bg-blue-500 dark:bg-blue-400 rounded-full shadow-[0_0_15px_rgba(96,165,250,0.8)]"></div>
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Sidebar Footer (Theme, User, Logout) */}
-        <div className="p-4 border-t border-slate-100 dark:border-white/5 flex flex-col items-center gap-6 py-10 bg-slate-50/50 dark:bg-black/20">
-
-          {/* User Profile */}
-          <UserMenu 
-            isCollapsed={true} 
-            lowPerfMode={lowPerfMode}
-            setLowPerfMode={setLowPerfMode}
-            theme={theme}
-            setTheme={setTheme}
+    <MotionConfig transition={lowPerfMode ? { duration: 0 } : undefined}>
+      <div className={`h-screen font-sans text-slate-900 dark:text-slate-100 flex bg-slate-50 dark:bg-slate-950 overflow-hidden ${lowPerfMode ? '' : 'transition-colors duration-300'}`}>
+        {/* Mobile Sidebar Overlay */}
+        {sidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300"
+            onClick={() => setSidebarOpen(false)}
           />
+        )}
 
-          {/* Logout Icon */}
-          <button
-            onClick={logout}
-            className="w-12 h-12 flex items-center justify-center rounded-2xl text-slate-400 dark:text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-all duration-300"
-            title="Cerrar Sesión"
-          >
-            <LogOut size={22} />
-          </button>
-        </div>
-      </aside>
+        {/* Sidebar */}
+        <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative z-50 w-24 h-screen bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-white/5 flex flex-col transition-transform duration-300`}>
+          <div className="p-4 flex flex-col items-center gap-10 py-10">
+            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-500/20 transform hover:rotate-12 transition-transform duration-500">
+              <ShieldCheck size={28} />
+            </div>
 
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <header className={`h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-6 z-10 ${lowPerfMode ? '' : 'transition-all duration-300'}`}>
-          <div className="flex items-center gap-8">
+            <nav className="flex flex-col gap-6">
+              {filteredNav.map(mod => (
+                <button
+                  key={mod.id}
+                  onClick={() => {
+                    setActiveModuleId(mod.id);
+                    setActiveTab(mod.defaultTab || mod.tabs[0].id);
+                    if (window.innerWidth < 768) setSidebarOpen(false);
+                  }}
+                  className={`relative w-14 h-14 flex items-center justify-center rounded-2xl transition-all duration-300 group ${
+                    activeModuleId === mod.id
+                      ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20 scale-110'
+                      : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-blue-500'
+                  }`}
+                  title={mod.label}
+                >
+                  <mod.icon size={24} />
+                  
+                  {/* Notes badge */}
+                  {mod.id === 'notas' && notesCount > 0 && (
+                    <span className="absolute top-2 right-2 flex h-4 w-4">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[8px] font-black items-center justify-center shadow-lg">
+                        {notesCount}
+                      </span>
+                    </span>
+                  )}
+                  
+                  {/* Active Indicator */}
+                  {activeModuleId === mod.id && (
+                    <div className="absolute -left-3 w-1.5 h-8 bg-blue-500 dark:bg-blue-400 rounded-full shadow-[0_0_15px_rgba(96,165,250,0.8)]"></div>
+                  )}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Sidebar Footer (Theme, User, Logout) */}
+          <div className="p-4 border-t border-slate-100 dark:border-white/5 flex flex-col items-center gap-6 py-10 bg-slate-50/50 dark:bg-black/20">
+
+            {/* User Profile */}
+            <UserMenu 
+              isCollapsed={true} 
+              lowPerfMode={lowPerfMode}
+              setLowPerfMode={setLowPerfMode}
+              theme={theme}
+              setTheme={setTheme}
+            />
+
+            {/* Logout Icon */}
             <button
-              onClick={() => setSidebarOpen(true)}
-              className={`md:hidden p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-105 active:scale-95 transition-all ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              onClick={logout}
+              className="w-12 h-12 flex items-center justify-center rounded-2xl text-slate-400 dark:text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-all duration-300"
+              title="Cerrar Sesión"
             >
-              <Menu size={24} />
+              <LogOut size={22} />
             </button>
-            
-            <div className="flex flex-col">
-              <span className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.3em] mb-1">
-                {filteredNav.find(m => m.id === activeModuleId)?.label || 'Módulo'}
-              </span>
-              <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
-                {filteredNav.find(m => m.id === activeModuleId)?.tabs.find(t => t.id === activeTab)?.label || activeTab}
-              </h1>
-            </div>
+          </div>
+        </aside>
 
-            {/* Premium Tab Selector */}
-            {filteredNav.find(m => m.id === activeModuleId)?.tabs.length > 1 && (
-              <div className="hidden md:flex items-center bg-slate-100/50 dark:bg-white/5 p-1.5 rounded-2xl ml-8 border border-slate-200/50 dark:border-white/5">
-                {filteredNav.find(m => m.id === activeModuleId).tabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all duration-300 uppercase tracking-widest ${
-                      activeTab === tab.id
-                        ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xl shadow-blue-500/10 scale-105'
-                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <header className={`h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-6 z-10 ${lowPerfMode ? '' : 'transition-all duration-300'}`}>
+            <div className="flex items-center gap-8">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className={`md:hidden p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-105 active:scale-95 transition-all ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              >
+                <Menu size={24} />
+              </button>
+              
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.3em] mb-1">
+                  {filteredNav.find(m => m.id === activeModuleId)?.label || 'Módulo'}
+                </span>
+                <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                  {filteredNav.find(m => m.id === activeModuleId)?.tabs.find(t => t.id === activeTab)?.label || activeTab}
+                </h1>
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-white/5">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Sistema Operativo</span>
-            </div>
-            <NotificationBell />
-          </div>
-        </header>
 
-        <section className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-          <div className={`mx-auto space-y-6 ${lowPerfMode ? '' : 'transition-all duration-300'} ${activeTab === 'consentimientos' ? 'max-w-full px-4' : (sidebarOpen ? 'max-w-[1220px]' : 'max-w-[1280px]')}`}>
-            <Suspense fallback={
-              <div className="flex flex-col items-center justify-center p-20 gap-4 text-slate-400 dark:text-slate-500">
-                <div className="w-8 h-8 border-4 border-blue-200 dark:border-blue-900/30 border-t-blue-600 rounded-full animate-spin"></div>
-                <p className="animate-pulse font-medium">Cargando módulo...</p>
-              </div>
-            }>
-              {activeTab === 'caja' && <CajaForm lowPerfMode={lowPerfMode} />}
-              {activeTab === 'notas' && <NotesView />}
-              {activeTab === 'historial' && <HistorialCaja />}
-              {activeTab === 'liquidaciones' && <LiquidacionView />}
-              {activeTab === 'profesionales' && <ProfesionalesView />}
-              {activeTab === 'compartir' && <AccessManager />}
-              {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
-                <OrdenesView
-                  initialTab="internacion"
-                  draftData={draftSurgery}
-                  onDraftConsumed={() => setDraftSurgery(null)}
-                  lowPerfMode={lowPerfMode}
-                />
-              )}
-              {activeTab === 'control' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
-                <OrdenesView
-                  initialTab="control"
-                  draftData={draftSurgery}
-                  onDraftConsumed={() => setDraftSurgery(null)}
-                  lowPerfMode={lowPerfMode}
-                />
-              )}
-              {activeTab === 'pacientes' && (isSuperAdmin || permissions?.can_view_ordenes) && <PacientesView lowPerfMode={lowPerfMode} />}
-              {activeTab === 'consentimientos' && (isSuperAdmin || permissions?.can_view_ordenes) && <ConsentimientosView />}
-              {activeTab === 'admin' && (isSuperAdmin || permissions?.can_view_admin) && <AdminView />}
-            </Suspense>
-          </div>
-        </section>
-
-        {/* HISTORIAL DE CAMBIOS MODAL */}
-        {showNextFeatures && (
-          <ModalPortal onClose={() => setShowNextFeatures(false)}>
-            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl w-full max-w-lg border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Historial de Cambios 📓</h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
+              {/* Premium Tab Selector */}
+              {filteredNav.find(m => m.id === activeModuleId)?.tabs.length > 1 && (
+                <div className="hidden md:flex items-center bg-slate-100/50 dark:bg-white/5 p-1.5 rounded-2xl ml-8 border border-slate-200/50 dark:border-white/5">
+                  {filteredNav.find(m => m.id === activeModuleId).tabs.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all duration-300 uppercase tracking-widest ${
+                        activeTab === tab.id
+                          ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xl shadow-blue-500/10 scale-105'
+                          : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
-                <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
-                  <Menu size={20} className="rotate-45" />
+              )}
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-white/5">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Sistema Operativo</span>
+              </div>
+              <NotificationBell />
+            </div>
+          </header>
+
+          <section className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+            <div className={`mx-auto space-y-6 ${lowPerfMode ? '' : 'transition-all duration-300'} ${activeTab === 'consentimientos' ? 'max-w-full px-4' : (sidebarOpen ? 'max-w-[1220px]' : 'max-w-[1280px]')}`}>
+              <Suspense fallback={
+                <div className="flex flex-col items-center justify-center p-20 gap-4 text-slate-400 dark:text-slate-500">
+                  <div className="w-8 h-8 border-4 border-blue-200 dark:border-blue-900/30 border-t-blue-600 rounded-full animate-spin"></div>
+                  <p className="animate-pulse font-medium">Cargando módulo...</p>
+                </div>
+              }>
+                {activeTab === 'caja' && <CajaForm lowPerfMode={lowPerfMode} />}
+                {activeTab === 'notas' && <NotesView />}
+                {activeTab === 'historial' && <HistorialCaja />}
+                {activeTab === 'liquidaciones' && <LiquidacionView />}
+                {activeTab === 'profesionales' && <ProfesionalesView />}
+                {activeTab === 'compartir' && <AccessManager />}
+                {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
+                  <OrdenesView
+                    initialTab="internacion"
+                    draftData={draftSurgery}
+                    onDraftConsumed={() => setDraftSurgery(null)}
+                    lowPerfMode={lowPerfMode}
+                  />
+                )}
+                {activeTab === 'control' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
+                  <OrdenesView
+                    initialTab="control"
+                    draftData={draftSurgery}
+                    onDraftConsumed={() => setDraftSurgery(null)}
+                    lowPerfMode={lowPerfMode}
+                  />
+                )}
+                {activeTab === 'pacientes' && (isSuperAdmin || permissions?.can_view_ordenes) && <PacientesView lowPerfMode={lowPerfMode} />}
+                {activeTab === 'consentimientos' && (isSuperAdmin || permissions?.can_view_ordenes) && <ConsentimientosView />}
+                {activeTab === 'admin' && (isSuperAdmin || permissions?.can_view_admin) && <AdminView />}
+              </Suspense>
+            </div>
+          </section>
+
+          {/* HISTORIAL DE CAMBIOS MODAL */}
+          {showNextFeatures && (
+            <ModalPortal onClose={() => setShowNextFeatures(false)}>
+              <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl w-full max-w-lg border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Historial de Cambios 📓</h3>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-1 italic">Registro de actualizaciones realizadas</p>
+                  </div>
+                  <button onClick={() => setShowNextFeatures(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar space-y-8">
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-l-2 border-slate-300 pl-3">20 de Enero, 2026</h4>
+                    <ul className="space-y-3">
+                      <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                        <div>
+                          <strong className="text-slate-900 dark:text-white">URL Corta:</strong>
+                          <p className="text-xs opacity-70">Migración al nuevo dominio corto: cxcoat.pages.dev.</p>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-l-2 border-slate-300 pl-3">18 de Enero, 2026</h4>
+                    <ul className="space-y-3">
+                      <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                        <div>
+                          <strong className="text-slate-900 dark:text-white">Sistema de Fechas Seguro:</strong>
+                          <p className="text-xs opacity-70">Implementación de escudos contra errores de renderizado por fechas inválidas.</p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                        <div>
+                          <strong className="text-slate-900 dark:text-white">Deducciones Detalladas:</strong>
+                          <p className="text-xs opacity-70">Añadida fecha individual a cada ítem de "Agregar Detalle".</p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                        <div>
+                          <strong className="text-slate-900 dark:text-white">Liquidación Multi-profesional:</strong>
+                          <p className="text-xs opacity-70">Nueva funcionalidad para dividir honorarios manuales entre múltiples médicos.</p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                        <div>
+                          <strong className="text-slate-900 dark:text-white">Recibos Dinámicos:</strong>
+                          <p className="text-xs opacity-70">La fecha del recibo ahora coincide con el periodo de liquidación seleccionado.</p>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowNextFeatures(false)}
+                  className="w-full mt-8 py-4 bg-slate-900 dark:bg-blue-600 text-white font-black rounded-2xl hover:opacity-90 transition-opacity uppercase text-xs tracking-widest shadow-md shadow-slate-200 dark:shadow-none"
+                >
+                  Cerrar Registro
                 </button>
               </div>
-
-              <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                <div className="space-y-3">
-                  <h4 className="text-xs font-black text-blue-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">19 de Enero, 2026</h4>
-                  <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                      <div>
-                        <strong className="text-slate-900 dark:text-white">Compatibilidad W7:</strong>
-                        <p className="text-xs opacity-70">Añadidos fallbacks de colores y estilos para soportar Chrome 109 y navegadores antiguos.</p>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                      <div>
-                        <strong className="text-slate-900 dark:text-white">Diseño Responsivo:</strong>
-                        <p className="text-xs opacity-70">Menú de botones adaptativo en Liquidaciones y mejoras de visualización en móviles.</p>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                      <div>
-                        <strong className="text-slate-900 dark:text-white">URL Corta:</strong>
-                        <p className="text-xs opacity-70">Migración al nuevo dominio corto: cajacx.web.app.</p>
-                      </div>
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-l-2 border-slate-300 pl-3">18 de Enero, 2026</h4>
-                  <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                      <div>
-                        <strong className="text-slate-900 dark:text-white">Sistema de Fechas Seguro:</strong>
-                        <p className="text-xs opacity-70">Implementación de escudos contra errores de renderizado por fechas inválidas.</p>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                      <div>
-                        <strong className="text-slate-900 dark:text-white">Deducciones Detalladas:</strong>
-                        <p className="text-xs opacity-70">Añadida fecha individual a cada ítem de "Agregar Detalle".</p>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                      <div>
-                        <strong className="text-slate-900 dark:text-white">Liquidación Multi-profesional:</strong>
-                        <p className="text-xs opacity-70">Nueva funcionalidad para dividir honorarios manuales entre múltiples médicos.</p>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                      <div>
-                        <strong className="text-slate-900 dark:text-white">Recibos Dinámicos:</strong>
-                        <p className="text-xs opacity-70">La fecha del recibo ahora coincide con el periodo de liquidación seleccionado.</p>
-                      </div>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowNextFeatures(false)}
-                className="w-full mt-8 py-4 bg-slate-900 dark:bg-blue-600 text-white font-black rounded-2xl hover:opacity-90 transition-opacity uppercase text-xs tracking-widest shadow-md shadow-slate-200 dark:shadow-none"
-              >
-                Cerrar Registro
-              </button>
-            </div>
-          </ModalPortal>
+            </ModalPortal>
         )}
       </main>
     </div>
+    </MotionConfig>
   );
 }
 
