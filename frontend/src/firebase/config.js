@@ -19,4 +19,4 @@ export const storage = getStorage(app);
 export const USE_LOCAL_DB = false;
 export const LOCAL_API_URL = 'http://localhost:5000';
 export const isLocalEnv = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-export const isTestEnv = typeof window !== 'undefined' && window.location.hostname === 'cajacx.web.app';
+export const isTestEnv = typeof window !== 'undefined' && window.location.hostname.includes('test');

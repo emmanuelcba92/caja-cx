@@ -2,12 +2,20 @@ import { db, USE_LOCAL_DB, LOCAL_API_URL, isLocalEnv } from '../firebase/config'
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc } from 'firebase/firestore';
 
 const sanitizeData = (data) => {
+    // If it's not an object or it's null, return as is
     if (data === null || typeof data !== 'object') return data;
     
+    // Handle Date objects explicitly
+    if (data instanceof Date) return data;
+
     // Handle arrays
     if (Array.isArray(data)) {
         return data.map(item => sanitizeData(item));
     }
+
+    // Only recurse into plain objects
+    // (This check helps avoid recursing into Firestore Timestamps, Blobs, etc. if they were passed)
+    if (data.constructor !== Object) return data;
 
     const sanitized = {};
     Object.keys(data).forEach(key => {
