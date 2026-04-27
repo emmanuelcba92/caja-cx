@@ -271,14 +271,19 @@ function AuthenticatedApp() {
                     setActiveTab(mod.defaultTab || mod.tabs[0].id);
                     if (window.innerWidth < 768) setSidebarOpen(false);
                   }}
-                  className={`relative w-14 h-14 flex items-center justify-center rounded-2xl transition-all duration-300 group ${
+                  className={`relative w-16 h-16 flex items-center justify-center rounded-2xl transition-all duration-300 group ${
                     activeModuleId === mod.id
                       ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20 scale-110'
                       : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-blue-500'
                   }`}
                   title={mod.label}
                 >
-                  <mod.icon size={24} />
+                  <div className="flex flex-col items-center gap-1">
+                    <mod.icon size={22} />
+                    <span className="text-[9px] font-black uppercase tracking-tighter opacity-80 group-hover:opacity-100 transition-opacity">
+                      {mod.label}
+                    </span>
+                  </div>
                   
                   {/* Notes badge */}
                   {mod.id === 'notas' && notesCount > 0 && (
