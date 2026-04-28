@@ -793,45 +793,47 @@ const CajaForm = ({ lowPerfMode = false }) => {
                                                 const colors = n === 1 ? 'blue' : n === 2 ? 'indigo' : 'teal';
 
                                                 return (
-                                                    <div key={n} className={`p-3 rounded-[1.2rem] border transition-all duration-300 flex flex-col md:flex-row gap-3 items-end ${n === 1 ? 'bg-blue-50/30 dark:bg-blue-500/5 border-blue-100 dark:border-blue-900/30' : n === 2 ? 'bg-indigo-50/30 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-900/30' : 'bg-teal-50/30 dark:bg-teal-500/5 border-teal-100 dark:border-teal-900/30'}`}>
-                                                        <div className="flex-1 w-full space-y-2">
-                                                            <label className={`text-[9px] font-black text-${colors}-500/70 uppercase tracking-widest ml-1`}>Médico {n}</label>
-                                                            <select
-                                                                className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-sm"
-                                                                value={entry[profKey]}
-                                                                onChange={(e) => updateEntry(entry.id, profKey, e.target.value)}
-                                                            >
-                                                                <option value="">Seleccionar profesional...</option>
-                                                                {profesionales.filter(p => p.categoria !== 'Anestesista').map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                                            </select>
-                                                        </div>
-                                                        <div className="w-24 space-y-2">
-                                                            <label className="text-center block text-[9px] font-black text-slate-400 uppercase tracking-widest">%</label>
-                                                            <input
-                                                                type="number"
-                                                                className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-center font-black text-blue-600 dark:text-blue-400 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-sm"
-                                                                value={entry[pctKey]}
-                                                                onFocus={(e) => e.target.select()}
-                                                                onChange={(e) => updateEntry(entry.id, pctKey, parseFloat(e.target.value) || 0)}
-                                                            />
-                                                        </div>
-                                                        <div className="w-full md:w-40 space-y-2">
-                                                            <div className="flex items-center justify-between px-1">
-                                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Liquidación</label>
-                                                                <button onClick={() => updateEntry(entry.id, showSecKey, !entry[showSecKey])} className="text-[10px] text-blue-500 font-black"><Plus size={14} /></button>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border-none rounded-2xl p-1.5 shadow-sm focus-within:ring-4 focus-within:ring-blue-500/10 transition-all">
-                                                                <button
-                                                                    onClick={() => toggleCurrency(entry.id, currKey)}
-                                                                    className="px-3 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                                                    <div key={n} className={`p-3 rounded-[1.2rem] border transition-all duration-300 ${n === 1 ? 'bg-blue-50/30 dark:bg-blue-500/5 border-blue-100 dark:border-blue-900/30' : n === 2 ? 'bg-indigo-50/30 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-900/30' : 'bg-teal-50/30 dark:bg-teal-500/5 border-teal-100 dark:border-teal-900/30'}`}>
+                                                        <div className="grid grid-cols-12 gap-3 items-end">
+                                                            <div className="col-span-12 md:col-span-6 space-y-2">
+                                                                <label className={`text-[9px] font-black text-${colors}-500/70 uppercase tracking-widest ml-1`}>Médico {n}</label>
+                                                                <select
+                                                                    className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-sm"
+                                                                    value={entry[profKey]}
+                                                                    onChange={(e) => updateEntry(entry.id, profKey, e.target.value)}
                                                                 >
-                                                                    {entry[currKey]}
-                                                                </button>
-                                                                <MoneyInput
-                                                                    className="flex-1 bg-transparent border-none text-sm font-black text-slate-800 dark:text-slate-100 outline-none tabular-nums text-right pr-2"
-                                                                    value={entry[liqKey]}
-                                                                    onChange={(val) => updateEntry(entry.id, liqKey, val)}
+                                                                    <option value="">Seleccionar profesional...</option>
+                                                                    {profesionales.filter(p => p.categoria !== 'Anestesista').map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                                                                </select>
+                                                            </div>
+                                                            <div className="col-span-4 md:col-span-2 space-y-2">
+                                                                <label className="text-center block text-[9px] font-black text-slate-400 uppercase tracking-widest">%</label>
+                                                                <input
+                                                                    type="number"
+                                                                    className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-2 py-3 text-center font-black text-blue-600 dark:text-blue-400 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-sm"
+                                                                    value={entry[pctKey]}
+                                                                    onFocus={(e) => e.target.select()}
+                                                                    onChange={(e) => updateEntry(entry.id, pctKey, parseFloat(e.target.value) || 0)}
                                                                 />
+                                                            </div>
+                                                            <div className="col-span-8 md:col-span-4 space-y-2">
+                                                                <div className="flex items-center justify-between px-1">
+                                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Liquidación</label>
+                                                                    <button onClick={() => updateEntry(entry.id, showSecKey, !entry[showSecKey])} className="text-[10px] text-blue-500 font-black"><Plus size={14} /></button>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-2xl p-1.5 shadow-sm border border-slate-100 dark:border-slate-800 focus-within:ring-4 focus-within:ring-blue-500/10 transition-all overflow-hidden">
+                                                                    <button
+                                                                        onClick={() => toggleCurrency(entry.id, currKey)}
+                                                                        className="px-2 py-1.5 bg-blue-600 text-white rounded-lg text-[9px] font-black shadow-lg shadow-blue-500/20 active:scale-95 transition-all shrink-0"
+                                                                    >
+                                                                        {entry[currKey]}
+                                                                    </button>
+                                                                    <MoneyInput
+                                                                        className="w-full min-w-0 bg-transparent border-none text-sm font-black text-slate-800 dark:text-slate-100 outline-none tabular-nums text-right pr-2"
+                                                                        value={entry[liqKey]}
+                                                                        onChange={(val) => updateEntry(entry.id, liqKey, val)}
+                                                                    />
+                                                                </div>
                                                             </div>
                                                         </div>
 

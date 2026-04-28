@@ -1706,7 +1706,7 @@ const LiquidacionView = () => {
                                     </tbody>
                                     <tfoot>
                                         <tr className="bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800">
-                                            <td colSpan={modelo === 1 ? 4 : 2} className="px-8 py-5 text-right font-bold uppercase tracking-widest text-xs opacity-50">Subtotal</td>
+                                            <td colSpan={modelo === 1 ? 5 : 3} className="px-8 py-5 text-right font-bold uppercase tracking-widest text-xs opacity-50">Subtotal</td>
                                             <td className="px-8 py-5 text-right font-bold text-lg tabular-nums text-slate-500 dark:text-slate-400">
                                                 <div className="flex flex-col items-end gap-1">
                                                     {(data.totales.liq_pesos !== 0 || data.totales.liq_dolares === 0) && <span>${formatMoney(data.totales.liq_pesos)}</span>}
@@ -1717,13 +1717,13 @@ const LiquidacionView = () => {
                                         {deductions.map((d, i) => (
                                             <tr key={i} className="bg-red-50/50 dark:bg-red-900/10">
                                                 <td className="px-8 py-3 text-slate-400 dark:text-slate-500 tabular-nums">{formatDate(d.date)}</td>
-                                                <td colSpan={modelo === 1 ? 3 : 1} className="px-8 py-3 text-right font-medium italic text-red-800 dark:text-red-400">{d.desc}</td>
+                                                <td colSpan={modelo === 1 ? 4 : 2} className="px-8 py-3 text-right font-medium italic text-red-800 dark:text-red-400">{d.desc}</td>
                                                 <td className="px-8 py-3 text-right font-bold text-red-600 dark:text-red-400">-{d.currency === 'USD' ? 'U$D' : '$'}{formatMoney(d.amount)}</td>
                                             </tr>
                                         ))}
 
                                         <tr className="bg-slate-900 dark:bg-black text-white">
-                                            <td colSpan={modelo === 1 ? 4 : 2} className="px-8 py-5 text-right font-bold uppercase tracking-widest text-xs opacity-50 text-slate-400">Total Final</td>
+                                            <td colSpan={modelo === 1 ? 5 : 3} className="px-8 py-5 text-right font-bold uppercase tracking-widest text-xs opacity-50 text-slate-400">Total Final</td>
                                             <td className="px-8 py-5 text-right font-black text-lg tabular-nums">
                                                 <div className="flex flex-col items-end gap-1">
                                                     {(finalTotalPesos !== 0 || finalTotalDolares === 0) && <span>${formatMoney(finalTotalPesos)}</span>}
