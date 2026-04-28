@@ -583,7 +583,7 @@ const CajaForm = ({ lowPerfMode = false }) => {
                         <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] shadow-lg shadow-blue-500/20 flex items-center justify-center text-white flex-shrink-0">
                             <LayoutDashboard size={32} />
                         </div>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                        <div className="flex flex-col md:flex-row md:items-baseline gap-2 md:gap-4">
                             <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tighter uppercase leading-none">Caja de Cirugía</h2>
                             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm transition-all hover:border-blue-500/30">
                                 <Calendar size={14} className="text-blue-500 dark:text-blue-400" />

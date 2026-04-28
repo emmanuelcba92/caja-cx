@@ -470,19 +470,45 @@ const HistorialCaja = () => {
                         .font-medium { font-weight: 500; }
                         
                         .flex { display: flex; }
-                        .items-start { align-items: flex-start; }
+                        .flex-col { flex-direction: column; }
+                        .items-center { align-items: center; }
+                        .items-baseline { align-items: baseline; }
+                        .justify-between { justify-content: space-between; }
+                        .gap-4 { gap: 1rem; }
                         .gap-8 { gap: 2rem; }
-                        .mb-4 { margin-bottom: 1rem; }
-                        .mb-3 { margin-bottom: 0.75rem; }
                         
+                        .text-3xl { font-size: 1.875rem; }
+                        .text-2xl { font-size: 1.5rem; }
+                        .text-xl { font-size: 1.25rem; }
                         .text-sm { font-size: 12px; }
                         .text-xs { font-size: 10px; }
                         .text-\\[10px\\] { font-size: 10px; }
-                        .text-\\[9px\\] { font-size: 9px; }
                         
-                        .text-gray-500 { color: #6B7280; }
-                        .text-gray-600 { color: #4B5563; }
+                        .font-black { font-weight: 900; }
+                        .font-bold { font-weight: 700; }
+                        .uppercase { text-transform: uppercase; }
+                        .tracking-tighter { letter-spacing: -0.05em; }
+                        .tracking-tight { letter-spacing: -0.025em; }
+                        
+                        .text-slate-500 { color: #64748b; }
+                        .text-gray-400 { color: #9CA3AF; }
+                        .text-gray-700 { color: #374151; }
+                        .bg-gray-50 { background-color: #F9FAFB; }
                         .bg-gray-100 { background-color: #F3F4F6; }
+                        
+                        .border { border: 1px solid #E5E7EB; }
+                        .border-b-4 { border-bottom: 4px solid black; }
+                        .border-gray-200 { border-color: #E5E7EB; }
+                        
+                        .p-6 { padding: 1.5rem; }
+                        .pb-6 { padding-bottom: 1.5rem; }
+                        .mb-1 { margin-bottom: 0.25rem; }
+                        .mb-8 { margin-bottom: 2rem; }
+                        .m-0 { margin: 0; }
+                        
+                        .rounded-2xl { border-radius: 1rem; }
+                        .italic { font-style: italic; }
+                        .leading-relaxed { line-height: 1.625; }
                         
                         p { margin: 0; }
                         img { height: 56px; object-fit: contain; }
@@ -840,12 +866,11 @@ const HistorialCaja = () => {
             <div id="print-content" className="hidden print:block p-12 bg-white text-black font-sans">
                 {/* Print content remains functionally identical but with slightly cleaner styles */}
                 <div className="flex justify-between items-end border-b-4 border-black pb-6 mb-8">
-                    <div>
-                        <img src="/coat_logo.png" alt="COAT" className="h-14 mb-4" />
-                        <div className="flex items-center gap-4">
-                            <h1 className="text-2xl font-black uppercase tracking-tighter">Caja de Cirugía</h1>
-                            <span className="text-2xl font-light text-gray-400">|</span>
-                            <span className="text-2xl font-black text-slate-700">
+                    <div className="flex items-center gap-8">
+                        <img src="/coat_logo.png" alt="COAT" className="h-14" />
+                        <div className="flex items-baseline gap-4">
+                            <h1 className="text-2xl font-black uppercase tracking-tighter m-0">Caja de Cirugía</h1>
+                            <span className="text-xl font-bold text-slate-500 tracking-tight">
                                 {selectedDate ? selectedDate.split('-').reverse().join('/') : ''}
                             </span>
                         </div>
