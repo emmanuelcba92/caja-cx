@@ -261,14 +261,13 @@ const CajaForm = ({ lowPerfMode = false }) => {
                 checkSub(updated.liq_prof_1, updated.liq_prof_1_currency);
                 checkSub(updated.liq_prof_2, updated.liq_prof_2_currency);
                 checkSub(updated.liq_prof_3, updated.liq_prof_3_currency);
-                // Anesthesiologist is now "out" of the COAT balance calculation per user request
-                // checkSub(updated.liq_anestesista, updated.liq_anestesista_currency);
+                checkSub(updated.liq_anestesista, updated.liq_anestesista_currency);
 
                 // Check Secondaries
                 if (updated.showSecondary_1) checkSub(updated.liq_prof_1_secondary, updated.liq_prof_1_currency_secondary);
                 if (updated.showSecondary_2) checkSub(updated.liq_prof_2_secondary, updated.liq_prof_2_currency_secondary);
                 if (updated.showSecondary_3) checkSub(updated.liq_prof_3_secondary, updated.liq_prof_3_currency_secondary);
-                // if (updated.showSecondaryAnes) checkSub(updated.liq_anestesista_secondary, updated.liq_anestesista_currency_secondary);
+                if (updated.showSecondaryAnes) checkSub(updated.liq_anestesista_secondary, updated.liq_anestesista_currency_secondary);
 
                 updated.coat_pesos = (updated.pesos || 0) - totalSubPesos;
                 updated.coat_dolares = (updated.dolares || 0) - totalSubUSD;
@@ -1102,9 +1101,17 @@ const CajaForm = ({ lowPerfMode = false }) => {
                                             </div>
                                         )}
                                     </div>
-
-                                    <div className="flex items-center gap-4 justify-between lg:justify-end shrink-0 pl-4 lg:pl-0 border-l border-slate-100 dark:border-slate-800">
+                                    
+                                    <div className="flex items-center gap-6 justify-end shrink-0 px-4 border-l border-slate-100 dark:border-slate-800">
                                         <div className="text-right">
+                                            <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-1">COAT</p>
+                                            <div className="flex items-center gap-3 font-mono">
+                                                {(item.coat_pesos !== 0 || item.coat_dolares === 0) && <span className="text-sm font-black text-slate-500 dark:text-slate-400">${(item.coat_pesos || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>}
+                                                {item.coat_dolares > 0 && <span className="text-sm font-black text-blue-500/70">U$D {(item.coat_dolares || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>}
+                                            </div>
+                                        </div>
+
+                                        <div className="text-right border-l border-slate-100 dark:border-slate-800 pl-6">
                                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Cobro Total</p>
                                             <div className="flex items-center gap-3 font-mono">
                                                 {item.pesos > 0 && <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">${item.pesos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>}
