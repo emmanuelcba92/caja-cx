@@ -1940,6 +1940,37 @@ const OrdenesView = (props) => {
             );
         }
 
+        // Helper for professional header/footer (Informes COAT style)
+        const renderProfessionalHeader = () => (
+            <div className="border-b border-slate-300 pb-2 mb-8">
+                <div className="flex items-center gap-4 h-16">
+                    <img 
+                        src="/coat_logo.png" 
+                        alt="COAT" 
+                        className="h-14 w-auto object-contain shrink-0" 
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <div className="flex-1 flex flex-col items-center pr-16">
+                        <span className="text-[12pt] font-black text-slate-900 tracking-tight leading-tight">
+                            CENTRO OTOAUDIOLÓGICO DE ALTA TECNOLOGÍA
+                        </span>
+                        <span className="text-[9pt] font-medium text-slate-700 tracking-[0.15em] uppercase mt-0.5">
+                            NARIZ • GARGANTA • OÍDO
+                        </span>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const renderProfessionalFooter = () => (
+            <div className="absolute bottom-10 left-16 right-16">
+                <div className="border-t-2 border-[#1e3a8a] pt-3 flex flex-col items-center text-[8pt] text-slate-500 font-medium">
+                    <p>Urquiza 401 - Alberdi • Córdoba • Tel: (0351) 423-0530 / 423-9428 • WhatsApp: 3543579794</p>
+                    <p>Email: info@coat.com.ar • Web: www.coat.com.ar</p>
+                </div>
+            </div>
+        );
+
         // Handle Pedido Médico
         if (type === 'pedido') {
             return (
@@ -1953,11 +1984,11 @@ const OrdenesView = (props) => {
                      }}>
 
                     {/* Header: Logo and Date */}
-                    <div className="mb-12 text-center flex justify-between items-center px-4">
+                    <div className="mb-8 flex justify-between items-center">
                         <img
                             src="/coat_logo.png"
                             alt="COAT"
-                            className="h-20 object-contain"
+                            className="h-16 object-contain"
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
                         <p className="text-[11pt]" style={{ color: '#000' }}>
@@ -2022,17 +2053,27 @@ const OrdenesView = (props) => {
                     fontFamily: 'Arial, sans-serif',
                     position: 'relative'
                 }}>
-                <div className="mb-4">
-                    <img
-                        src="/coat_logo.png"
-                        alt="COAT"
-                        className="h-16 object-contain"
-                        onError={(e) => { e.target.style.display = 'none'; }}
-                    />
-                    <p className="text-[11pt] text-right -mt-4" style={{ color: '#000' }}>
-                        Córdoba, {formatLongDate(previewData.fechaDocumento)}
-                    </p>
-                </div>
+                
+                {isInternacion ? (
+                    <>
+                        {renderProfessionalHeader()}
+                        <p className="text-[11pt] text-right mb-4" style={{ color: '#000' }}>
+                            Córdoba, {formatLongDate(previewData.fechaDocumento)}
+                        </p>
+                    </>
+                ) : (
+                    <div className="mb-4">
+                        <img
+                            src="/coat_logo.png"
+                            alt="COAT"
+                            className="h-16 object-contain"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        <p className="text-[11pt] text-right -mt-4" style={{ color: '#000' }}>
+                            Córdoba, {formatLongDate(previewData.fechaDocumento)}
+                        </p>
+                    </div>
+                )}
 
                 <h1 className="text-center text-[12pt] font-bold mb-10 tracking-wide uppercase" style={{ color: '#000' }}>
                     {title}
@@ -2068,7 +2109,7 @@ const OrdenesView = (props) => {
                 </div>
 
                 {/* Footer: Signature at bottom right */}
-                <div className="absolute bottom-24 right-16 text-center">
+                <div className="absolute bottom-36 right-16 text-center">
                     <div className="flex flex-col items-center">
                         <img
                             src={getSignatureUrl(previewData.profesional)}
@@ -2086,6 +2127,8 @@ const OrdenesView = (props) => {
                         </div>
                     </div>
                 </div>
+
+                {isInternacion && renderProfessionalFooter()}
             </div>
         );
     };
@@ -2789,7 +2832,7 @@ const OrdenesView = (props) => {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-4 bg-slate-100/50 dark:bg-black/20 p-2 rounded-[1.5rem] border border-slate-200/50 dark:border-slate-800/50">
+                        <div className="flex-1 flex items-center gap-4 bg-slate-100/50 dark:bg-black/20 p-2 rounded-[1.5rem] border border-slate-200/50 dark:border-slate-800/50 mx-4 overflow-x-auto custom-scrollbar-horizontal">
                             {previewType !== 'reporte_semanal' && (() => {
                                 const hasSurgeryCodes = previewData.codigosCirugia?.some(c => (c.codigo && String(c.codigo).trim() !== '') || (c.nombre && String(c.nombre).trim() !== ''));
                                 const hasPractices = previewData.practicas?.some(p => p && String(p).trim() !== '');
@@ -2798,32 +2841,31 @@ const OrdenesView = (props) => {
                                 const isMaterialDoc = previewData.incluyeMaterial && previewData.descripcionMaterial;
 
                                 return (
-                                    <div className="flex items-center gap-1">
-                                        <button onClick={() => { setPreviewType(isPedidoDoc ? 'pedido' : 'internacion'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${!selectedConsent && (previewType === 'internacion' || previewType === 'pedido') ? 'bg-white dark:bg-slate-800 text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{isInternacionDoc ? 'Internación' : 'Pedido'}</button>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button onClick={() => { setPreviewType(isPedidoDoc ? 'pedido' : 'internacion'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${!selectedConsent && (previewType === 'internacion' || previewType === 'pedido') ? 'bg-white dark:bg-slate-800 text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{isInternacionDoc ? 'Internación' : 'Pedido'}</button>
                                         {isInternacionDoc && isMaterialDoc && (
                                             <>
-                                                <button onClick={() => { setPreviewType('material'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${!selectedConsent && previewType === 'material' ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Material</button>
-                                                <button onClick={() => { setPreviewType('ambas'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${!selectedConsent && previewType === 'ambas' ? 'bg-white dark:bg-slate-800 text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Ambas (2 pág.)</button>
+                                                <button onClick={() => { setPreviewType('material'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${!selectedConsent && previewType === 'material' ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Material</button>
+                                                <button onClick={() => { setPreviewType('ambas'); setSelectedConsent(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${!selectedConsent && previewType === 'ambas' ? 'bg-white dark:bg-slate-800 text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Ambas</button>
                                             </>
                                         )}
-                                        <button onClick={() => setSelectedConsent('caratula')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedConsent === 'caratula' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Carátula</button>
-                                        <button onClick={() => setSelectedConsent('generico')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedConsent === 'generico' ? 'bg-white dark:bg-slate-800 text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Genérico</button>
+                                        <button onClick={() => setSelectedConsent('caratula')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${selectedConsent === 'caratula' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Carátula</button>
+                                        <button onClick={() => setSelectedConsent('generico')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${selectedConsent === 'generico' ? 'bg-white dark:bg-slate-800 text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Genérico</button>
                                         
                                         {(() => {
                                             const applicableConsents = getApplicableConsents(previewData);
                                             if (applicableConsents.length === 0) return null;
 
                                             return (
-                                                <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-200 dark:border-slate-800">
-                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">CONSENTIMIENTOS:</span>
+                                                <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-200 dark:border-slate-800 shrink-0">
+                                                    <span className="hidden lg:block text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">CONSENTIMIENTOS:</span>
                                                     {applicableConsents.map((consent, idx) => {
-                                                        // Extract the effective code (might be a combo or the 6-digit one)
                                                         const effectiveCode = consent.code || (consent.codigos ? consent.codigos.join('+') : null);
                                                         if (!effectiveCode) return null;
 
                                                         return (
-                                                            <div key={idx} className="flex items-center gap-1 bg-slate-100 dark:bg-black/30 p-1 rounded-xl border border-slate-200 dark:border-slate-800/50">
-                                                                <span className="text-[9px] font-black text-slate-500 px-2 uppercase truncate max-w-[150px]" title={consent.nombre}>
+                                                            <div key={idx} className="flex items-center gap-1 bg-slate-100 dark:bg-black/30 p-1 rounded-xl border border-slate-200 dark:border-slate-800/50 shrink-0">
+                                                                <span className="text-[9px] font-black text-slate-500 px-2 uppercase truncate max-w-[120px]" title={consent.nombre}>
                                                                     {consent.nombre}
                                                                 </span>
                                                                 <button 
@@ -2832,7 +2874,7 @@ const OrdenesView = (props) => {
                                                                         if (url) window.open(url, '_blank');
                                                                         else alert('PDF no disponible');
                                                                     }} 
-                                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all bg-white dark:bg-slate-800 text-slate-400 hover:bg-blue-600 hover:text-white shadow-sm`}
+                                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all bg-white dark:bg-slate-800 text-slate-400 hover:bg-blue-600 hover:text-white shadow-sm whitespace-nowrap`}
                                                                 >
                                                                     Adulto
                                                                 </button>
@@ -2842,7 +2884,7 @@ const OrdenesView = (props) => {
                                                                         if (url) window.open(url, '_blank');
                                                                         else alert('PDF no disponible');
                                                                     }} 
-                                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all bg-white dark:bg-slate-800 text-slate-400 hover:bg-pink-600 hover:text-white shadow-sm`}
+                                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all bg-white dark:bg-slate-800 text-slate-400 hover:bg-pink-600 hover:text-white shadow-sm whitespace-nowrap`}
                                                                 >
                                                                     Menor
                                                                 </button>

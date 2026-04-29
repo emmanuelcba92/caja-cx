@@ -69,7 +69,7 @@ const ProfesionalesView = () => {
             @page { size: landscape; margin: 5mm; }
             .no-print { display: none !important; }
             #root { display: none !important; }
-            .print-portal-matrix { display: block !important; position: absolute; top: 0; left: 0; width: 100%; background: white !important; }
+            .print-portal-matrix { display: block !important; position: absolute; top: 0; left: 0; width: 100%; background: white !important; color: black !important; }
             body { background: white !important; color: black !important; }
         }
     `;
@@ -578,16 +578,16 @@ const ProfesionalesView = () => {
                                     )}
                                 </div>
                                 
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                                <div className="flex items-center gap-1 transition-all">
                                     {(isSuperAdmin || isAdmin) && !isReadOnly && (
-                                        <button onClick={() => handleEditClick(prof)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-all">
-                                            <Edit3 size={16} />
-                                        </button>
-                                    )}
-                                    {isAdmin && !isReadOnly && (
-                                        <button onClick={() => handleDelete(prof.id, prof.nombre)} className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all">
-                                            <Trash2 size={16} />
-                                        </button>
+                                        <>
+                                            <button onClick={() => handleEditClick(prof)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-all">
+                                                <Edit3 size={16} />
+                                            </button>
+                                            <button onClick={() => handleDelete(prof.id, prof.nombre)} className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -701,7 +701,7 @@ const ProfesionalesView = () => {
             </AnimatePresence>
 
             {showMatrixModal && matrixData && createPortal(
-                <div className="fixed inset-0 bg-white z-[100] overflow-auto print-portal-matrix force-light-preview">
+                <div className="fixed inset-0 bg-white text-slate-900 z-[100] overflow-auto print-portal-matrix force-light-preview">
                     <style>{printStyle}</style>
                     <div className="p-8 print:p-0">
                         <div className="flex justify-between items-center mb-8 no-print border-b pb-4">

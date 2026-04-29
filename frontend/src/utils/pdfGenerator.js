@@ -54,28 +54,60 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
             ? (isEstudio ? 'PEDIDO DE ESTUDIO BAJO ANESTESIA' : 'ORDEN DE INTERNACIÓN')
             : 'ORDEN DE PEDIDO DE MATERIAL';
 
-        // 1. Header: Logo
-        try {
-            const logoData = await optimizeImage('/coat_logo.png', 400);
-            if (logoData) {
-                targetDoc.addImage(logoData.data, 'PNG', 15, 12, 35, 35 / logoData.ratio, undefined, 'FAST');
-            }
-        } catch (e) {}
+        // 1. Header: Logo and Clinic Info
+        if (isInternacionPage) {
+            try {
+                const logoData = await optimizeImage('/coat_logo.png', 400);
+                if (logoData) {
+                    targetDoc.addImage(logoData.data, 'PNG', 15, 12, 20, 20 / logoData.ratio, undefined, 'FAST');
+                }
+            } catch (e) {}
 
-        // 2. Date at top right
-        targetDoc.setFontSize(11);
-        targetDoc.setFont("helvetica", "normal");
-        targetDoc.setTextColor(0);
-        const dateStr = `Córdoba, ${formatLongDate(previewData.fechaDocumento)}`;
-        targetDoc.text(dateStr, pageWidth - 15, 20, { align: 'right' });
+            targetDoc.setTextColor(0);
+            targetDoc.setFontSize(13);
+            targetDoc.setFont("helvetica", "bold");
+            targetDoc.text("CENTRO OTOAUDIOLÓGICO DE ALTA TECNOLOGÍA", centerX, 22, { align: 'center' });
+            
+            targetDoc.setFontSize(9);
+            targetDoc.setFont("helvetica", "normal");
+            targetDoc.text("NARIZ • GARGANTA • OÍDO", centerX, 28, { align: 'center' });
 
-        // 3. Title
-        targetDoc.setFontSize(14);
-        targetDoc.setFont("helvetica", "bold");
-        targetDoc.text(title, centerX, 55, { align: 'center' });
+            targetDoc.setLineWidth(0.2);
+            targetDoc.setDrawColor(200);
+            targetDoc.line(15, 33, pageWidth - 15, 33);
+
+            // Date
+            targetDoc.setFontSize(11);
+            targetDoc.setFont("helvetica", "normal");
+            const dateStr = `Córdoba, ${formatLongDate(previewData.fechaDocumento)}`;
+            targetDoc.text(dateStr, pageWidth - 15, 45, { align: 'right' });
+
+            // Title Positioning
+            targetDoc.setFontSize(14);
+            targetDoc.setFont("helvetica", "bold");
+            targetDoc.text(title, centerX, 60, { align: 'center' });
+            
+        } else {
+            try {
+                const logoData = await optimizeImage('/coat_logo.png', 400);
+                if (logoData) {
+                    targetDoc.addImage(logoData.data, 'PNG', 15, 12, 30, 30 / logoData.ratio, undefined, 'FAST');
+                }
+            } catch (e) {}
+
+            targetDoc.setFontSize(11);
+            targetDoc.setFont("helvetica", "normal");
+            targetDoc.setTextColor(0);
+            const dateStr = `Córdoba, ${formatLongDate(previewData.fechaDocumento)}`;
+            targetDoc.text(dateStr, pageWidth - 15, 20, { align: 'right' });
+
+            targetDoc.setFontSize(14);
+            targetDoc.setFont("helvetica", "bold");
+            targetDoc.text(title, centerX, 55, { align: 'center' });
+        }
 
         // 4. Patient Info
-        let y = 70;
+        let y = isInternacionPage ? 75 : 70;
         targetDoc.setFontSize(11);
         targetDoc.setFont("helvetica", "normal");
         
@@ -142,7 +174,7 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
 
         // 7. Signature Area
         const sigX = pageWidth - 60;
-        const sigY = pageHeight - 50;
+        const sigY = pageHeight - 65;
         
         const profName = previewData.profesional;
         const signatureUrl = previewData.firmaUrl;
@@ -151,7 +183,6 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
             try {
                 const sigData = await optimizeImage(signatureUrl, 400);
                 if (sigData) {
-                    // Reduce size to 35mm and adjust Y to be slightly higher if needed
                     targetDoc.addImage(sigData.data, 'PNG', sigX - 7, sigY - 28, 35, 35 / sigData.ratio, undefined, 'FAST');
                 }
             } catch (e) {
@@ -173,7 +204,25 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
             if (profData.me) matLine += ` - ME ${profData.me}`;
             targetDoc.text(matLine, sigX + 10, sigY + 8, { align: 'center' });
         }
+
+        // 8. Footer for Internacion
+        if (isInternacionPage) {
+            targetDoc.setDrawColor(30, 58, 138); // Navy blue #1e3a8a
+            targetDoc.setLineWidth(0.5);
+            targetDoc.line(15, pageHeight - 20, pageWidth - 15, pageHeight - 20);
+
+            targetDoc.setFontSize(8);
+            targetDoc.setFont("helvetica", "normal");
+            targetDoc.setTextColor(100);
+            
+            const line1 = "Urquiza 401 - Alberdi • Córdoba • Tel: (0351) 423-0530 / 423-9428 • WhatsApp: 3543579794";
+            const line2 = "Email: info@coat.com.ar • Web: www.coat.com.ar";
+            
+            targetDoc.text(line1, centerX, pageHeight - 15, { align: 'center' });
+            targetDoc.text(line2, centerX, pageHeight - 10, { align: 'center' });
+        }
     };
+
 
     const fileName = `${type === 'caratula' ? 'Caratula' : 'Orden'}_${(previewData.afiliado || 'Paciente').replace(/\s+/g, '_').toUpperCase()}.pdf`;
     
