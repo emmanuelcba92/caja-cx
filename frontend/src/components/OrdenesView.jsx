@@ -997,7 +997,7 @@ const OrdenesView = (props) => {
                                                 placeholder="Nombre de la cirugía"
                                             />
                                             {activeRow?.index === index && suggestions.length > 0 && (
-                                                <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white border border-slate-100 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
                                                     {suggestions.map((s, i) => {
                                                         const displayCode = s.parentModule ? s.parentModule.codigo : s.codigo;
                                                         const displayName = s.parentModule
