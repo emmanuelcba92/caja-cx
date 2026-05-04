@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import ModalPortal from './common/ModalPortal';
+import ModalPortal from './common/ModalPortal.jsx';
 import {
     Save as SaveIcon, FileText, Printer, Download, Plus, X, Calendar, User, Building2, Hash,
     Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search,
@@ -10,35 +10,16 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, USE_LOCAL_DB, isTestEnv } from '../firebase/config';
 import { collection, addDoc, updateDoc, doc, getDocs, deleteDoc, query, where, getDoc, writeBatch } from 'firebase/firestore';
-import apiService from '../services/apiService';
-import { parseEmailToOrder } from '../services/aiService';
-import { useAuth } from '../context/AuthContext';
-import { scrollToTop } from '../utils/navigation';
+import apiService from '../services/apiService.js';
+import { parseEmailToOrder } from '../services/aiService.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { scrollToTop } from '../utils/navigation.js';
 import { createPortal } from 'react-dom';
-import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos';
-import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
+import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos.js';
+import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos.js';
 import { toast } from 'react-hot-toast';
-import { generateOrdenPDF } from '../utils/pdfGenerator';
+import { generateOrdenPDF } from '../utils/pdfGenerator.js';
 // Dynamic import used for html2pdf
-
-// Map professional names to their signature image files
-const FIRMAS_MAP = {
-    'Dr. Jasin': 'dr_jasin.png',
-    'Dr. Bruera': 'dr_bruera.png',
-    'Dr. Curet': 'dr_curet.png',
-    'Dr. Hoyos': 'dr_hoyos.png',
-    'Dr. Paredes': 'dr_paredes.png',
-    'Dr. Zernotti': 'dr_zernotti.png',
-    'Dr. Zemotti': 'dr_zernotti.png',
-    'Dr. Romero Orellano': 'dr_romero_orellano.png',
-    'Dr. Hernandorena': 'dr_hernandorena.png',
-    'Dra. Carranza': 'dra_carranza.png',
-    'Dra. Romani': 'dra_romani.png',
-    'Dra. Valeriani': 'dra_valeriani.png',
-    'Dra. Venier': 'dra_venier.png',
-    'Dra. Zalazar': 'dra_zalazar.png',
-    'Dr. Pablo Jasin': 'dr_jasin.png',
-};
 
 // Helper to abbreviate name to "Prefix Surname"
 const shortProfName = (fullName) => {
@@ -1017,20 +998,36 @@ const OrdenesView = (props) => {
                                             />
                                             {activeRow?.index === index && suggestions.length > 0 && (
                                                 <div className="absolute z-50 top-full mt-2 left-0 w-full bg-white border border-slate-100 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
-                                                    {suggestions.map((s, i) => (
+                                                    {suggestions.map((s, i) => {
+                                                        const displayCode = s.parentModule ? s.parentModule.codigo : s.codigo;
+                                                        const displayName = s.parentModule
+                                                            ? `${s.parentModule.nombre} - ${s.codigo} ${s.nombre}`
+                                                            : s.nombre;
+                                                        return (
                                                         <div
                                                             key={i}
                                                             onClick={() => selectSuggestion(s, index)}
-                                                            className={`px-5 py-3.5 cursor-pointer border-b border-slate-100 dark:border-slate-700 last:border-0 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors`}
+                                                            className={`px-5 py-3.5 cursor-pointer border-b border-slate-100 dark:border-slate-700 last:border-0 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors ${highlightedIndex === i ? 'bg-teal-50 dark:bg-teal-900/30' : ''}`}
                                                         >
                                                             <div className="flex items-center gap-3">
-                                                                <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400">
-                                                                    {s.codigo}
+                                                                <span className={`font-mono text-[10px] font-black px-2 py-0.5 rounded ${
+                                                                    s.source === 'sm' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400' :
+                                                                    s.source === 'dynamic' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400' :
+                                                                    s.source === 'iosfa' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400' :
+                                                                    'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400'
+                                                                }`}>
+                                                                    {displayCode}
                                                                 </span>
-                                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{s.nombre}</span>
+                                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200 flex-1">
+                                                                    {displayName}
+                                                                </span>
+                                                                {s.source === 'sm' && (
+                                                                    <span className="text-[9px] font-black text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full uppercase tracking-wider">SM</span>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
                                         </div>
@@ -1282,74 +1279,110 @@ const OrdenesView = (props) => {
 
             const term = value.toLowerCase();
 
-            // IF WE ARE IN "INTERNACION"
+            // 1. Identificar Obra Social
             const os = (currentOS || formData.obraSocial || '').toLowerCase().trim();
             const isSwissMedical = os.includes('swiss') || os.includes('medical') || os.includes('sm') || os.includes('suiza');
             const isIOSFA = os.includes('iosfa');
 
-            // Search in General Codes
-            const generalMatches = (CODIGOS_CIRUGIA || []).filter(c => {
-                if (field === 'codigo') {
-                    return c.codigo && c.codigo.toString().startsWith(term);
-                } else {
+            let results = [];
+            const seenCodes = new Set(); // Unified deduplication by code
+
+            // 1. Swiss Medical specific logic (Highest priority if SM)
+            if (isSwissMedical && MODULOS_SM) {
+                // First, find surgeries that match the term and map them to modules
+                const matchingSurgeries = (CODIGOS_CIRUGIA || []).filter(c => {
+                    if (field === 'codigo') return c.codigo && c.codigo.toString().startsWith(term);
                     return c.nombre && c.nombre.toLowerCase().includes(term);
-                }
-            }).map(surgery => {
-                // REVERSE LOOKUP: Only check for SM Modules if the patient belongs to Swiss Medical
-                if ((isSwissMedical || !os) && MODULOS_SM) {
+                });
+
+                matchingSurgeries.forEach(surgery => {
                     const parentModule = MODULOS_SM.find(m => m.incluye && m.incluye.includes(surgery.codigo));
                     if (parentModule) {
-                        return { ...surgery, parentModule };
+                        // Mark this surgery code as "handled by SM"
+                        if (!seenCodes.has(surgery.codigo)) {
+                            results.push({ ...surgery, parentModule, source: 'sm' });
+                            seenCodes.add(surgery.codigo);
+                        }
                     }
-                }
-                return surgery;
-            });
+                });
 
-            // Search in Swiss Medical Modules (Always searchable, but priority if Swiss Medical)
-            let smMatches = [];
-            if ((isSwissMedical || !os || term.startsWith('03')) && MODULOS_SM) {
-                smMatches = MODULOS_SM.filter(c => {
-                    if (field === 'codigo') {
-                        return c.codigo && c.codigo.toString().startsWith(term);
-                    } else {
-                        return c.nombre && c.nombre.toLowerCase().includes(term);
+                // Second, find direct modules that match the term
+                MODULOS_SM.forEach(m => {
+                    const codeMatch = m.codigo && m.codigo.toString().startsWith(term);
+                    const nameMatch = m.nombre && m.nombre.toLowerCase().includes(term);
+                    
+                    if (codeMatch || nameMatch) {
+                        // Avoid adding module if we already added a surgery that maps to it AND the term is the surgery code
+                        if (field === 'codigo' && m.codigo.length > term.length && matchingSurgeries.some(s => s.codigo === term)) {
+                            return;
+                        }
+
+                        if (!seenCodes.has(m.codigo)) {
+                            results.push({ ...m, isModule: true, source: 'sm' });
+                            seenCodes.add(m.codigo);
+                        }
                     }
-                }).map(m => ({ ...m, isModule: true, nombre: `${m.nombre} (Swiss Medical)` }));
+                });
             }
 
-            // 3. Search in IOSFA Codes (Only if IOSFA)
-            let iosfaMatches = [];
+            // 2. Search in IOSFA Codes (High priority if IOSFA - Moved before General)
             if (isIOSFA && Array.isArray(CODIGOS_IOSFA)) {
-                iosfaMatches = CODIGOS_IOSFA.filter(c => {
+                CODIGOS_IOSFA.filter(c => {
                     const codeMatch = c.codigo && c.codigo.toString().toLowerCase().startsWith(term);
                     const cleanGeneral = c.codigoGeneral ? c.codigoGeneral.replace(/\./g, '') : '';
                     const generalCodeMatch = cleanGeneral.startsWith(term);
                     const nameMatch = c.nombre && c.nombre.toLowerCase().includes(term);
                     return codeMatch || generalCodeMatch || nameMatch;
-                }).map(c => ({
-                    ...c,
-                    isIOSFA: true,
-                    displayLabel: `${c.codigo} (${c.codigoGeneral}) - ${c.nombre}`
-                }));
+                }).forEach(c => {
+                    // Deduplicate by IOSFA code
+                    if (!seenCodes.has(c.codigo)) {
+                        results.push({
+                            ...c,
+                            isIOSFA: true,
+                            source: 'iosfa',
+                            displayLabel: `${c.codigo} (${c.codigoGeneral}) - ${c.nombre}`
+                        });
+                        seenCodes.add(c.codigo);
+                        // Also mark the general code as seen so it doesn't show up twice
+                        if (c.codigoGeneral) seenCodes.add(c.codigoGeneral.replace(/\./g, ''));
+                    }
+                });
             }
 
-            // 4. Search in Dynamic Mappings (Admin created)
-            const dynamicMatches = Object.entries(dynamicConsents)
-                .filter(([code, data]) => {
-                    if (field === 'codigo') {
-                        return code.startsWith(term);
-                    } else {
-                        return data.nombre && data.nombre.toLowerCase().includes(term);
-                    }
-                })
-                .map(([code, data]) => ({
-                    codigo: code,
-                    nombre: data.nombre,
-                    isDynamic: true
-                }));
+            // 3. Buscar en Códigos Generales
+            const generalMatches = (CODIGOS_CIRUGIA || []).filter(c => {
+                if (field === 'codigo') return c.codigo && c.codigo.toString().startsWith(term);
+                return c.nombre && c.nombre.toLowerCase().includes(term);
+            });
 
-            // Combine: Dynamic -> IOSFA -> Modules -> General
-            const combined = [...dynamicMatches, ...iosfaMatches, ...smMatches, ...generalMatches].slice(0, 15);
+            generalMatches.forEach(surgery => {
+                // Skip if already added by SM or IOSFA logic
+                if (seenCodes.has(surgery.codigo)) return;
+
+                results.push({ ...surgery, source: 'general' });
+                seenCodes.add(surgery.codigo);
+            });
+
+            // 4. Search in Dynamic Mappings (Admin created)
+            Object.entries(dynamicConsents)
+                .filter(([code, data]) => {
+                    if (field === 'codigo') return code.startsWith(term);
+                    return data.nombre && data.nombre.toLowerCase().includes(term);
+                })
+                .forEach(([code, data]) => {
+                    // Skip if already added by any previous logic
+                    if (seenCodes.has(code)) return;
+
+                    results.push({
+                        codigo: code,
+                        nombre: data.nombre,
+                        source: 'dynamic',
+                        isDynamic: true
+                    });
+                    seenCodes.add(code);
+                });
+
+            const combined = results.slice(0, 15);
             setSuggestions(combined);
             setHighlightedIndex(0);
         } catch (error) {
@@ -1357,6 +1390,7 @@ const OrdenesView = (props) => {
             setSuggestions([]);
         }
     };
+
 
     const selectSuggestion = (suggestion, index) => {
         setFormData(prev => {
@@ -1368,11 +1402,12 @@ const OrdenesView = (props) => {
             // LOGICA ESPECIAL PARA MODULOS DE SWISS MEDICAL
             // Si la sugerencia tiene un modulo padre (detectado en handleSearch)
             if (suggestion.parentModule) {
+                // Código del módulo en el campo código
                 finalCode = suggestion.parentModule.codigo;
-                // Formato: MODULO X ORL - 03XXXX NOMBRE CIRUGIA
+                // Nombre del módulo - Código original Nombre cirugía
                 finalNombre = `${suggestion.parentModule.nombre} - ${suggestion.codigo} ${suggestion.nombre}`;
             } else if (suggestion.isModule) {
-                // Si seleccionó el módulo directamente, limpiamos el "(Swiss Medical)" del label de búsqueda
+                // Si seleccionó el módulo directamente
                 finalNombre = suggestion.nombre.replace(' (Swiss Medical)', '');
             }
 
@@ -1719,36 +1754,8 @@ const OrdenesView = (props) => {
         });
 
         if (sigFile) return sigFile.url;
-
-        // 2. Try direct map match
-        if (FIRMAS_MAP[profesionalName]) return `/firmas/${FIRMAS_MAP[profesionalName]}`;
-
-        // 3. Fallback logic
-        const cleanName = profesionalName
-            .toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9 ]/g, '')
-            .trim();
-
-        const parts = cleanName.split(/\s+/);
-        let filename = cleanName.replace(/\s+/g, '_');
-
-        const prefixes = ['dr', 'dra', 'lic'];
-        if (parts.length >= 2 && prefixes.includes(parts[0])) {
-            const shorthand = `${parts[0]}_${parts[1]}`;
-            const knownFiles = [
-                'dr_bruera', 'dr_curet', 'dr_hernandorena', 'dr_hoyos', 'dr_jasin',
-                'dr_paredes', 'dr_romero_orellano', 'dr_zernotti',
-                'dra_carranza', 'dra_romani', 'dra_valeriani', 'dra_venier', 'dra_zalazar'
-            ];
-            if (knownFiles.includes(shorthand)) {
-                filename = shorthand;
-            } else if (shorthand.includes('romero') && knownFiles.includes('dr_romero_orellano')) {
-                filename = 'dr_romero_orellano';
-            }
-        }
-
-        return `/firmas/${filename}.png`;
+        
+        return '';
     };
 
     // Returns the Firebase Storage URL for a given consent selection
@@ -3038,3 +3045,6 @@ const OrdenesView = (props) => {
 };
 
 export default OrdenesView;
+
+// Dummy export to force Vite reload
+export const __forceReload = true;

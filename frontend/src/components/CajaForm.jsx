@@ -189,24 +189,36 @@ const CajaForm = ({ lowPerfMode = false }) => {
 
             const updated = { ...e, [field]: value };
 
-            // 1. Percentage -> Amount calculation (if percentage or payment changed)
-            if (['pesos', 'dolares', 'porcentaje_prof_1', 'porcentaje_prof_2', 'porcentaje_prof_3', 'liq_prof_1_currency', 'liq_prof_2_currency', 'liq_prof_3_currency'].includes(field)) {
+            if (field === 'showProf3') {
+                if (value === true) {
+                    updated.porcentaje_prof_1 = 50;
+                    updated.porcentaje_prof_2 = 25;
+                    updated.porcentaje_prof_3 = 25;
+                } else {
+                    updated.porcentaje_prof_1 = 100; // Reset or keep what they had? Let's go 100 for safety
+                    updated.porcentaje_prof_2 = 0;
+                    updated.porcentaje_prof_3 = 0;
+                    updated.prof_3 = '';
+                    updated.liq_prof_3 = 0;
+                }
+            }
 
-                const payPesos = field === 'pesos' ? (value || 0) : (updated.pesos || 0);
-                const payDolares = field === 'dolares' ? (value || 0) : (updated.dolares || 0);
+            // 1. Percentage -> Amount calculation (if percentage, payment OR prof3 toggle changed)
+            const isRecalcField = ['pesos', 'dolares', 'porcentaje_prof_1', 'porcentaje_prof_2', 'porcentaje_prof_3', 'liq_prof_1_currency', 'liq_prof_2_currency', 'liq_prof_3_currency'].includes(field);
+            
+            if (isRecalcField || field === 'showProf3') {
+                const pPesos = updated.pesos || 0;
+                const pDolares = updated.dolares || 0;
 
-                const pct1 = field === 'porcentaje_prof_1' ? (value || 0) : (updated.porcentaje_prof_1 || 0);
-                const pct2 = field === 'porcentaje_prof_2' ? (value || 0) : (updated.porcentaje_prof_2 || 0);
-                const pct3 = field === 'porcentaje_prof_3' ? (value || 0) : (updated.porcentaje_prof_3 || 0);
+                const pct1 = updated.porcentaje_prof_1 || 0;
+                const pct2 = updated.porcentaje_prof_2 || 0;
+                const pct3 = updated.porcentaje_prof_3 || 0;
 
                 const share1 = pct1 / 100;
                 const share2 = pct2 / 100;
                 const share3 = pct3 / 100;
 
-                const pPesos = field === 'pesos' ? (value || 0) : (updated.pesos || 0);
-                const pDolares = field === 'dolares' ? (value || 0) : (updated.dolares || 0);
-
-                // Aggressive Auto-currency detection: If only USD is paid, switch everyone to USD
+                // Aggressive Auto-currency detection
                 if (pDolares > 0 && pPesos === 0) {
                     if (updated.prof_1 && updated.liq_prof_1_currency === 'ARS') updated.liq_prof_1_currency = 'USD';
                     if (updated.prof_2 && updated.liq_prof_2_currency === 'ARS') updated.liq_prof_2_currency = 'USD';
@@ -219,7 +231,7 @@ const CajaForm = ({ lowPerfMode = false }) => {
                     if (updated.anestesista && updated.liq_anestesista_currency === 'USD') updated.liq_anestesista_currency = 'ARS';
                 }
 
-                // Final Pay amounts to use in calculation (taking into account auto-switches above)
+                // Final Pay amounts
                 if (updated.liq_prof_1_currency === 'ARS') updated.liq_prof_1 = pPesos * share1;
                 else updated.liq_prof_1 = pDolares * share1;
 
@@ -230,15 +242,9 @@ const CajaForm = ({ lowPerfMode = false }) => {
                 else updated.liq_prof_3 = pDolares * share3;
 
                 // Secondary calculations
-                if (updated.showSecondary_1) {
-                    updated.liq_prof_1_secondary = (updated.liq_prof_1_currency_secondary === 'USD' ? pDolares : pPesos) * share1;
-                }
-                if (updated.showSecondary_2) {
-                    updated.liq_prof_2_secondary = (updated.liq_prof_2_currency_secondary === 'USD' ? pDolares : pPesos) * share2;
-                }
-                if (updated.showSecondary_3) {
-                    updated.liq_prof_3_secondary = (updated.liq_prof_3_currency_secondary === 'USD' ? pDolares : pPesos) * share3;
-                }
+                if (updated.showSecondary_1) updated.liq_prof_1_secondary = (updated.liq_prof_1_currency_secondary === 'USD' ? pDolares : pPesos) * share1;
+                if (updated.showSecondary_2) updated.liq_prof_2_secondary = (updated.liq_prof_2_currency_secondary === 'USD' ? pDolares : pPesos) * share2;
+                if (updated.showSecondary_3) updated.liq_prof_3_secondary = (updated.liq_prof_3_currency_secondary === 'USD' ? pDolares : pPesos) * share3;
             }
 
             // 2. SALDO COAT = Pago - (Prof1 + Prof2 + Prof3 + Anestesista)
@@ -246,7 +252,7 @@ const CajaForm = ({ lowPerfMode = false }) => {
                 'pesos', 'dolares',
                 'liq_prof_1', 'liq_prof_2', 'liq_prof_3', 'liq_anestesista',
                 'liq_prof_1_currency', 'liq_prof_2_currency', 'liq_prof_3_currency', 'liq_anestesista_currency',
-                'porcentaje_prof_1', 'porcentaje_prof_2', 'porcentaje_prof_3'
+                'porcentaje_prof_1', 'porcentaje_prof_2', 'porcentaje_prof_3', 'showProf3'
             ].includes(field);
 
             if (balanceAffected && field !== 'coat_pesos' && field !== 'coat_dolares') {
@@ -771,9 +777,9 @@ const CajaForm = ({ lowPerfMode = false }) => {
                                             {!entry.showProf3 && (
                                                 <button
                                                     onClick={() => updateEntry(entry.id, 'showProf3', true)}
-                                                    className="text-[9px] font-black text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 dark:bg-blue-500/10 px-3 py-1.5 rounded-xl transition-all"
+                                                    className="text-[9px] font-black text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1.5 bg-blue-50 dark:bg-blue-500/10 px-3 py-1.5 rounded-xl transition-all border border-blue-100 dark:border-blue-500/20"
                                                 >
-                                                    <Plus size={10} /> AGREGAR PROF. 3
+                                                    <Plus size={12} /> AGREGAR PROF. 3
                                                 </button>
                                             )}
                                         </div>
@@ -792,10 +798,26 @@ const CajaForm = ({ lowPerfMode = false }) => {
                                                 const colors = n === 1 ? 'blue' : n === 2 ? 'indigo' : 'teal';
 
                                                 return (
-                                                    <div key={n} className={`p-3 rounded-[1.2rem] border transition-all duration-300 ${n === 1 ? 'bg-blue-50/30 dark:bg-blue-500/5 border-blue-100 dark:border-blue-900/30' : n === 2 ? 'bg-indigo-50/30 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-900/30' : 'bg-teal-50/30 dark:bg-teal-500/5 border-teal-100 dark:border-teal-900/30'}`}>
+                                                    <div key={`${entry.id}-${n}`} className={`p-3 rounded-[1.2rem] border transition-all duration-300 ${n === 1 ? 'bg-blue-50/30 dark:bg-blue-500/5 border-blue-100 dark:border-blue-900/30' : n === 2 ? 'bg-indigo-50/30 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-900/30' : 'bg-teal-50/30 dark:bg-teal-500/5 border-teal-100 dark:border-teal-900/30'}`}>
                                                         <div className="grid grid-cols-12 gap-3 items-end">
                                                             <div className="col-span-12 md:col-span-6 space-y-2">
-                                                                <label className={`text-[9px] font-black text-${colors}-500/70 uppercase tracking-widest ml-1`}>Médico {n}</label>
+                                                                <div className="flex items-center justify-between">
+                                                                    <label className={`text-[9px] font-black text-${colors}-500/70 uppercase tracking-widest ml-1`}>Médico {n}</label>
+                                                                    {n === 3 && (
+                                                                        <button 
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.preventDefault();
+                                                                                e.stopPropagation();
+                                                                                updateEntry(entry.id, 'showProf3', false);
+                                                                            }} 
+                                                                            className="flex items-center justify-center w-8 h-8 rounded-full text-red-400 hover:text-white hover:bg-red-500 transition-all duration-300 shadow-sm hover:shadow-md active:scale-90 bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 group/btn"
+                                                                            title="Quitar Médico 3"
+                                                                        >
+                                                                            <X size={16} className="transition-transform group-hover/btn:rotate-90" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                                 <select
                                                                     className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-sm"
                                                                     value={entry[profKey]}
@@ -847,9 +869,6 @@ const CajaForm = ({ lowPerfMode = false }) => {
                                                                         onChange={(val) => updateEntry(entry.id, secKey, val)}
                                                                     />
                                                                 </div>
-                                                                {n === 3 && (
-                                                                    <button onClick={() => updateEntry(entry.id, 'showProf3', false)} className="ml-2 text-red-400 hover:text-red-500"><X size={16} /></button>
-                                                                )}
                                                             </div>
                                                         )}
                                                     </div>
