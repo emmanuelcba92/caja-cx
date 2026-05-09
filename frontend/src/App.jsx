@@ -349,15 +349,9 @@ function AuthenticatedApp() {
                 <Menu size={24} />
               </button>
               
-              <div className="flex items-center">
-                <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
-                  {filteredNav.find(m => m.id === activeModuleId)?.tabs.find(t => t.id === activeTab)?.label || activeTab}
-                </h1>
-              </div>
-
               {/* Premium Tab Selector */}
               {filteredNav.find(m => m.id === activeModuleId)?.tabs.length > 1 && (
-                <div className="hidden md:flex items-center bg-slate-100/50 dark:bg-white/5 p-1.5 rounded-2xl ml-8 border border-slate-200/50 dark:border-white/5">
+                <div className="hidden md:flex items-center bg-slate-100/50 dark:bg-white/5 p-1.5 rounded-2xl ml-4 border border-slate-200/50 dark:border-white/5">
                   {filteredNav.find(m => m.id === activeModuleId).tabs.map(tab => (
                     <button
                       key={tab.id}
