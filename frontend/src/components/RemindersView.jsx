@@ -7,7 +7,7 @@ import {
     Plus, Trash2, CheckCircle2, Circle, Search, Filter, 
     Calendar, Clock, AlertCircle, Stethoscope, User,
     ChevronRight, ClipboardList, Loader2, X,
-    LayoutGrid, List as ListIcon, Box, Check
+    LayoutGrid, List as ListIcon, Box, Check, Edit2, Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
@@ -23,6 +23,8 @@ const RemindersView = () => {
     const [isAdding, setIsAdding] = useState(false);
     const [showAll, setShowAll] = useState(false);
     const [materialStatus, setMaterialStatus] = useState({}); // { surgeryId: boolean }
+    const [editingTask, setEditingTask] = useState(null);
+    const [editText, setEditText] = useState('');
     const DISPLAY_LIMIT = 15;
 
     // Fetch Material Statuses
@@ -154,6 +156,21 @@ const RemindersView = () => {
             toast.success('Tarea eliminada');
         } catch (error) {
             console.error("Error deleting task:", error);
+        }
+    };
+
+    const handleUpdateTask = async (taskId) => {
+        if (!editText.trim()) return;
+        try {
+            await updateDoc(doc(db, "reminders", taskId), {
+                text: editText.trim()
+            });
+            setEditingTask(null);
+            setEditText('');
+            toast.success('Tarea actualizada');
+        } catch (error) {
+            console.error("Error updating task text:", error);
+            toast.error('Error al actualizar');
         }
     };
 
@@ -328,8 +345,7 @@ const RemindersView = () => {
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95 }}
-                            onClick={() => toggleTask(item)}
-                            className={`group relative overflow-hidden bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-white/5 shadow-sm hover:shadow-xl hover:scale-[1.01] transition-all cursor-pointer ${item.completed ? 'opacity-60' : ''}`}
+                            className={`group relative overflow-hidden bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-white/5 shadow-sm hover:shadow-xl transition-all ${item.completed ? 'opacity-60' : ''}`}
                         >
                             {/* Type Indicator Bar */}
                             <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${item.type === 'surgery' ? 'bg-amber-500' : 'bg-blue-600'}`}></div>
@@ -341,9 +357,12 @@ const RemindersView = () => {
                                             <Stethoscope size={20} />
                                         </div>
                                     ) : (
-                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${item.completed ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500' : 'bg-slate-50 dark:bg-white/5 text-slate-300 group-hover:text-blue-500'}`}>
+                                        <button 
+                                            onClick={() => toggleTask(item)}
+                                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${item.completed ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500' : 'bg-slate-50 dark:bg-white/5 text-slate-300 hover:text-blue-500 hover:bg-blue-50 hover:scale-110 active:scale-95'}`}
+                                        >
                                             {item.completed ? <CheckCircle2 size={22} /> : <Circle size={22} />}
-                                        </div>
+                                        </button>
                                     )}
                                 </div>
 
@@ -372,21 +391,63 @@ const RemindersView = () => {
                                                 <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded text-[9px] font-black uppercase tracking-widest border border-blue-100 dark:border-blue-500/20">{item.category}</span>
                                                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600">{item.createdAt?.seconds ? new Date(item.createdAt.seconds * 1000).toLocaleDateString() : 'Hoy'}</span>
                                             </div>
-                                            <h3 className={`text-base font-bold text-slate-800 dark:text-slate-200 leading-tight ${item.completed ? 'line-through decoration-2' : ''}`}>
-                                                {item.text}
-                                            </h3>
+                                            {editingTask === item.id ? (
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <input
+                                                        type="text"
+                                                        value={editText}
+                                                        onChange={(e) => setEditText(e.target.value)}
+                                                        className="flex-1 bg-slate-50 dark:bg-slate-800 border border-blue-500/30 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                        autoFocus
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') handleUpdateTask(item.id);
+                                                            if (e.key === 'Escape') setEditingTask(null);
+                                                        }}
+                                                    />
+                                                    <button 
+                                                        onClick={() => handleUpdateTask(item.id)}
+                                                        className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                                    >
+                                                        <Save size={16} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setEditingTask(null)}
+                                                        className="p-2 bg-slate-100 dark:bg-white/5 text-slate-400 rounded-lg hover:text-slate-600 transition-colors"
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <h3 className={`text-base font-bold text-slate-800 dark:text-slate-200 leading-tight ${item.completed ? 'line-through decoration-2' : ''}`}>
+                                                    {item.text}
+                                                </h3>
+                                            )}
                                         </div>
                                     )}
                                 </div>
 
                                 <div className="flex items-center gap-2">
                                     {item.type === 'task' && (
-                                        <button
-                                            onClick={(e) => deleteTask(e, item.id)}
-                                            className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-2xl transition-all opacity-0 group-hover:opacity-100"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setEditingTask(item.id);
+                                                    setEditText(item.text);
+                                                }}
+                                                className="p-3 text-slate-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-2xl transition-all"
+                                                title="Editar"
+                                            >
+                                                <Edit2 size={18} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => deleteTask(e, item.id)}
+                                                className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-2xl transition-all"
+                                                title="Eliminar"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </div>
                                     )}
 
                                     <div className="p-2 text-slate-200 dark:text-slate-800 group-hover:text-slate-400 transition-colors">
