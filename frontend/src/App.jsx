@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { supabase } from './supabase/config';
 import { ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
-import { Users, LayoutDashboard, FileText, History as HistoryIcon, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon, FileBadge, Clock } from 'lucide-react';
+import { Users, LayoutDashboard, FileText, History as HistoryIcon, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon, FileBadge, Clock, X } from 'lucide-react';
 
 // Static immediately-needed components
 import NotificationBell from './components/NotificationBell';
@@ -378,11 +378,10 @@ function AuthenticatedApp() {
               )}
             </div>
             <div className="flex items-center gap-6">
-              <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-white/5">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Sistema Operativo</span>
-              </div>
-              <NotificationBell />
+              <NotificationBell onNavigateOrganizador={() => {
+                setActiveModuleId('module_cirugias');
+                setActiveTab('pendientes');
+              }} />
             </div>
           </header>
 

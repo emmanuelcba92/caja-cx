@@ -6,7 +6,7 @@ import { Bell, Clock, AlertCircle, Box, Stethoscope, ChevronRight } from 'lucide
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 
-const NotificationBell = () => {
+const NotificationBell = ({ onNavigateOrganizador }) => {
     const { currentUser } = useAuth();
     const [tasksCount, setTasksCount] = useState(0);
     const [surgeries, setSurgeries] = useState([]);
@@ -124,7 +124,7 @@ const NotificationBell = () => {
                         <button 
                             onClick={() => {
                                 setIsOpen(false);
-                                // Logic to navigate or open RemindersView if needed
+                                if (onNavigateOrganizador) onNavigateOrganizador();
                             }}
                             className="w-full py-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/5 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all flex items-center justify-center gap-2"
                         >
