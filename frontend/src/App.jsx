@@ -349,10 +349,7 @@ function AuthenticatedApp() {
                 <Menu size={24} />
               </button>
               
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.3em] mb-1">
-                  {filteredNav.find(m => m.id === activeModuleId)?.label || 'Módulo'}
-                </span>
+              <div className="flex items-center">
                 <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
                   {filteredNav.find(m => m.id === activeModuleId)?.tabs.find(t => t.id === activeTab)?.label || activeTab}
                 </h1>
