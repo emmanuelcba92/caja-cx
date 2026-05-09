@@ -398,6 +398,21 @@ const RemindersView = () => {
                     ))}
                 </AnimatePresence>
 
+                {!showAll && !searchTerm && surgeries.length + tasks.length > DISPLAY_LIMIT && filteredData.length >= DISPLAY_LIMIT && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex justify-center pt-4"
+                    >
+                        <button
+                            onClick={() => setShowAll(true)}
+                            className="px-10 py-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-500 hover:border-blue-500/30 transition-all shadow-sm"
+                        >
+                            Ver todos los pendientes ({surgeries.length + tasks.length})
+                        </button>
+                    </motion.div>
+                )}
+
                 {filteredData.length === 0 && !loading && (
                     <div className="py-20 flex flex-col items-center justify-center bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-100 dark:border-white/5 shadow-inner">
                         <div className="w-20 h-20 bg-slate-50 dark:bg-white/5 rounded-full flex items-center justify-center text-slate-200 dark:text-slate-800 mb-6">
