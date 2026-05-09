@@ -13,8 +13,9 @@ import {
     Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, 
     Download, Upload, Database, FileJson, AlertTriangle, PieChart, 
     ChevronDown, Filter, CheckCircle2, UserCheck, ShieldCheck, 
-    Calendar, RefreshCw, Layers, HardDrive, Key, LayoutDashboard, FileText, X,
-    History as HistoryIcon, ShieldAlert, Zap, MessageCircle, Save, Building2, User, AlertCircle
+    Calendar, RefreshCw, Layers, HardDrive, Key, LayoutDashboard, FileText, X, File as FileIcon, PenTool, MessageSquare,
+    History as HistoryIcon, ShieldAlert, Zap, MessageCircle, Save, Building2, User, AlertCircle,
+    Link2, FileBadge, Baby, Edit
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -118,6 +119,10 @@ const AdminView = () => {
         me: ''
     });
     const [dashboardLoaded, setDashboardLoaded] = useState(false);
+    const [allStorageFiles, setAllStorageFiles] = useState([]);
+    const [loadingStorage, setLoadingStorage] = useState(false);
+    const [consentMappings, setConsentMappings] = useState([]);
+    const [loadingMappings, setLoadingMappings] = useState(false);
     const [whatsappTemplates, setWhatsappTemplates] = useState({
         paciente: 'Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *{paciente}* tiene agendada una cirugía el día *{fecha}* con *{profesional}*.\n\nLe informamos que en el caso de su obra social, la autorización debe ser gestionada personalmente por el paciente ante la misma. Cualquier duda quedamos a su disposición.',
         institucional: 'Buen día, le escribe Emmanuel del área de internaciones COAT.\n\n *{paciente}* tiene agendada una cirugía el día *{fecha}* con *{profesional}*.\n\nEn el caso de su obra social, la autorización la gestionamos nosotros.\n\nPara poder comenzar la gestión con su obra social le voy a solicitar que envíe estudios realizados de nariz, garganta y oído.'
@@ -276,7 +281,6 @@ const AdminView = () => {
             can_delete_own: "Eliminar Propios",
             is_ephemeral: "Cuenta Efímera (24h)",
             view_global_calendar: "Ver Calendario Global",
-            view_audit: "Ver Auditoría",
             readonly_caja: "Caja (Solo Lectura)",
             manage_users: "Administrar Usuarios",
             view_admin: "Ver Panel Admin",
@@ -586,6 +590,22 @@ const AdminView = () => {
         }
     };
 
+    const fetchConsentMappings = async () => {
+        if (!isSuperAdmin) return;
+        setLoadingMappings(true);
+        try {
+            const q = query(collection(db, 'consentMappings'));
+            const querySnapshot = await getDocs(q);
+            const mappings = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setConsentMappings(mappings[0] || { mappings: [] });
+        } catch (error) {
+            console.error("Error fetching mappings:", error);
+            toast.error("Error al cargar mapeos");
+        } finally {
+            setLoadingMappings(false);
+        }
+    };
+
     const handleCreateRole = async (e) => {
         e.preventDefault();
         const roleId = roleName.toLowerCase().replace(/\s+/g, '_');
@@ -814,6 +834,52 @@ const AdminView = () => {
         }
     };
 
+    const fetchGlobalStorageFiles = async () => {
+        if (!isSuperAdmin) return;
+        setLoadingStorage(true);
+        try {
+            const { data: firmas, error: e1 } = await supabase.storage.from('Cirugias').list('firmas');
+            const { data: consentimientos, error: e2 } = await supabase.storage.from('Cirugias').list('consentimientos');
+            
+            if (e1 || e2) throw e1 || e2;
+
+            const files = [
+                ...(firmas || []).map(f => ({ ...f, type: 'firma', fullPath: `firmas/${f.name}` })),
+                ...(consentimientos || []).map(f => ({ ...f, type: 'consentimiento', fullPath: `consentimientos/${f.name}` }))
+            ];
+            
+            // Sort by most recent
+            files.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            setAllStorageFiles(files);
+        } catch (error) {
+            console.error("Error listing global files:", error);
+            toast.error("Error al listar archivos de Supabase");
+        } finally {
+            setLoadingStorage(false);
+        }
+    };
+
+    const handleDeleteGlobalFile = async (file) => {
+        if (!window.confirm(`¿Seguro que quieres eliminar permanentemente "${file.name}"? Esta acción no se puede deshacer.`)) return;
+        try {
+            const { error } = await supabase.storage.from('Cirugias').remove([file.fullPath]);
+            if (error) throw error;
+            toast.success("Archivo eliminado correctamente");
+            fetchGlobalStorageFiles();
+        } catch (error) {
+            toast.error("Error al eliminar archivo");
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'storage') {
+            fetchGlobalStorageFiles();
+        }
+        if (activeTab === 'mapeo') {
+            fetchConsentMappings();
+        }
+    }, [activeTab]);
+
     const handleImportData = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -896,10 +962,11 @@ const AdminView = () => {
 
     const tabs = [
         { id: 'seguridad', label: 'Seguridad', icon: ShieldAlert, show: isSuperAdmin || permissions?.can_manage_users, color: 'blue' },
+        { id: 'storage', label: 'Archivos', icon: HardDrive, show: isSuperAdmin, color: 'indigo' },
         { id: 'intelligence', label: 'Inteligencia', icon: Zap, show: isSuperAdmin || permissions?.can_view_stats, color: 'purple' },
+        { id: 'mapeo', label: 'Mapeo', icon: FileBadge, show: isSuperAdmin, color: 'indigo' },
         { id: 'permissions', label: 'Permisos', icon: Key, show: isSuperAdmin, color: 'emerald' },
         { id: 'mantenimiento', label: 'Mantenimiento', icon: RefreshCw, show: isSuperAdmin, color: 'amber' },
-        { id: 'infrastructure', label: 'Infraestructura', icon: HardDrive, show: isSuperAdmin, color: 'indigo' },
         { id: 'messages', label: 'Mensajes', icon: MessageCircle, show: isSuperAdmin, color: 'blue' },
         { id: 'notifications', label: 'Alertas', icon: Mail, show: isSuperAdmin, color: 'rose' },
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: isSuperAdmin || permissions?.can_view_stats, color: 'cyan' }
@@ -1564,6 +1631,158 @@ const AdminView = () => {
                 </div>
             )}
 
+
+            {/* Mapeo de Consentimientos Tab */}
+            {activeTab === 'mapeo' && isSuperAdmin && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex justify-between items-center bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl p-6 rounded-[2rem] border border-indigo-500/10 shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl shadow-inner-sm">
+                                <FileBadge size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-widest">Mapeo de Consentimientos</h3>
+                                <p className="text-xs text-slate-500 font-medium">Asignación de PDFs automáticos por código de cirugía</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={fetchConsentMappings}
+                            disabled={loadingMappings}
+                            className="p-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                        >
+                            <RefreshCw size={20} className={loadingMappings ? 'animate-spin' : ''} />
+                        </button>
+                    </div>
+
+                    <div className="premium-card p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-slate-200 dark:border-slate-800">
+                        {loadingMappings ? (
+                            <div className="py-20 flex flex-col items-center justify-center gap-4">
+                                <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
+                                <p className="text-xs font-black text-indigo-500 uppercase tracking-widest animate-pulse">Sincronizando reglas...</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {consentMappings?.mappings?.map((m) => (
+                                    <div key={m.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 hover:border-indigo-500/30 transition-all group">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-lg font-mono">
+                                                {m.code}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase mb-4 truncate" title={m.name}>
+                                            {m.name}
+                                        </p>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                                                <User size={12} className="text-blue-500" />
+                                                <span className="text-[10px] font-bold text-slate-500 truncate">
+                                                    {consentMappings.consents.find(c => c.id === m.adultoId)?.nombre || '— No asignado —'}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                                                <Baby size={12} className="text-purple-500" />
+                                                <span className="text-[10px] font-bold text-slate-500 truncate">
+                                                    {consentMappings.consents.find(c => c.id === m.menorId)?.nombre || '— No asignado —'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        
+                        <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center max-w-md">
+                                Los cambios realizados en el módulo de Consentimientos se verán reflejados aquí automáticamente.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Archivos (Supabase Storage) Tab */}
+            {activeTab === 'storage' && isSuperAdmin && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex justify-between items-center bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl p-6 rounded-[2rem] border border-indigo-500/10 shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl shadow-inner-sm">
+                                <HardDrive size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-widest">Gestión de Archivos</h3>
+                                <p className="text-xs text-slate-500 font-medium">Cloud Storage (Supabase Cirugias Bucket)</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={fetchGlobalStorageFiles}
+                            disabled={loadingStorage}
+                            className="p-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                        >
+                            <RefreshCw size={20} className={loadingStorage ? 'animate-spin' : ''} />
+                        </button>
+                    </div>
+
+                    <div className="premium-card p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-slate-200 dark:border-slate-800">
+                        {loadingStorage ? (
+                            <div className="py-20 flex flex-col items-center justify-center gap-4">
+                                <div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
+                                <p className="text-xs font-black text-indigo-500 uppercase tracking-widest animate-pulse">Escaneando Cloud Storage...</p>
+                            </div>
+                        ) : allStorageFiles.length === 0 ? (
+                            <div className="py-20 text-center">
+                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                                    <FileIcon size={40} />
+                                </div>
+                                <p className="text-slate-500 font-black uppercase tracking-widest">No se encontraron archivos</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {allStorageFiles.map((file) => (
+                                    <div key={file.id} className="group relative bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4 rounded-3xl hover:shadow-xl hover:border-indigo-500/30 transition-all duration-300">
+                                        <div className="flex items-start justify-between mb-4">
+                                            <div className={`p-3 rounded-2xl ${file.type === 'firma' ? 'bg-amber-500/10 text-amber-600' : 'bg-blue-500/10 text-blue-600'}`}>
+                                                {file.type === 'firma' ? <PenTool size={20} /> : <FileText size={20} />}
+                                            </div>
+                                            <button 
+                                                onClick={() => handleDeleteGlobalFile(file)}
+                                                className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="space-y-1">
+                                            <p className="text-xs font-black text-slate-700 dark:text-slate-200 truncate pr-6" title={file.name}>
+                                                {file.name}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                                                {file.type === 'firma' ? 'Firma Digital' : 'Consentimiento'}
+                                            </p>
+                                        </div>
+
+                                        <div className="mt-4 pt-4 border-t border-slate-50 dark:border-slate-700/50 flex items-center justify-between">
+                                            <span className="text-[9px] font-black text-slate-400">
+                                                {(file.metadata?.size / 1024).toFixed(1)} KB
+                                            </span>
+                                            <span className="text-[9px] font-black text-slate-400">
+                                                {new Date(file.created_at).toLocaleDateString()}
+                                            </span>
+                                        </div>
+
+                                        <a 
+                                            href={supabase.storage.from('Cirugias').getPublicUrl(file.fullPath).data.publicUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="absolute inset-0 z-10"
+                                        ></a>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Mantenimiento Tab */}
             {activeTab === 'mantenimiento' && isSuperAdmin && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1724,87 +1943,54 @@ const AdminView = () => {
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Integridad de datos verificada</p>
                         </div>
                     </div>
-                </div>
-            )}
 
-            {/* Infrastructure Tab */}
-            {activeTab === 'infrastructure' && isSuperAdmin && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Export */}
-                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-indigo-500/10">
-                        <div className="flex items-center gap-4 mb-10">
-                            <div className="p-4 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl shadow-inner-sm">
-                                <Download size={28} />
-                            </div>
-                            <div>
-                                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Exportación JSON</h3>
-                                <p className="text-sm text-slate-500 font-medium">Backup completo por usuario o global</p>
-                            </div>
-                        </div>
-                        
-                        <div className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Seleccionar Origen de Datos</label>
-                                <select
-                                    value={maintenanceUser}
-                                    onChange={(e) => setMaintenanceUser(e.target.value)}
-                                    className="input-premium focus:ring-indigo-500/10 focus:border-indigo-500/50"
-                                >
-                                    <option value="">Todo el sistema (Global)</option>
-                                    {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
-                                </select>
-                            </div>
-                            <button 
-                                onClick={handleExportData} 
-                                className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[2rem] font-black shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
-                            >
-                                <FileJson size={24} /> DESCARGAR BACKUP COMPLETO
-                            </button>
-                            <p className="text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest">
-                                El archivo descargado contendrá todas las órdenes registradas
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Import */}
-                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-emerald-500/10">
-                        <div className="flex items-center gap-4 mb-10">
-                            <div className="p-4 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl shadow-inner-sm">
-                                <Upload size={28} />
-                            </div>
-                            <div>
-                                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Restauración</h3>
-                                <p className="text-sm text-slate-500 font-medium">Carga de backups externos (.json)</p>
-                            </div>
-                        </div>
-
-                        <div className="relative group">
-                            <input 
-                                type="file" 
-                                onChange={handleImportData} 
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" 
-                            />
-                            <div className="border-4 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem] p-12 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-900/50 group-hover:bg-emerald-500/5 group-hover:border-emerald-500/30 transition-all duration-500 relative overflow-hidden">
-                                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-3xl flex items-center justify-center text-emerald-500 mb-6 shadow-xl group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 relative z-10">
-                                    <Upload size={36} />
+                    {/* Backup & Restauración (Migrated from Infrastructure) */}
+                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-indigo-500/10 col-span-1 md:col-span-2">
+                        <div className="flex flex-col md:flex-row gap-8">
+                            <div className="flex-1 space-y-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl">
+                                        <Download size={24} />
+                                    </div>
+                                    <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-widest text-sm">Backup del Sistema</h4>
                                 </div>
-                                <div className="text-center relative z-10">
-                                    <p className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest mb-2">Arrastrar o Seleccionar</p>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Solo archivos generados por este sistema</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <select
+                                        value={maintenanceUser}
+                                        onChange={(e) => setMaintenanceUser(e.target.value)}
+                                        className="input-premium"
+                                    >
+                                        <option value="">Todo el sistema (Global)</option>
+                                        {allDoctors.map(d => <option key={d.uid} value={d.uid}>{d.profile?.email || d.uid}</option>)}
+                                    </select>
+                                    <button onClick={handleExportData} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2">
+                                        <FileJson size={18} /> EXPORTAR JSON
+                                    </button>
                                 </div>
-                                
-                                {/* Status micro-indicator */}
-                                <div className="mt-8 flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-full">
-                                    <ShieldCheck size={14} className="text-emerald-500" />
-                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Validación Activa</span>
+                            </div>
+                            
+                            <div className="w-px bg-slate-100 dark:bg-slate-800 hidden md:block"></div>
+
+                            <div className="flex-1 space-y-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl">
+                                        <Upload size={24} />
+                                    </div>
+                                    <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-widest text-sm">Restauración</h4>
+                                </div>
+                                <div className="relative group">
+                                    <input type="file" onChange={handleImportData} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" />
+                                    <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-center gap-3 bg-slate-50/50 dark:bg-slate-900/30 group-hover:bg-emerald-500/5 transition-all">
+                                        <Upload size={18} className="text-emerald-500" />
+                                        <p className="text-[10px] font-black text-slate-500 uppercase">Seleccionar archivo para restaurar</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-
             )}
+
 
             {/* Messages Tab */}
             {activeTab === 'messages' && (isSuperAdmin || permissions.can_manage_users) && (

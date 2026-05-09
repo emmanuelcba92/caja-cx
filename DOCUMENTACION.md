@@ -23,11 +23,12 @@ Automatiza la generación de pedidos de internación y consentimientos.
 
 ---
 
-## ⚙️ 3. Panel de Administración y Archivos
+## ⚙️ 3. Panel de Administración e Inteligencia
 Controla la "inteligencia" y los recursos de la App.
 
-- **Gestión de Archivos**: Lista todas las firmas y consentimientos disponibles. 
-- **Mapeo de Consentimientos**: Permite vincular códigos de cirugía con archivos PDF específicos y nombres personalizados.
+- **Monitoreo de Supabase**: Desde el Dashboard Admin puedes ver el espacio ocupado por firmas y PDFs.
+- **Gestión Descentralizada**: Las firmas se suben desde el perfil de cada Profesional y los PDFs desde el módulo de Consentimientos.
+- **Mapeo de Consentimientos**: Permite vincular códigos de cirugía con archivos PDF subidos a la nube.
 - **Roles y Permisos**: Define quién puede editar, ver o borrar datos (SuperAdmin, Administrador, Viewer).
 
 ---
@@ -35,17 +36,18 @@ Controla la "inteligencia" y los recursos de la App.
 ## 🔒 4. Seguridad (PIN y Roles)
 - **PIN de Seguridad**: Cada usuario debe configurar un PIN en su perfil. Es obligatorio para **Editar o Borrar** registros del historial.
 - **Roles**:
-  - **SuperAdmin**: Control total y gestión de archivos.
+  - **SuperAdmin**: Control total, gestión de usuarios y backups.
   - **Administrador**: Gestión diaria de caja y órdenes.
   - **Viewer**: Solo lectura.
 
 ---
 
-## 🚀 5. Sincronización de Nuevos Archivos
-Para añadir una nueva firma o consentimiento:
-1. Pela el archivo en `frontend/public/firmas/` o `consentimientos/`.
-2. Ejecuta el despliegue a Firebase.
-3. Registra el nombre del archivo en el Panel Admin (o pídeme que lo registre yo).
+## 🚀 5. Gestión de Archivos (Supabase)
+Ya no es necesario subir archivos manualmente al hosting. Todo se gestiona desde la interfaz:
+
+1. **Firmas**: Ve a `Profesionales`, edita un médico y sube su firma (PNG/JPG). Se guardará automáticamente en Supabase.
+2. **Consentimientos**: Ve a `Cirugías > Consentimientos`, sube los PDFs y luego asígnalos a los códigos de cirugía correspondientes.
+3. **Sincronización**: Los cambios son instantáneos para todos los usuarios.
 
 ---
-*Documentación actualizada: 25 de Abril, 2026.*
+*Documentación actualizada: 1 de Mayo, 2026.*

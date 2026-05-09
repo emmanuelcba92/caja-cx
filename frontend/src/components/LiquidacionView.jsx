@@ -524,9 +524,11 @@ const LiquidacionView = () => {
                             dolares: editingEntry.dolares,
                             liq_prof_1: editingEntry.liq_prof_1 || 0,
                             liq_prof_2: editingEntry.liq_prof_2 || 0,
+                            liq_prof_3: editingEntry.liq_prof_3 || 0,
                             liq_anestesista: editingEntry.liq_anestesista || 0,
                             liq_prof_1_currency: editingEntry.liq_prof_1_currency || 'ARS',
                             liq_prof_2_currency: editingEntry.liq_prof_2_currency || 'ARS',
+                            liq_prof_3_currency: editingEntry.liq_prof_3_currency || 'ARS',
                             liq_anestesista_currency: editingEntry.liq_anestesista_currency || 'ARS',
                             monto_pesos: editingEntry.pesos || 0,
                             monto_dolares: editingEntry.dolares || 0
@@ -1909,6 +1911,33 @@ const LiquidacionView = () => {
                                 <div>
                                     <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-1">Dólares (USD)</label>
                                     <input type="number" className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold focus:border-teal-500 outline-none transition-all" value={editFormData.monto_dolares || 0} onChange={(e) => setEditFormData({ ...editFormData, monto_dolares: parseFloat(e.target.value) })} />
+                                </div>
+                            </div>
+                            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                                <label className="block text-xs font-black text-slate-500 dark:text-slate-400 uppercase mb-4 tracking-widest">Liquidación por Profesional</label>
+                                <div className="space-y-4">
+                                    {[1, 2, 3].map(num => (
+                                        <div key={num} className="grid grid-cols-[1fr_auto] gap-3 items-center">
+                                            <div className="relative">
+                                                <label className="absolute -top-2 left-3 px-1 bg-white dark:bg-slate-900 text-[10px] font-bold text-slate-400">Prof. {num}</label>
+                                                <input type="number" className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-white" value={editFormData[`liq_prof_${num}`] || 0} onChange={(e) => setEditFormData({ ...editFormData, [`liq_prof_${num}`]: parseFloat(e.target.value) || 0 })} />
+                                            </div>
+                                            <select className="p-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-xs font-bold text-slate-900 dark:text-white" value={editFormData[`liq_prof_${num}_currency`] || 'ARS'} onChange={(e) => setEditFormData({ ...editFormData, [`liq_prof_${num}_currency`]: e.target.value })}>
+                                                <option value="ARS">$</option>
+                                                <option value="USD">U$D</option>
+                                            </select>
+                                        </div>
+                                    ))}
+                                    <div className="grid grid-cols-[1fr_auto] gap-3 items-center pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <div className="relative">
+                                            <label className="absolute -top-2 left-3 px-1 bg-white dark:bg-slate-900 text-[10px] font-bold text-purple-400">Anestesia</label>
+                                            <input type="number" className="w-full p-3 bg-purple-50/30 dark:bg-purple-500/5 border border-purple-100 dark:border-purple-900/30 rounded-xl text-sm font-bold text-slate-900 dark:text-white" value={editFormData.liq_anestesista || 0} onChange={(e) => setEditFormData({ ...editFormData, liq_anestesista: parseFloat(e.target.value) || 0 })} />
+                                        </div>
+                                        <select className="p-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-xs font-bold text-slate-900 dark:text-white" value={editFormData.liq_anestesista_currency || 'ARS'} onChange={(e) => setEditFormData({ ...editFormData, liq_anestesista_currency: e.target.value })}>
+                                            <option value="ARS">$</option>
+                                            <option value="USD">U$D</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                             <button onClick={handleUpdateEntry} className="w-full py-4 bg-teal-600 text-white font-black rounded-2xl flex justify-center items-center gap-3 shadow-lg shadow-teal-200 dark:shadow-none hover:bg-teal-700 transition-all text-lg mt-4"><Save size={24} /> Guardar Cambios</button>

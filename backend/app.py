@@ -14,14 +14,6 @@ import json
 # Database configuration
 db_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'caja_v3.db')
 
-# File Storage Configuration
-UPLOAD_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'uploads')
-UPLOAD_FOLDER_FIRMAS = os.path.join(UPLOAD_ROOT, 'firmas')
-UPLOAD_FOLDER_CONSENTS = os.path.join(UPLOAD_ROOT, 'consentimientos')
-
-for folder in [UPLOAD_ROOT, UPLOAD_FOLDER_FIRMAS, UPLOAD_FOLDER_CONSENTS]:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -74,11 +66,7 @@ class DailyComment(db.Model):
     date = db.Column(db.String(10), primary_key=True)
     comment = db.Column(db.Text)
 
-class ConsentMapping(db.Model):
-    code = db.Column(db.String(20), primary_key=True)
-    name = db.Column(db.String(100))
-    adult_file = db.Column(db.String(200))
-    child_file = db.Column(db.String(200))
+
 
 class OrdenInternacion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -116,32 +104,6 @@ with app.app_context():
         db.session.add(AppConfig(key='admin_pin', value='1234'))
         db.session.commit()
 
-@app.route('/get-consent-mappings', methods=['GET'])
-def get_consent_mappings():
-    mappings = ConsentMapping.query.all()
-    return jsonify([{
-        "code": m.code,
-        "name": m.name,
-        "adult_file": m.adult_file,
-        "child_file": m.child_file
-    } for m in mappings])
-
-@app.route('/save-consent-mapping', methods=['POST'])
-def save_consent_mapping():
-    data = request.json
-    code = data.get('code')
-    if not code:
-        return jsonify({"status": "error", "message": "Code is required"}), 400
-    
-    mapping = ConsentMapping.query.get(code)
-    if not mapping:
-        mapping = ConsentMapping(code=code)
-        db.session.add(mapping)
-    
-    mapping.name = data.get('name', mapping.name)
-    mapping.adult_file = data.get('adult_file', mapping.adult_file)
-    mapping.child_file = data.get('child_file', mapping.child_file)
-    
     db.session.commit()
     return jsonify({"status": "success"})
 
@@ -651,44 +613,6 @@ def handle_app_settings():
         return jsonify(default_settings), 200
 
 
-@app.route('/upload-signature', methods=['POST'])
-def upload_signature():
-    if 'file' not in request.files:
-        return jsonify({"status": "error", "message": "No file part"}), 400
-    file = request.files['file']
-    filename = request.form.get('filename')
-    if not filename:
-        return jsonify({"status": "error", "message": "Filename not provided"}), 400
-    
-    # Secure filename and save to frontend public/firmas
-    # Since we are in the same parent dir, we can go up and into frontend
-    target_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'frontend', 'public', 'firmas', filename)
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    file.save(target_path)
-    return jsonify({"status": "success", "message": f"Firma {filename} guardada"}), 200
-
-@app.route('/upload-consent', methods=['POST'])
-def upload_consent():
-    if 'file' not in request.files:
-        return jsonify({"status": "error", "message": "No file part"}), 400
-    file = request.files['file']
-    filename = request.form.get('filename')
-    if not filename:
-        return jsonify({"status": "error", "message": "Filename not provided"}), 400
-    
-    target_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'frontend', 'public', 'consentimientos', filename)
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    file.save(target_path)
-    return jsonify({"status": "success", "message": f"Consentimiento {filename} guardado"}), 200
-
-@app.route('/list-files/<type>', methods=['GET'])
-def list_files(type):
-    folder = 'firmas' if type == 'signatures' else 'consentimientos'
-    path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'frontend', 'public', folder)
-    if not os.path.exists(path):
-        return jsonify([])
-    files = os.listdir(path)
-    return jsonify(files)
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True, port=5000)
+

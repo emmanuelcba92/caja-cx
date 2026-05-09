@@ -5,11 +5,14 @@ import {
     Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search,
     CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle,
     AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban, Filter,
-    TableProperties, Sparkles, Loader2, Lock as LockIcon
+    TableProperties, Sparkles, Loader2, Lock as LockIcon, Box, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, USE_LOCAL_DB, isTestEnv } from '../firebase/config';
-import { collection, addDoc, updateDoc, doc, getDocs, deleteDoc, query, where, getDoc, writeBatch } from 'firebase/firestore';
+import { 
+    collection, addDoc, updateDoc, doc, getDocs, deleteDoc, query, 
+    where, getDoc, writeBatch, onSnapshot, setDoc 
+} from 'firebase/firestore';
 import apiService from '../services/apiService.js';
 import { parseEmailToOrder } from '../services/aiService.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -57,6 +60,7 @@ const OrdenesView = (props) => {
     const [allProfesionales, setAllProfesionales] = useState([]);
     const [isResidente, setIsResidente] = useState(false);
     const [ordenes, setOrdenes] = useState([]);
+    const [materialStatus, setMaterialStatus] = useState({});
     const [showForm, setShowForm] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [previewData, setPreviewData] = useState(null);
@@ -101,7 +105,7 @@ const OrdenesView = (props) => {
     const [filterDate, setFilterDate] = useState('');
     const [filterPeriodo, setFilterPeriodo] = useState('proximas'); // 'proximas' | 'realizadas' | 'todas'
     const [filterStatus, setFilterStatus] = useState('');
-    const [filterAudit, setFilterAudit] = useState(''); // 'auditadas' | 'pendientes' | ''
+    const [filterMaterial, setFilterMaterial] = useState(''); // 'con_material' | 'sin_material' | ''
     const [searchPaciente, setSearchPaciente] = useState('');
     const [localSearchTerm, setLocalSearchTerm] = useState('');
     const [visibleCount, setVisibleCount] = useState(15);
@@ -180,6 +184,32 @@ const OrdenesView = (props) => {
     }, []);
 
     const lastInitializedKey = useRef('');
+
+    // Fetch Material Status
+    useEffect(() => {
+        const q = collection(db, "material_requests");
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const status = {};
+            snapshot.forEach(doc => {
+                status[doc.id] = doc.data().requested;
+            });
+            setMaterialStatus(status);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const toggleMaterial = async (e, id) => {
+        e.stopPropagation();
+        const requested = materialStatus[id];
+        try {
+            await setDoc(doc(db, "material_requests", id), {
+                requested: !requested,
+                updatedAt: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error("Error updating material status:", error);
+        }
+    };
 
 
     // Form State
@@ -2220,7 +2250,9 @@ const OrdenesView = (props) => {
                 const end = rangeEnd || '9999-99-99';
                 
                 const matchRange = surgDate >= start && surgDate <= end;
-                const matchPaciente = !searchPaciente || orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase());
+                const matchPaciente = !searchPaciente || 
+                    orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase()) ||
+                    orden.dni?.toString().includes(searchPaciente);
                 
                 return matchRange && matchPaciente;
             }
@@ -2233,11 +2265,13 @@ const OrdenesView = (props) => {
                 filterStatus === 'enviadas' ? (orden.enviada && !orden.suspendida) :
                     (!orden.enviada && !orden.suspendida)
             );
-            const matchAudit = !filterAudit || (
-                filterAudit === 'auditadas' ? orden.status === 'auditada' :
-                    filterAudit === 'pendientes' ? orden.status !== 'auditada' : true
+            const matchMaterial = !filterMaterial || (
+                filterMaterial === 'con_material' ? orden.incluyeMaterial :
+                    filterMaterial === 'sin_material' ? !orden.incluyeMaterial : true
             );
-            const matchPaciente = !searchPaciente || orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase());
+            const matchPaciente = !searchPaciente || 
+                orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase()) ||
+                orden.dni?.toString().includes(searchPaciente);
 
             const targetDateStr = orden.fechaCirugia || orden.fechaDocumento;
             let matchPeriodo = true;
@@ -2255,7 +2289,7 @@ const OrdenesView = (props) => {
                 matchPeriodo = false;
             }
 
-            return matchProfesional && matchObraSocial && matchDate && matchStatus && matchAudit && matchPaciente && matchPeriodo;
+            return matchProfesional && matchObraSocial && matchDate && matchStatus && matchMaterial && matchPaciente && matchPeriodo;
         }).map(o => ({
             ...o,
             _isUrgent: getUrgency(o) // Pre-calculate for sorting
@@ -2271,7 +2305,7 @@ const OrdenesView = (props) => {
             const dateB = b.fechaCirugia || b.createdAt || b.fechaDocumento;
             return new Date(dateB) - new Date(dateA);
         });
-    }, [activeTab, ordenes, filterProfesional, filterObraSocial, filterDate, filterStatus, filterAudit, searchPaciente, filterPeriodo, rangeStart, rangeEnd]);
+    }, [activeTab, ordenes, filterProfesional, filterObraSocial, filterDate, filterStatus, filterMaterial, searchPaciente, filterPeriodo, rangeStart, rangeEnd]);
 
     const checkUrgency = (orden) => {
         if (orden.autorizada) return false;
@@ -2503,7 +2537,7 @@ const OrdenesView = (props) => {
                                             </select>
                                             
                                             <button 
-                                                onClick={() => { setFilterDate(''); setFilterProfesional(''); setFilterObraSocial(''); setFilterStatus(''); setFilterAudit(''); setSearchPaciente(''); }}
+                                                onClick={() => { setFilterDate(''); setFilterProfesional(''); setFilterObraSocial(''); setFilterStatus(''); setFilterMaterial(''); setLocalSearchTerm(''); }}
                                                 className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-400 rounded-xl hover:text-teal-600 border border-slate-200 dark:border-slate-700"
                                                 title="Limpiar filtros"
                                             >
@@ -2559,15 +2593,15 @@ const OrdenesView = (props) => {
                                     </div>
 
                                     <div className="space-y-1">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Auditoría</label>
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Material</label>
                                         <select
-                                            value={filterAudit}
-                                            onChange={(e) => setFilterAudit(e.target.value)}
-                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                                            value={filterMaterial}
+                                            onChange={(e) => setFilterMaterial(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-violet-200 dark:border-violet-900 rounded-xl text-xs text-violet-700 dark:text-violet-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
                                         >
                                             <option value="">Todas</option>
-                                            <option value="pendientes">Pendientes</option>
-                                            <option value="auditadas">Auditadas</option>
+                                            <option value="con_material">Con Material</option>
+                                            <option value="sin_material">Sin Material</option>
                                         </select>
                                     </div>
 
@@ -2605,7 +2639,9 @@ const OrdenesView = (props) => {
                                                 key={orden.id}
                                                 className={`group relative flex items-center justify-between p-2.5 rounded-xl transition-all duration-300 border ${orden.suspendida ? 'bg-slate-100/50 dark:bg-slate-800/30 opacity-60 grayscale border-slate-200 dark:border-slate-700' :
                                                     orden.enviada ? 'bg-slate-50/80 dark:bg-slate-900/40 opacity-80 border-slate-100 dark:border-slate-800' :
-                                                        isUrgent ? 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-900 shadow-sm shadow-red-500/5' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-teal-200 dark:hover:border-teal-500/50 hover:shadow-lg'
+                                                        isUrgent ? 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-900 shadow-sm shadow-red-500/5' : 
+                                                            orden.incluyeMaterial ? 'bg-violet-50/10 dark:bg-violet-950/5 border-violet-200 dark:border-violet-800/40 hover:border-violet-300 shadow-sm' :
+                                                                'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-teal-200 dark:hover:border-teal-500/50 hover:shadow-lg'
                                                     } `}
                                             >
                                                 {isUrgent && !orden.suspendida && (
@@ -2658,6 +2694,11 @@ const OrdenesView = (props) => {
                                                             <span className="flex items-center gap-1.5">
                                                                 <Calendar size={12} className="text-slate-300" />
                                                                 {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
+                                                                {orden.incluyeMaterial && (
+                                                                    <span className="ml-2 px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 text-[8px] font-black uppercase tracking-widest rounded flex items-center gap-1">
+                                                                        <Package size={8} /> Material
+                                                                    </span>
+                                                                )}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -2690,6 +2731,17 @@ const OrdenesView = (props) => {
                                                         {orden.telefono && (
                                                             <button onClick={() => setWhatsappModal(orden)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-lg transition-all" title="WhatsApp"><MessageCircle size={16} /></button>
                                                         )}
+
+                                                        {orden.incluyeMaterial && (
+                                                            <button 
+                                                                onClick={(e) => toggleMaterial(e, orden.id)} 
+                                                                className={`p-2 rounded-lg transition-all ${materialStatus[orden.id] ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/30' : 'text-slate-400 hover:text-amber-500'}`}
+                                                                title={materialStatus[orden.id] ? 'Material pedido' : 'Marcar material como pedido'}
+                                                            >
+                                                                {materialStatus[orden.id] ? <Check size={16} /> : <Box size={16} />}
+                                                            </button>
+                                                        )}
+
                                                         <div className="w-px h-4 bg-slate-200 dark:border-slate-700 mx-1"></div>
                                                         <button onClick={() => handleDelete(orden.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-lg transition-all" title="Eliminar"><Trash2 size={16} /></button>
                                                     </div>
@@ -2702,7 +2754,9 @@ const OrdenesView = (props) => {
                                             key={orden.id}
                                             className={`group relative bg-white dark:bg-slate-900 rounded-2xl border p-5 flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${orden.suspendida ? 'opacity-60 grayscale border-slate-200 dark:border-slate-800' :
                                                 orden.enviada ? 'opacity-80 border-slate-100 dark:border-slate-800' :
-                                                    isUrgent ? 'border-red-100 dark:border-red-900 shadow-md shadow-red-500/5' : 'border-slate-100 dark:border-slate-800'
+                                                    isUrgent ? 'border-red-100 dark:border-red-900 shadow-md shadow-red-500/5' : 
+                                                        orden.incluyeMaterial ? 'border-violet-200 dark:border-violet-800/50 bg-violet-50/10' :
+                                                            'border-slate-100 dark:border-slate-800'
                                                 } `}
                                         >
                                             {isUrgent && !orden.suspendida && (
@@ -2740,7 +2794,14 @@ const OrdenesView = (props) => {
                                                     </div>
                                                     <div className="flex items-center gap-3 text-[10px] font-medium text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
                                                         <Calendar size={12} className="text-slate-300" />
-                                                        <span>{formatDate(orden.fechaCirugia || orden.fechaDocumento)}</span>
+                                                        <div className="flex flex-col">
+                                                            <span>{formatDate(orden.fechaCirugia || orden.fechaDocumento)}</span>
+                                                            {orden.incluyeMaterial && (
+                                                                <span className="text-[8px] font-black text-violet-500 dark:text-violet-400 uppercase tracking-widest flex items-center gap-1">
+                                                                    <Package size={8} /> Material
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <div className="flex items-center gap-3 text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
                                                         <Hash size={12} className="text-slate-300" />
@@ -2769,6 +2830,15 @@ const OrdenesView = (props) => {
                                                 <div className="flex gap-1.5">
                                                     <button onClick={() => handlePreview(orden, 'internacion')} className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-teal-600 rounded-xl transition-all border border-transparent"><Printer size={18} /></button>
                                                     <button onClick={() => handleEdit(orden)} className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-amber-600 rounded-xl transition-all border border-transparent"><Edit3 size={18} /></button>
+                                                    {orden.incluyeMaterial && (
+                                                        <button 
+                                                            onClick={(e) => toggleMaterial(e, orden.id)} 
+                                                            className={`p-3 rounded-xl transition-all border border-transparent ${materialStatus[orden.id] ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-amber-600'}`}
+                                                            title={materialStatus[orden.id] ? 'Material pedido' : 'Marcar material como pedido'}
+                                                        >
+                                                            {materialStatus[orden.id] ? <Check size={18} /> : <Box size={18} />}
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <button
                                                     onClick={() => handleToggleField(orden, 'autorizada')}

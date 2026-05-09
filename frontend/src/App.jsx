@@ -1,10 +1,10 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { db } from './firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { supabase } from './supabase/config';
 import { ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
-import { Users, LayoutDashboard, FileText, History as HistoryIcon, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon, FileBadge } from 'lucide-react';
+import { Users, LayoutDashboard, FileText, History as HistoryIcon, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon, FileBadge, Clock } from 'lucide-react';
 
 // Static immediately-needed components
 import NotificationBell from './components/NotificationBell';
@@ -12,16 +12,17 @@ import UserMenu from './components/UserMenu';
 import LoginView from './components/LoginView';
 
 // Lazy-loaded views
-const CajaForm = lazy(() => import('./components/CajaForm'));
-const LiquidacionView = lazy(() => import('./components/LiquidacionView'));
-const ProfesionalesView = lazy(() => import('./components/ProfesionalesView'));
-const HistorialCaja = lazy(() => import('./components/HistorialCaja'));
-const AccessManager = lazy(() => import('./components/AccessManager'));
-const NotesView = lazy(() => import('./components/NotesView'));
-const OrdenesView = lazy(() => import('./components/OrdenesView'));
-const AdminView = lazy(() => import('./components/AdminView'));
-const ConsentimientosView = lazy(() => import('./components/ConsentimientosView'));
-const PacientesView = lazy(() => import('./components/PacientesView'));
+const CajaForm = lazy(() => import('./components/CajaForm.jsx'));
+const LiquidacionView = lazy(() => import('./components/LiquidacionView.jsx'));
+const ProfesionalesView = lazy(() => import('./components/ProfesionalesView.jsx'));
+const HistorialCaja = lazy(() => import('./components/HistorialCaja.jsx'));
+const AccessManager = lazy(() => import('./components/AccessManager.jsx'));
+const NotesView = lazy(() => import('./components/NotesView.jsx'));
+const OrdenesView = lazy(() => import('./components/OrdenesView.jsx'));
+const AdminView = lazy(() => import('./components/AdminView.jsx'));
+const ConsentimientosView = lazy(() => import('./components/ConsentimientosView.jsx'));
+const PacientesView = lazy(() => import('./components/PacientesView.jsx'));
+const RemindersView = lazy(() => import('./components/RemindersView.jsx'));
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 
@@ -149,6 +150,7 @@ function AuthenticatedApp() {
       defaultTab: 'ordenes',
       tabs: [
         { id: 'ordenes', label: 'Órdenes', icon: ClipboardList },
+        { id: 'pendientes', label: 'Pendientes', icon: Clock },
         { id: 'pacientes', label: 'Pacientes', icon: Users },
         { id: 'control', label: 'Control', icon: Printer },
         { id: 'consentimientos', label: 'Consentimientos', icon: FileBadge }
@@ -295,6 +297,16 @@ function AuthenticatedApp() {
                     </span>
                   )}
                   
+                  {/* Reminders badge */}
+                  {mod.id === 'module_cirugias' && pendingCount > 0 && (
+                    <span className="absolute top-2 right-2 flex h-4 w-4">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500 text-white text-[8px] font-black items-center justify-center shadow-lg">
+                        {pendingCount}
+                      </span>
+                    </span>
+                  )}
+                  
                   {/* Active Indicator */}
                   {activeModuleId === mod.id && (
                     <div className="absolute -left-3 w-1.5 h-8 bg-blue-500 dark:bg-blue-400 rounded-full shadow-[0_0_15px_rgba(96,165,250,0.8)]"></div>
@@ -382,9 +394,10 @@ function AuthenticatedApp() {
                   <p className="animate-pulse font-medium">Cargando módulo...</p>
                 </div>
               }>
-                {activeTab === 'caja' && <CajaForm lowPerfMode={lowPerfMode} />}
-                {activeTab === 'notas' && <NotesView />}
-                {activeTab === 'historial' && <HistorialCaja />}
+                { activeTab === 'caja' && <CajaForm lowPerfMode={lowPerfMode} /> }
+                { activeTab === 'notas' && <NotesView /> }
+                { activeTab === 'pendientes' && <RemindersView /> }
+                { activeTab === 'historial' && <HistorialCaja /> }
                 {activeTab === 'liquidaciones' && <LiquidacionView />}
                 {activeTab === 'profesionales' && <ProfesionalesView />}
                 {activeTab === 'compartir' && <AccessManager />}
