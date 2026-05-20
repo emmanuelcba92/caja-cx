@@ -183,7 +183,24 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
             try {
                 const sigData = await optimizeImage(signatureUrl, 400);
                 if (sigData) {
-                    targetDoc.addImage(sigData.data, 'PNG', sigX - 7, sigY - 28, 35, 35 / sigData.ratio, undefined, 'FAST');
+                    const maxW = 45;
+                    const maxH = 22;
+                    let w = maxW;
+                    let h = maxW / sigData.ratio;
+
+                    if (h > maxH) {
+                        h = maxH;
+                        w = maxH * sigData.ratio;
+                    }
+
+                    // Center the image horizontally relative to the signature text block
+                    const sigCenterX = sigX + 10;
+                    const imgX = sigCenterX - (w / 2);
+                    
+                    // Place the image such that its bottom is exactly 2mm above the doctor's name (sigY)
+                    const imgY = (sigY - 2) - h;
+
+                    targetDoc.addImage(sigData.data, 'PNG', imgX, imgY, w, h, undefined, 'FAST');
                 }
             } catch (e) {
                 console.error("Error loading signature image:", e);

@@ -105,7 +105,6 @@ with app.app_context():
         db.session.commit()
 
     db.session.commit()
-    return jsonify({"status": "success"})
 
 @app.route('/data/profesionales', methods=['GET', 'POST'])
 def handle_profesionales():
