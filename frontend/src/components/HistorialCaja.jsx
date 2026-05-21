@@ -18,7 +18,7 @@ const MONTH_NAMES = [
 
 
 const HistorialCaja = () => {
-    const { currentUser: user, viewingUid, catalogOwnerUid, permission, permissions } = useAuth();
+    const { currentUser: user, viewingUid, catalogOwnerUid, permission, permissions, userRole, isSuperAdmin } = useAuth();
     const isReadOnly = permission === 'viewer' || permissions?.readonly_caja;
     // Force Landscape for this view
     const printStyle = `
@@ -48,6 +48,7 @@ const HistorialCaja = () => {
 
     const [history, setHistory] = useState([]);
     const [profesionales, setProfesionales] = useState([]);
+    const [onlyMyRecords, setOnlyMyRecords] = useState(true);
 
     // Navigation State
     const [view, setView] = useState('years'); // 'years', 'months', 'days', 'table'
@@ -375,7 +376,7 @@ const HistorialCaja = () => {
         if (isReadOnly) return;
 
         // --- ENFORCE OWN RECORDS POLICY ---
-        const canManageAny = permissions?.can_delete_data || isSuperAdmin;
+        const canManageAny = permissions?.can_delete_data || userRole === 'admin' || isSuperAdmin;
         const isOwner = item.createdBy === user?.email;
         if (!canManageAny && !isOwner) {
             alert("Solo puedes editar registros cargados por ti mismo.");
@@ -422,7 +423,7 @@ const HistorialCaja = () => {
         }
 
         // --- ENFORCE OWN RECORDS POLICY ---
-        const canManageAny = permissions?.can_delete_data || isSuperAdmin;
+        const canManageAny = permissions?.can_delete_data || userRole === 'admin' || isSuperAdmin;
         const isOwner = item.createdBy === user?.email;
         if (!canManageAny && !isOwner) {
             alert("Solo puedes eliminar registros cargados por ti mismo.");
@@ -727,10 +728,9 @@ const HistorialCaja = () => {
     };
 
     const handleExportExcel = async () => {
-        const dataToExport = history.filter(item => item.fecha === selectedDate);
-        if (dataToExport.length === 0) return alert("No hay datos para exportar");
+        if (displayedData.length === 0) return alert("No hay datos para exportar");
         try {
-            const buffer = await generateDailyExcelWorkbookBuffer(dataToExport, selectedDate, dailyComment);
+            const buffer = await generateDailyExcelWorkbookBuffer(displayedData, selectedDate, dailyComment);
             triggerDownload(buffer, selectedDate);
         } catch (error) {
             console.error(error);
@@ -770,7 +770,10 @@ const HistorialCaja = () => {
         setIsExportingRange(true);
         try {
             for (const dateStr of datesInRange) {
-                const dataForDate = history.filter(item => item.fecha === dateStr);
+                let dataForDate = history.filter(item => item.fecha === dateStr);
+                if (onlyMyRecords && user?.email) {
+                    dataForDate = dataForDate.filter(item => item.createdBy === user.email);
+                }
                 if (dataForDate.length > 0) {
                     const comment = await fetchCommentForDate(dateStr);
                     const buffer = await generateDailyExcelWorkbookBuffer(dataForDate, dateStr, comment);
@@ -789,6 +792,9 @@ const HistorialCaja = () => {
 
     const anestesistas = profesionales.filter(p => p.categoria === 'Anestesista');
     const tableData = selectedDate ? history.filter(item => item.fecha === selectedDate) : [];
+    const displayedData = onlyMyRecords && user?.email
+        ? tableData.filter(item => item.createdBy === user.email)
+        : tableData;
 
     const handleDeleteDay = async () => {
         if (!selectedDate) return;
@@ -902,7 +908,7 @@ const HistorialCaja = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {tableData.map((item, i) => (
+                        {displayedData.map((item, i) => (
                             <tr key={i} className="border-b border-gray-200">
                                 <td className="p-2 border border-gray-200 font-bold">{item.paciente}</td>
                                 <td className="p-2 border border-gray-200">{item.dni}</td>
@@ -922,8 +928,8 @@ const HistorialCaja = () => {
                     <tfoot>
                         <tr className="bg-gray-100 font-bold border-t-2 border-gray-400">
                             <td colSpan={10} className="p-3 text-right uppercase tracking-widest text-[10px]">Total Neto COAT</td>
-                            <td className="p-3 text-right">${formatMoney(tableData.reduce((a, b) => a + (Number(b.coat_pesos) || 0), 0))}</td>
-                            <td className="p-3 text-right">U$D {formatMoney(tableData.reduce((a, b) => a + (Number(b.coat_dolares) || 0), 0))}</td>
+                            <td className="p-3 text-right">${formatMoney(displayedData.reduce((a, b) => a + (Number(b.coat_pesos) || 0), 0))}</td>
+                            <td className="p-3 text-right">U$D {formatMoney(displayedData.reduce((a, b) => a + (Number(b.coat_dolares) || 0), 0))}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -968,6 +974,16 @@ const HistorialCaja = () => {
                     <div className="relative flex items-center gap-3">
                         {view === 'table' ? (
                             <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-xl border border-slate-100 dark:border-slate-800">
+                                <label className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={onlyMyRecords} 
+                                        onChange={(e) => setOnlyMyRecords(e.target.checked)} 
+                                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500/20 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 transition-colors"
+                                    />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Solo mis registros</span>
+                                </label>
+                                <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
                                 <button onClick={handlePrint} className="p-2.5 text-slate-500 hover:text-teal-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-all"><Printer size={20} /></button>
                                 <button onClick={handleExportExcel} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all"><FileText size={16} /> Excel</button>
                                 <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
@@ -1085,22 +1101,22 @@ const HistorialCaja = () => {
                                 <div className="premium-card p-4 border-l-4 border-l-slate-400 dark:border-l-slate-600 relative overflow-hidden bg-white dark:bg-slate-900">
                                     <div className="absolute -right-2 -top-2 text-slate-100 dark:text-slate-800/20 transform rotate-12 scale-100"><DollarSign size={48} /></div>
                                     <h4 className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 relative">Ingreso Bruto ARS</h4>
-                                    <div className="text-xl font-black text-slate-900 dark:text-white tabular-nums relative">${formatMoney(tableData.reduce((s, i) => s + (Number(i.pesos) || 0), 0))}</div>
+                                    <div className="text-xl font-black text-slate-900 dark:text-white tabular-nums relative">${formatMoney(displayedData.reduce((s, i) => s + (Number(i.pesos) || 0), 0))}</div>
                                 </div>
                                 <div className="premium-card p-4 border-l-4 border-l-emerald-400 dark:border-l-emerald-600 relative overflow-hidden bg-white dark:bg-slate-900">
                                     <div className="absolute -right-2 -top-2 text-emerald-50 dark:text-emerald-900/10 transform rotate-12 scale-100"><DollarSign size={48} /></div>
                                     <h4 className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1 relative">Ingreso Bruto USD</h4>
-                                    <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums relative">U$D {formatMoney(tableData.reduce((s, i) => s + (Number(i.dolares) || 0), 0))}</div>
+                                    <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums relative">U$D {formatMoney(displayedData.reduce((s, i) => s + (Number(i.dolares) || 0), 0))}</div>
                                 </div>
                                 <div className="premium-card p-4 bg-slate-900 dark:bg-slate-950 border-l-4 border-l-teal-500 relative overflow-hidden text-white shadow-xl">
                                     <div className="absolute -right-2 -top-2 text-white/5 transform rotate-12 scale-100"><TrendingUp size={48} /></div>
                                     <h4 className="text-[9px] font-black text-teal-400/60 uppercase tracking-widest mb-1 relative">Neto COAT ARS</h4>
-                                    <div className="text-xl font-black tabular-nums relative">${formatMoney(tableData.reduce((s, i) => s + (Number(i.coat_pesos) || 0), 0))}</div>
+                                    <div className="text-xl font-black tabular-nums relative">${formatMoney(displayedData.reduce((s, i) => s + (Number(i.coat_pesos) || 0), 0))}</div>
                                 </div>
                                 <div className="premium-card p-4 bg-slate-900 dark:bg-slate-950 border-l-4 border-l-teal-500 relative overflow-hidden text-white shadow-xl">
                                     <div className="absolute -right-2 -top-2 text-white/5 transform rotate-12 scale-100"><TrendingUp size={48} /></div>
                                     <h4 className="text-[9px] font-black text-teal-400/60 uppercase tracking-widest mb-1 relative">Neto COAT USD</h4>
-                                    <div className="text-xl font-black tabular-nums relative">U$D {formatMoney(tableData.reduce((s, i) => s + (Number(i.coat_dolares) || 0), 0))}</div>
+                                    <div className="text-xl font-black tabular-nums relative">U$D {formatMoney(displayedData.reduce((s, i) => s + (Number(i.coat_dolares) || 0), 0))}</div>
                                 </div>
                             </div>
 
@@ -1121,7 +1137,7 @@ const HistorialCaja = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                            {tableData.map((item) => {
+                                            {displayedData.map((item) => {
                                                 const isEditing = editId === item.id;
                                                 return (
                                                     <tr key={item.id} className={`group hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors ${isEditing ? 'bg-teal-500/[0.05] dark:bg-teal-400/[0.05]' : ''}`}>
@@ -1134,8 +1150,8 @@ const HistorialCaja = () => {
                                                                     </>
                                                                 ) : (
                                                                     <>
-                                                                        <button onClick={() => handleEditClick(item)} disabled={isReadOnly || (!isAdmin && item.createdBy !== user?.email)} className="p-1.5 text-slate-400 hover:text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-all disabled:opacity-0"><Edit2 size={14} /></button>
-                                                                        <button onClick={() => handleDelete(item)} disabled={isReadOnly || (!isAdmin && item.createdBy !== user?.email)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all disabled:opacity-0"><Trash2 size={14} /></button>
+                                                                        <button onClick={() => handleEditClick(item)} disabled={isReadOnly || (!isAdmin && userRole !== 'admin' && !isSuperAdmin && item.createdBy !== user?.email)} className="p-1.5 text-slate-400 hover:text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-all disabled:opacity-0"><Edit2 size={14} /></button>
+                                                                        <button onClick={() => handleDelete(item)} disabled={isReadOnly || (!isAdmin && userRole !== 'admin' && !isSuperAdmin && item.createdBy !== user?.email)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all disabled:opacity-0"><Trash2 size={14} /></button>
                                                                     </>
                                                                 )}
                                                             </div>
@@ -1149,7 +1165,14 @@ const HistorialCaja = () => {
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex flex-col">
-                                                                    <span className="font-black text-slate-900 dark:text-white uppercase text-xs">{item.paciente}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-black text-slate-900 dark:text-white uppercase text-xs">{item.paciente}</span>
+                                                                        {item.createdBy && (
+                                                                            <span className="no-print text-[8px] font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-md border border-slate-200/50 dark:border-slate-700/50 uppercase tracking-wider">
+                                                                                Cargado por: {item.createdBy.split('@')[0]}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{item.dni || 'DNI No Registrado'}</span>
                                                                 </div>
                                                             )}
@@ -1220,8 +1243,8 @@ const HistorialCaja = () => {
                                                 <td colSpan={7} className="px-6 py-4 text-right text-[9px] uppercase tracking-[0.3em] text-teal-400">Consolidado Final de Operaciones</td>
                                                 <td className="px-4 py-4 text-right">
                                                     <div className="flex flex-col items-end">
-                                                        <span className="text-xl">${formatMoney(tableData.reduce((a, b) => a + (Number(b.coat_pesos) || 0), 0))}</span>
-                                                        <span className="text-[10px] text-orange-400">U$D {formatMoney(tableData.reduce((a, b) => a + (Number(b.coat_dolares) || 0), 0))}</span>
+                                                        <span className="text-xl">${formatMoney(displayedData.reduce((a, b) => a + (Number(b.coat_pesos) || 0), 0))}</span>
+                                                        <span className="text-[10px] text-orange-400">U$D {formatMoney(displayedData.reduce((a, b) => a + (Number(b.coat_dolares) || 0), 0))}</span>
                                                     </div>
                                                 </td>
                                             </tr>

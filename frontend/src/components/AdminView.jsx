@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, isLocalEnv } from '../firebase/config';
 import { supabase } from '../supabase/config';
-import { initializeApp } from "firebase/app";
+import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { 
     collection, getDocs, doc, setDoc, updateDoc, deleteDoc, 
@@ -102,7 +102,7 @@ const AdminView = () => {
     const SUPER_ADMIN_EMAIL = "emmanuel.ag92@gmail.com";
     const [authorizedEmails, setAuthorizedEmails] = useState([]);
     const [newEmail, setNewEmail] = useState('');
-    const [newRole, setNewRole] = useState('user');
+    const [newRole, setNewRole] = useState('secre');
     const [allDoctors, setAllDoctors] = useState([]);
     const [activeTab, setActiveTab] = useState('seguridad');
     const [profiles, setProfiles] = useState({});
@@ -113,7 +113,7 @@ const AdminView = () => {
         email: '',
         password: '',
         displayName: '',
-        role: 'user',
+        role: 'secre',
         specialty: '',
         mp: '',
         me: ''
@@ -169,15 +169,19 @@ const AdminView = () => {
             });
             
             await signOut(secondaryAuth);
-            await secondaryApp.delete();
+            await deleteApp(secondaryApp);
             
             alert("Usuario creado exitosamente.");
             setShowUserCreateModal(false);
-            setNewUserForm({ email: '', password: '', displayName: '', role: 'user', specialty: '', mp: '', me: '' });
+            setNewUserForm({ email: '', password: '', displayName: '', role: 'secre', specialty: '', mp: '', me: '' });
             fetchData();
         } catch (error) {
             console.error("Error creando usuario:", error);
-            alert("Error: " + error.message);
+            if (error.code === 'auth/email-already-in-use') {
+                alert("Error: El correo ya está registrado en Firebase Authentication.\n\nSi eliminaste al usuario anteriormente de la base de datos, debes ir a la consola de Firebase (sección 'Authentication'), buscar el correo '" + newUserForm.email + "' y eliminarlo de la lista allí antes de poder crearlo nuevamente desde aquí.");
+            } else {
+                alert("Error: " + error.message);
+            }
         } finally {
             setLoading(false);
         }
@@ -329,6 +333,7 @@ const AdminView = () => {
                 let profMap = {};
                 profSnap.forEach(d => { profMap[d.id] = d.data(); });
                 setProfiles(profMap);
+                setAllDoctors(profSnap.docs.map(d => ({ uid: d.id, profile: d.data() })));
             } catch (e) { console.error("Error fetching profiles:", e); }
 
             try {
@@ -563,7 +568,7 @@ const AdminView = () => {
                 addedAt: new Date().toISOString()
             });
             setNewEmail('');
-            setNewRole('user');
+            setNewRole('secre');
             setSelectedLinkedProf('');
             fetchData();
         } catch (error) {
@@ -575,10 +580,6 @@ const AdminView = () => {
         const authRecord = authorizedEmails.find(a => a.id === id);
         if (authRecord?.email === SUPER_ADMIN_EMAIL) {
             alert("No puedes eliminar al Super Administrador.");
-            return;
-        }
-        if (isLocalEnv) {
-            alert("­ƒöÆ SEGURIDAD LOCAL: No se permite eliminar autorizaciones de la nube desde el entorno local.");
             return;
         }
         if (!window.confirm("¿Seguro que quieres quitar la autorización?")) return;
@@ -634,10 +635,6 @@ const AdminView = () => {
     };
 
     const handleDeleteRole = async (roleId) => {
-        if (isLocalEnv) {
-            alert("­ƒöÆ SEGURIDAD LOCAL: No se permite eliminar roles globales desde el entorno local.");
-            return;
-        }
         if (!window.confirm("¿Eliminar este rol? Los usuarios con este rol podrían perder acceso.")) return;
         try {
             await deleteDoc(doc(db, "roles", roleId));
@@ -653,10 +650,6 @@ const AdminView = () => {
             alert("No puedes eliminar los datos del Super Administrador.");
             return;
         }
-        if (isLocalEnv) {
-            alert("BLOQUEO DE SEGURIDAD: Estás en modo LOCAL. El borrado masivo de datos está desactivado.");
-            return;
-        }
         if (!window.confirm(`ADVERTENCIA CRÍTICA: ¿Estás SEGURO de que quieres BORRAR TODA LA INFORMACIÓN de: ${email}?`)) return;
         const secondConfirm = window.prompt(`Para confirmar, escribe el email o UID del usuario (${email}):`);
         if (secondConfirm !== email && secondConfirm !== uid) {
@@ -666,7 +659,6 @@ const AdminView = () => {
         setLoading(true);
         try {
             const collectionsToWipe = [
-                { name: 'caja', field: 'userId' },
                 { name: 'profesionales', field: 'userId' },
                 { name: 'notes', field: 'userId' },
                 { name: 'access_grants', field: 'ownerUid' }
@@ -962,9 +954,7 @@ const AdminView = () => {
 
     const tabs = [
         { id: 'seguridad', label: 'Seguridad', icon: ShieldAlert, show: isSuperAdmin || permissions?.can_manage_users, color: 'blue' },
-        { id: 'storage', label: 'Archivos', icon: HardDrive, show: isSuperAdmin, color: 'indigo' },
         { id: 'intelligence', label: 'Inteligencia', icon: Zap, show: isSuperAdmin || permissions?.can_view_stats, color: 'purple' },
-        { id: 'mapeo', label: 'Mapeo', icon: FileBadge, show: isSuperAdmin, color: 'indigo' },
         { id: 'permissions', label: 'Permisos', icon: Key, show: isSuperAdmin, color: 'emerald' },
         { id: 'mantenimiento', label: 'Mantenimiento', icon: RefreshCw, show: isSuperAdmin, color: 'amber' },
         { id: 'messages', label: 'Mensajes', icon: MessageCircle, show: isSuperAdmin, color: 'blue' },
@@ -1426,57 +1416,8 @@ const AdminView = () => {
 
             {/* Permissions Tab */}
             {activeTab === 'permissions' && isSuperAdmin && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="premium-card p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-purple-500/10 shadow-xl">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-3 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-xl shadow-inner-sm">
-                                <Key size={22} />
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Nuevo Rol</h3>
-                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60">Matriz de permisos</p>
-                            </div>
-                        </div>
-                        <form onSubmit={handleCreateRole} className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Identificador del Rol</label>
-                                <input
-                                    type="text"
-                                    value={roleName}
-                                    onChange={(e) => setRoleName(e.target.value)}
-                                    className="input-premium focus:ring-purple-500/10 focus:border-purple-500/50"
-                                    placeholder="Nombre del Rol (ej: Secretaria)"
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Matriz de Permisos</label>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {Object.keys(rolePermissions).map(perm => (
-                                        <label key={perm} className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl cursor-pointer hover:bg-purple-500/5 dark:hover:bg-purple-500/10 transition-all border border-transparent hover:border-purple-500/20 group">
-                                            <div className="relative flex items-center justify-center">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={rolePermissions[perm]}
-                                                    onChange={(e) => setRolePermissions(prev => ({ ...prev, [perm]: e.target.checked }))}
-                                                    className="w-5 h-5 appearance-none border-2 border-slate-300 dark:border-slate-600 rounded-lg checked:bg-purple-600 checked:border-purple-600 transition-all cursor-pointer"
-                                                />
-                                                {rolePermissions[perm] && <div className="absolute text-white pointer-events-none text-[10px]">✓</div>}
-                                            </div>
-                                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-tight group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                                                {translatePermission(perm)}
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                            <button type="submit" className="w-full py-5 bg-purple-600 hover:bg-purple-700 text-white rounded-[2rem] font-black shadow-xl shadow-purple-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
-                                <CheckCircle2 size={20} />
-                                CREAR ROL PERSONALIZADO
-                            </button>
-                        </form>
-                    </div>
-                    <div className="premium-card p-10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-blue-500/10">
+                <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="premium-card p-10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-blue-500/10 shadow-xl">
                         <div className="flex items-center justify-between mb-8">
                             <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-3">
                                 <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
@@ -2130,12 +2071,9 @@ const AdminView = () => {
                                         onChange={e => setNewUserForm({...newUserForm, role: e.target.value})}
                                         className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
                                     >
-                                        <option value="user">Médico / Usuario</option>
+                                        <option value="secre">Secretaria</option>
                                         <option value="admin">Administrador</option>
-                                        <option value="view">Solo Lectura</option>
-                                        {roles.filter(r => !['user', 'admin', 'view'].includes(r.id)).map(role => (
-                                            <option key={role.id} value={role.id}>{role.name}</option>
-                                        ))}
+                                        <option value="direccion_medica">Dirección Médica</option>
                                     </select>
                                 </div>
 

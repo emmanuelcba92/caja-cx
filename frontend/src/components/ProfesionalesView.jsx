@@ -12,7 +12,7 @@ import ModalPortal from './common/ModalPortal';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const ProfesionalesView = () => {
-    const { viewingUid, permission, catalogOwnerUid, userRole, permissions, isSuperAdmin } = useAuth();
+    const { viewingUid, permission, catalogOwnerUid, userRole, permissions, isSuperAdmin, currentUser } = useAuth();
     const isReadOnly = permission === 'viewer' || (permissions?.can_view_shared_catalog && viewingUid !== catalogOwnerUid);
     
     const [profesionales, setProfesionales] = useState([]);
@@ -133,7 +133,8 @@ const ProfesionalesView = () => {
             await apiService.addDocument("profesionales", {
                 nombre: fullName,
                 categoria,
-                userId: ownerToUse
+                userId: ownerToUse,
+                createdBy: currentUser?.email || 'unknown'
             });
             setNombre('');
             fetchProfs();
@@ -154,7 +155,8 @@ const ProfesionalesView = () => {
                 if (!exists) {
                     await apiService.addDocument("profesionales", {
                         ...p,
-                        userId: ownerToUse
+                        userId: ownerToUse,
+                        createdBy: currentUser?.email || 'unknown'
                     });
                     addedCount++;
                 }
@@ -579,7 +581,7 @@ const ProfesionalesView = () => {
                                 </div>
                                 
                                 <div className="flex items-center gap-1 transition-all">
-                                    {(isSuperAdmin || isAdmin) && !isReadOnly && (
+                                    {(isSuperAdmin || userRole === 'admin' || prof.createdBy === currentUser?.email || isAdmin) && !isReadOnly && (
                                         <>
                                             <button onClick={() => handleEditClick(prof)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-all">
                                                 <Edit3 size={16} />

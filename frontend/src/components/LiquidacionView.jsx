@@ -11,7 +11,7 @@ import { saveAs } from 'file-saver';
 
 
 const LiquidacionView = () => {
-    const { viewingUid, permission, catalogOwnerUid, permissions } = useAuth();
+    const { currentUser, viewingUid, permission, catalogOwnerUid, permissions } = useAuth();
     const isReadOnly = permission === 'viewer' || permissions?.readonly_caja;
     // Force Portrait for this view
     // v1.1.0 Fix USD
@@ -118,6 +118,7 @@ const LiquidacionView = () => {
     const [startDate, setStartDate] = useState(today);
     const [endDate, setEndDate] = useState(today);
     const [data, setData] = useState(null);
+    const [filterByUser, setFilterByUser] = useState(true);
 
     const normalize = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
 
@@ -214,7 +215,10 @@ const LiquidacionView = () => {
             const allEntries = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             // Filter by Date Range client-side
-            const entries = allEntries.filter(item => item.fecha >= startDate && item.fecha <= endDate);
+            let entries = allEntries.filter(item => item.fecha >= startDate && item.fecha <= endDate);
+            if (filterByUser && currentUser?.email) {
+                entries = entries.filter(item => item.createdBy === currentUser.email);
+            }
 
             // 2. Filter locally for the selected professional and calculate "Liquidation Amount"
             const relevantEntries = [];
@@ -392,7 +396,7 @@ const LiquidacionView = () => {
             fetchLiquidation();
             localStorage.setItem('liq_selectedProf', selectedProf);
         }
-    }, [selectedProf, startDate, endDate, viewingUid, profesionales]);
+    }, [selectedProf, startDate, endDate, viewingUid, profesionales, filterByUser]);
 
 
 
@@ -409,7 +413,6 @@ const LiquidacionView = () => {
             // Fetch all for this prof to avoid composite index requirements for date range
             const q = query(
                 collection(db, "deducciones"),
-                where("userId", "==", viewingUid),
                 where("profesional", "==", selectedProf)
             );
             const snapshot = await getDocs(q);
@@ -587,7 +590,6 @@ const LiquidacionView = () => {
             // Fetch patients for this date to help autocomplete
             const fetchPatients = async () => {
                 const q = query(collection(db, "caja"),
-                    where("userId", "==", viewingUid),
                     where("fecha", "==", manualForm.date)
                 );
                 const snapshot = await getDocs(q);
@@ -701,16 +703,19 @@ const LiquidacionView = () => {
         if (!viewingUid) return;
 
         // 1. Fetch Entries
-        const q = query(collection(db, "caja"), where("userId", "==", viewingUid));
+        const q = query(collection(db, "caja"));
         const snap = await getDocs(q);
         const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const entries = all.filter(item => item.fecha >= startDate && item.fecha <= endDate);
+        let entries = all.filter(item => item.fecha >= startDate && item.fecha <= endDate);
+        if (filterByUser && currentUser?.email) {
+            entries = entries.filter(item => item.createdBy === currentUser.email);
+        }
 
         // 2. Build Reports
         const reports = [];
 
         // Fetch Deductions
-        const qDed = query(collection(db, "deducciones"), where("userId", "==", viewingUid));
+        const qDed = query(collection(db, "deducciones"));
         const snapDed = await getDocs(qDed);
         const allDeductions = snapDed.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -817,12 +822,13 @@ const LiquidacionView = () => {
         if (!viewingUid) return alert("Debes estar logueado");
         try {
             // 1. Fetch ALL data for the period
-            const q = query(collection(db, "caja"),
-                where("userId", "==", viewingUid)
-            );
+            const q = query(collection(db, "caja"));
             const querySnapshot = await getDocs(q);
             const allEntries = querySnapshot.docs.map(doc => doc.data());
-            const entries = allEntries.filter(item => item.fecha >= startDate && item.fecha <= endDate);
+            let entries = allEntries.filter(item => item.fecha >= startDate && item.fecha <= endDate);
+            if (filterByUser && currentUser?.email) {
+                entries = entries.filter(item => item.createdBy === currentUser.email);
+            }
 
             // 2. Identify Active Professionals and their totals per day
             const matrix = {}; // { "YYYY-MM-DD": { "Prof Name": { ARS: 0, USD: 0 } } }
@@ -1522,6 +1528,16 @@ const LiquidacionView = () => {
                                 <input type="date" className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-xs text-slate-600 dark:text-slate-200 focus:border-teal-500 outline-none" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                                 <span className="text-slate-400 dark:text-slate-500">-</span>
                                 <input type="date" className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-xs text-slate-600 dark:text-slate-200 focus:border-teal-500 outline-none" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                                <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filterByUser} 
+                                        onChange={(e) => setFilterByUser(e.target.checked)} 
+                                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500/20 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 transition-colors"
+                                    />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Liquidar solo mis registros</span>
+                                </label>
                             </div>
                         </div>
                         <div className="flex flex-col gap-4">

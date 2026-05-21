@@ -13,6 +13,10 @@ export const DEFAULT_ROLES = {
             can_share_ordenes: true,
             can_view_stats: true,
             can_delete_data: true,
+            can_edit_data: true,
+            can_edit_own: true,
+            can_delete_own: true,
+            readonly_caja: false,
             is_ephemeral: false
         }
     },
@@ -26,8 +30,9 @@ export const DEFAULT_ROLES = {
             can_view_ordenes: true,
             can_share_ordenes: false,
             can_delete_data: false,
-            can_edit_own: false,
-            can_delete_own: false,
+            can_edit_own: true,
+            can_delete_own: true,
+            readonly_caja: false,
             is_ephemeral: false
         }
     },
@@ -42,6 +47,9 @@ export const DEFAULT_ROLES = {
             can_view_ordenes: true,
             can_share_ordenes: false,
             can_delete_data: false,
+            can_edit_data: false,
+            can_edit_own: false,
+            can_delete_own: false,
             readonly_caja: true,
             is_ephemeral: false
         }
@@ -52,28 +60,20 @@ export const seedDefaultRoles = async () => {
     try {
         const rolesCol = collection(db, 'roles');
 
-        // Delete deprecated roles
-        const deprecatedRoles = ['doctor', 'secretaria', 'directora', 'user'];
-        for (const deprecatedRole of deprecatedRoles) {
-            if (isLocalEnv) continue;
-            const deprecatedRef = doc(rolesCol, deprecatedRole);
-            const deprecatedSnap = await getDoc(deprecatedRef);
-            if (deprecatedSnap.exists()) {
-                console.log(`Removing deprecated role: ${deprecatedRole}`);
-                await deleteDoc(deprecatedRef);
+        // Delete any custom/deprecated roles to leave ONLY default ones
+        const snap = await getDocs(rolesCol);
+        for (const docSnap of snap.docs) {
+            const roleId = docSnap.id;
+            if (!['admin', 'secre', 'direccion_medica'].includes(roleId)) {
+                console.log(`Removing custom/deprecated role: ${roleId}`);
+                await deleteDoc(doc(rolesCol, roleId));
             }
         }
 
         // Seed/Update default roles
         for (const [key, roleData] of Object.entries(DEFAULT_ROLES)) {
             const roleRef = doc(rolesCol, key);
-            const roleSnap = await getDoc(roleRef);
-
-            if (!roleSnap.exists() || roleData.isSystem) {
-                console.log(`Seeding/Updating system role: ${key}`);
-                // Use overwrite (no merge) for system roles to ensure permissions are always up to date
-                await setDoc(roleRef, roleData);
-            }
+            await setDoc(roleRef, roleData);
         }
         console.log('Roles seeded successfully.');
     } catch (error) {

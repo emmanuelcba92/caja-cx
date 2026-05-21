@@ -10,7 +10,7 @@ import { scrollToTop } from '../utils/navigation';
 
 
 const CajaForm = ({ lowPerfMode = false }) => {
-    const { viewingUid, permission, currentUser, catalogOwnerUid, permissions } = useAuth(); // Get permission ('owner', 'editor', 'viewer')
+    const { viewingUid, permission, currentUser, catalogOwnerUid, permissions, userRole, isSuperAdmin } = useAuth(); // Get permission ('owner', 'editor', 'viewer')
     const isReadOnly = permission === 'viewer' || permissions?.readonly_caja;
     // Global Date State
     const [globalDate, setGlobalDate] = useState(new Date().toISOString().split('T')[0]);
@@ -529,7 +529,7 @@ const CajaForm = ({ lowPerfMode = false }) => {
         // --- ENFORCE OWN RECORDS POLICY ---
         // Admin or superadmin can do everything.
         // Others (Secretaria) can only edit/delete what they created.
-        const canManageAny = permissions?.can_delete_data || currentUser?.email === "emmanuel.ag92@gmail.com";
+        const canManageAny = permissions?.can_delete_data || userRole === 'admin' || isSuperAdmin || currentUser?.email === "emmanuel.ag92@gmail.com";
         const isOwner = item.createdBy === currentUser?.email;
 
         if (!canManageAny && !isOwner) {
