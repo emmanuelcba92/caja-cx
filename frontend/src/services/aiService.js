@@ -3,7 +3,7 @@
  */
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_MODELS = ['gemini-3.1-flash-lite-preview', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+const GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
 const makeUrl = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
 /**
@@ -94,12 +94,9 @@ ${emailText}`;
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const status = response.status;
-                if (status === 429 || status === 503) {
-                    console.warn(`[AI] Model ${model} hit quota/unavailable (${status}), trying next...`);
-                    lastError = new Error(`Model ${model}: ${errorData?.error?.message || `HTTP ${status}`}`);
-                    continue;
-                }
-                throw new Error(`Error de Gemini API (${status}): ${errorData?.error?.message || 'Error desconocido'}`);
+                console.warn(`[AI] Model ${model} failed with status ${status}: ${errorData?.error?.message || 'Error desconocido'}`);
+                lastError = new Error(`Model ${model}: ${errorData?.error?.message || `HTTP ${status}`}`);
+                continue;
             }
 
             const data = await response.json();
