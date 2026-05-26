@@ -1139,7 +1139,7 @@ const OrdenesView = (props) => {
                     </div>
 
                     {/* Surgery Details: Anesthesia | Date | Time */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-6 border-t border-slate-50 dark:border-slate-800">
+                    <div className={`grid grid-cols-1 ${formData.estudioBajoAnestesia ? 'md:grid-cols-2' : 'md:grid-cols-4'} gap-6 pt-6 border-t border-slate-50 dark:border-slate-800`}>
                         <div className="space-y-2">
                             <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                                 <Stethoscope size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Tipo de Anestesia
@@ -1155,28 +1155,32 @@ const OrdenesView = (props) => {
                                 <option value="sedación">Sedación</option>
                             </select>
                         </div>
-                        <div className="space-y-1.5">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
-                                <Calendar size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Fecha Cirugía
-                            </label>
-                            <input
-                                type="date"
-                                value={formData.fechaCirugia}
-                                onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
-                                className={`w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
-                                <Clock size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Hora
-                            </label>
-                            <input
-                                type="time"
-                                value={formData.horaCirugia}
-                                onChange={(e) => handleInputChange('horaCirugia', e.target.value)}
-                                className={`w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all font-black text-slate-700 dark:text-slate-200 ${ringClass}`}
-                            />
-                        </div>
+                        {!formData.estudioBajoAnestesia && (
+                            <>
+                                <div className="space-y-1.5">
+                                    <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                        <Calendar size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Fecha Cirugía
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={formData.fechaCirugia}
+                                        onChange={(e) => handleInputChange('fechaCirugia', e.target.value)}
+                                        className={`w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all font-bold text-slate-700 dark:text-slate-200 ${ringClass}`}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                        <Clock size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Hora
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={formData.horaCirugia}
+                                        onChange={(e) => handleInputChange('horaCirugia', e.target.value)}
+                                        className={`w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all font-black text-slate-700 dark:text-slate-200 ${ringClass}`}
+                                    />
+                                </div>
+                            </>
+                        )}
                         <div className="space-y-1.5">
                             <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                                 <Calendar size={12} className={`text-${accentColor}-500 dark:text-${accentColor}-400`} /> Fecha Documento
@@ -1516,6 +1520,11 @@ const OrdenesView = (props) => {
             return;
         }
 
+        if (!formData.estudioBajoAnestesia && !formData.fechaCirugia) {
+            alert("Por favor, ingresa la fecha de cirugía.");
+            return;
+        }
+
         setLoading(true);
         const ownerToUse = catalogOwnerUid || viewingUid;
 
@@ -1524,6 +1533,8 @@ const OrdenesView = (props) => {
 
             const orderData = {
                 ...formData,
+                fechaCirugia: formData.estudioBajoAnestesia ? '' : formData.fechaCirugia,
+                horaCirugia: formData.estudioBajoAnestesia ? '' : formData.horaCirugia,
                 codigosCirugia: cleanedCodigos.length > 0 ? cleanedCodigos : [{ codigo: '', nombre: '' }],
                 userId: ownerToUse,
                 status: isAuditoria ? 'auditada' : (formData.status || 'pendiente'),
@@ -1970,7 +1981,9 @@ const OrdenesView = (props) => {
                         <span style={{ fontSize: '24pt', display: 'block' }}>DNI {previewData.dni || '-'}</span>
                         <span style={{ fontSize: '24pt', display: 'block' }}>{(previewData.obraSocial || '').toUpperCase()}</span>
                         <span style={{ fontSize: '24pt', display: 'block' }}>{(shortProfName(previewData.profesional) || '').toUpperCase()}</span>
-                        <span style={{ fontSize: '24pt', display: 'block' }}>{formatDate(previewData.fechaCirugia || previewData.fechaDocumento)}</span>
+                        {!previewData.estudioBajoAnestesia && (
+                            <span style={{ fontSize: '24pt', display: 'block' }}>{formatDate(previewData.fechaCirugia || previewData.fechaDocumento)}</span>
+                        )}
                         <span style={{ fontSize: '24pt', display: 'block' }}>ALERGIA ({previewData.alergias?.toUpperCase() || '-'})</span>
                     </div>
                 </div>
@@ -2138,7 +2151,7 @@ const OrdenesView = (props) => {
                     )}
 
                     <p className="pt-2"><span className="font-bold">Tipo de anestesia:</span> {previewData.tipoAnestesia}</p>
-                    <p className="pt-2"><span className="font-bold">Fecha de cirugía:</span> {formatDate(previewData.fechaCirugia)}</p>
+                    {!isEstudio && <p className="pt-2"><span className="font-bold">Fecha de cirugía:</span> {formatDate(previewData.fechaCirugia)}</p>}
                     
                     {isInternacion && <p className="pt-2"><span className="font-bold">Material:</span> {previewData.incluyeMaterial ? 'si' : 'no'}</p>}
                     
@@ -2693,7 +2706,7 @@ const OrdenesView = (props) => {
                                                             </span>
                                                             <span className="flex items-center gap-1.5">
                                                                 <Calendar size={12} className="text-slate-300" />
-                                                                {formatDate(orden.fechaCirugia || orden.fechaDocumento)}
+                                                                {orden.estudioBajoAnestesia ? 'Estudio' : formatDate(orden.fechaCirugia)}
                                                                 {orden.incluyeMaterial && (
                                                                     <span className="ml-2 px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 text-[8px] font-black uppercase tracking-widest rounded flex items-center gap-1">
                                                                         <Package size={8} /> Material
@@ -2795,7 +2808,7 @@ const OrdenesView = (props) => {
                                                     <div className="flex items-center gap-3 text-[10px] font-medium text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
                                                         <Calendar size={12} className="text-slate-300" />
                                                         <div className="flex flex-col">
-                                                            <span>{formatDate(orden.fechaCirugia || orden.fechaDocumento)}</span>
+                                                            <span>{orden.estudioBajoAnestesia ? 'Estudio' : formatDate(orden.fechaCirugia)}</span>
                                                             {orden.incluyeMaterial && (
                                                                 <span className="text-[8px] font-black text-violet-500 dark:text-violet-400 uppercase tracking-widest flex items-center gap-1">
                                                                     <Package size={8} /> Material

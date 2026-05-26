@@ -217,7 +217,12 @@ const LiquidacionView = () => {
             // Filter by Date Range client-side
             let entries = allEntries.filter(item => item.fecha >= startDate && item.fecha <= endDate);
             if (filterByUser && currentUser?.email) {
-                entries = entries.filter(item => item.createdBy === currentUser.email);
+                entries = entries.filter(item => {
+                    if (item.isManualLiquidation && !item.createdBy) {
+                        return true;
+                    }
+                    return item.createdBy === currentUser.email;
+                });
             }
 
             // 2. Filter locally for the selected professional and calculate "Liquidation Amount"
@@ -677,6 +682,7 @@ const LiquidacionView = () => {
                     coat_dolares: 0,
                     userId: viewingUid,
                     createdAt: new Date().toISOString(),
+                    createdBy: currentUser?.email || 'unknown',
                     includeInReceipt: manualForm.includeInReceipt ?? false,
                     isManualLiquidation: true, // Flag to isolate from general history
                     isTransfer_prof_1: manualForm.isTransfer ?? false // Save specific transfer flag (manual usually uses prof_1)
@@ -708,7 +714,12 @@ const LiquidacionView = () => {
         const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         let entries = all.filter(item => item.fecha >= startDate && item.fecha <= endDate);
         if (filterByUser && currentUser?.email) {
-            entries = entries.filter(item => item.createdBy === currentUser.email);
+            entries = entries.filter(item => {
+                if (item.isManualLiquidation && !item.createdBy) {
+                    return true;
+                }
+                return item.createdBy === currentUser.email;
+            });
         }
 
         // 2. Build Reports
@@ -827,7 +838,12 @@ const LiquidacionView = () => {
             const allEntries = querySnapshot.docs.map(doc => doc.data());
             let entries = allEntries.filter(item => item.fecha >= startDate && item.fecha <= endDate);
             if (filterByUser && currentUser?.email) {
-                entries = entries.filter(item => item.createdBy === currentUser.email);
+                entries = entries.filter(item => {
+                    if (item.isManualLiquidation && !item.createdBy) {
+                        return true;
+                    }
+                    return item.createdBy === currentUser.email;
+                });
             }
 
             // 2. Identify Active Professionals and their totals per day
