@@ -7,7 +7,7 @@ import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth"
 import { 
     collection, getDocs, doc, setDoc, updateDoc, deleteDoc, 
     query, where, orderBy, addDoc, getDoc, writeBatch,
-    getCountFromServer, limit
+    getCountFromServer, limit, startAfter
 } from "firebase/firestore";
 import { 
     Shield, UserPlus, Trash2, Mail, Users, ArrowRight, Search, Activity, 
@@ -18,6 +18,7 @@ import {
     Link2, FileBadge, Baby, Edit
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { logAction, AUDIT_ACTIONS } from '../services/auditService';
 
 const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, showAllOption = false }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -171,6 +172,12 @@ const AdminView = () => {
             await signOut(secondaryAuth);
             await deleteApp(secondaryApp);
             
+            await logAction(
+                AUDIT_ACTIONS.CREATE_PROFESSIONAL,
+                uid,
+                `Creado usuario: ${newUserForm.displayName} (${newUserForm.email}) con rol: ${newUserForm.role}`
+            );
+
             alert("Usuario creado exitosamente.");
             setShowUserCreateModal(false);
             setNewUserForm({ email: '', password: '', displayName: '', role: 'secre', specialty: '', mp: '', me: '' });
@@ -270,6 +277,14 @@ const AdminView = () => {
     const [allProfessionals, setAllProfessionals] = useState([]);
     const [selectedLinkedProf, setSelectedLinkedProf] = useState('');
     const [remapImport, setRemapImport] = useState(true);
+
+    // Audit Logs State
+    const [auditLogs, setAuditLogs] = useState([]);
+    const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+    const [auditSearch, setAuditSearch] = useState("");
+    const [auditLimit, setAuditLimit] = useState(100);
+    const [hasMoreAudit, setHasMoreAudit] = useState(true);
+    const [lastAuditDoc, setLastAuditDoc] = useState(null);
 
     const translatePermission = (key) => {
         const translations = {
@@ -525,6 +540,11 @@ const AdminView = () => {
                 role: newRoleValue,
                 ownerUid: currentUser.uid
             });
+            await logAction(
+                AUDIT_ACTIONS.ADMIN_CHANGE_SETTINGS,
+                id,
+                `Rol de ${authRecord?.email} actualizado a ${newRoleValue}`
+            );
             fetchData();
         } catch (error) {
             alert("Error al actualizar rol: " + error.message);
@@ -567,6 +587,11 @@ const AdminView = () => {
                 ownerUid: currentUser.uid,
                 addedAt: new Date().toISOString()
             });
+            await logAction(
+                AUDIT_ACTIONS.ADMIN_CHANGE_SETTINGS,
+                newEmail,
+                `Autorizada dirección de email: ${newEmail} con rol: ${newRole}`
+            );
             setNewEmail('');
             setNewRole('secre');
             setSelectedLinkedProf('');
@@ -585,6 +610,11 @@ const AdminView = () => {
         if (!window.confirm("¿Seguro que quieres quitar la autorización?")) return;
         try {
             await deleteDoc(doc(db, "authorized_emails", id));
+            await logAction(
+                AUDIT_ACTIONS.ADMIN_CHANGE_SETTINGS,
+                id,
+                `Eliminada autorización de email: ${authRecord?.email}`
+            );
             fetchData();
         } catch (error) {
             alert(error.message);
@@ -863,12 +893,60 @@ const AdminView = () => {
         }
     };
 
+    const fetchAuditLogs = async (isLoadMore = false, manualLimit = null) => {
+        setIsLoadingAudit(true);
+        const effectiveLimit = manualLimit || auditLimit;
+        try {
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+            let q = query(
+                collection(db, "audit_logs"),
+                where("timestamp", ">=", ninetyDaysAgo),
+                orderBy("timestamp", "desc"),
+                limit(effectiveLimit)
+            );
+
+            if (isLoadMore && lastAuditDoc) {
+                q = query(
+                    collection(db, "audit_logs"),
+                    where("timestamp", ">=", ninetyDaysAgo),
+                    orderBy("timestamp", "desc"),
+                    startAfter(lastAuditDoc),
+                    limit(effectiveLimit)
+                );
+            }
+
+            const snap = await getDocs(q);
+            const logs = snap.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+
+            if (isLoadMore) {
+                setAuditLogs(prev => [...prev, ...logs]);
+            } else {
+                setAuditLogs(logs);
+            }
+
+            setLastAuditDoc(snap.docs[snap.docs.length - 1] || null);
+            setHasMoreAudit(snap.docs.length === effectiveLimit);
+        } catch (err) {
+            console.error("Error fetching audit logs:", err);
+        } finally {
+            setIsLoadingAudit(false);
+        }
+    };
+
     useEffect(() => {
         if (activeTab === 'storage') {
             fetchGlobalStorageFiles();
         }
         if (activeTab === 'mapeo') {
             fetchConsentMappings();
+        }
+        if (activeTab === 'audit' && auditLogs.length === 0) {
+            fetchAuditLogs();
         }
     }, [activeTab]);
 
@@ -959,7 +1037,8 @@ const AdminView = () => {
         { id: 'mantenimiento', label: 'Mantenimiento', icon: RefreshCw, show: isSuperAdmin, color: 'amber' },
         { id: 'messages', label: 'Mensajes', icon: MessageCircle, show: isSuperAdmin, color: 'blue' },
         { id: 'notifications', label: 'Alertas', icon: Mail, show: isSuperAdmin, color: 'rose' },
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: isSuperAdmin || permissions?.can_view_stats, color: 'cyan' }
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: isSuperAdmin || permissions?.can_view_stats, color: 'cyan' },
+        { id: 'audit', label: 'Auditoría', icon: HistoryIcon, show: isSuperAdmin, color: 'indigo' }
     ];
 
     return (
@@ -1928,6 +2007,160 @@ const AdminView = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+
+            {/* Audit Logs Tab */}
+            {activeTab === 'audit' && isSuperAdmin && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                    <HistoryIcon className="text-indigo-500" /> Historial de Auditoría
+                                </h3>
+                                <p className="text-sm text-slate-400 font-medium">Registros de acciones críticas de los últimos 90 días (Inmutable)</p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4">
+                                <div className="relative group flex-1 min-w-[300px]">
+                                    <Search
+                                        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-indigo-500"
+                                        size={18}
+                                    />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por paciente, usuario o acción específica..."
+                                        className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm text-slate-900 dark:text-white"
+                                        value={auditSearch}
+                                        onChange={(e) => setAuditSearch(e.target.value)}
+                                    />
+                                </div>
+
+                                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-750">
+                                    {[50, 100, 300].map(val => (
+                                        <button
+                                            key={val}
+                                            onClick={() => { 
+                                                setAuditLimit(val); 
+                                                setAuditLogs([]); 
+                                                fetchAuditLogs(false, val);
+                                            }}
+                                            className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${
+                                                auditLimit === val 
+                                                    ? 'bg-indigo-600 text-white shadow-md' 
+                                                    : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                            }`}
+                                        >
+                                            {val}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <button 
+                                    onClick={() => fetchAuditLogs(false)}
+                                    disabled={isLoadingAudit}
+                                    className="p-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-all"
+                                    title="Refrescar logs"
+                                >
+                                    <RefreshCw size={20} className={isLoadingAudit ? "animate-spin" : ""} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {isLoadingAudit ? (
+                            <div className="py-20 flex flex-col items-center justify-center gap-4">
+                                <RefreshCw size={40} className="animate-spin text-indigo-500" />
+                                <p className="text-xs font-black uppercase tracking-widest text-slate-400">Cargando registros...</p>
+                            </div>
+                        ) : auditLogs.length === 0 ? (
+                            <div className="py-20 text-center bg-slate-50 dark:bg-slate-800/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800">
+                                <ShieldCheck size={48} className="mx-auto text-slate-300 mb-4" />
+                                <p className="text-slate-400 font-medium">No se han encontrado registros de actividad reciente.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800">
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha y Hora</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Usuario</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Acción</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Detalles/Destino</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                                            {auditLogs
+                                                .filter(log => 
+                                                    log.userEmail?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                                                    log.userName?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                                                    log.action?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                                                    log.targetName?.toLowerCase().includes(auditSearch.toLowerCase())
+                                                )
+                                                .map((log) => (
+                                                    <tr key={log.id} className="hover:bg-indigo-50/20 dark:hover:bg-indigo-900/5 transition-colors group">
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                                                    {log.timestamp?.seconds 
+                                                                        ? new Date(log.timestamp.seconds * 1000).toLocaleString('es-AR')
+                                                                        : 'Recién registrado'}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-mono">
+                                                                    {log.id.substring(0, 8)}...
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                                                    {log.userName === 'Usuario sin nombre' 
+                                                                        ? (allDoctors.find(d => d.uid === log.userId)?.profile?.displayName || log.userName)
+                                                                        : log.userName}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400">{log.userEmail}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${
+                                                                log.action?.includes('ELIMINAR') 
+                                                                    ? 'bg-red-100 dark:bg-red-900/30 text-red-650 dark:text-red-400' 
+                                                                    : log.action?.includes('CAMBIO') || log.action?.includes('EDITAR')
+                                                                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-650 dark:text-amber-400'
+                                                                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-650 dark:text-blue-400'
+                                                            }`}>
+                                                                {log.action?.replace(/_/g, ' ') || 'ACCIÓN DESCONOCIDA'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs font-medium text-slate-650 dark:text-slate-300 break-words">{log.targetName}</span>
+                                                                {log.details?.type && (
+                                                                    <span className="text-[9px] text-slate-400 uppercase tracking-tighter">{log.details.type}</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {hasMoreAudit && auditLogs.length > 0 && (
+                                    <div className="p-8 flex justify-center border-t border-slate-150 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/10">
+                                        <button 
+                                            onClick={() => fetchAuditLogs(true)}
+                                            disabled={isLoadingAudit}
+                                            className="px-10 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-750 transition-all flex items-center gap-3 text-slate-700 dark:text-slate-300 shadow-sm hover:shadow-md disabled:opacity-50"
+                                        >
+                                            {isLoadingAudit ? <RefreshCw size={16} className="animate-spin" /> : <ChevronDown size={16} />}
+                                            Cargar más registros
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 </div>
             )}

@@ -2,6 +2,16 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Colección de Auditoría (INMUTABLE)
+    match /audit_logs/{logId} {
+      allow read: if request.auth != null && 
+        (request.auth.token.email.lower() == 'emmanuel.ag92@gmail.com' ||
+         (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role.lower() in ['admin', 'superadmin', 'super_admin']));
+      allow create: if request.auth != null;
+      allow update, delete: if false; // Bloqueo total de edición/borrado
+    }
+
     // CAJA PROJECT RULES
     match /{document=**} {
       allow read, write: if request.auth != null;

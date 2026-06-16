@@ -90,6 +90,7 @@ class OrdenInternacion(db.Model):
     diagnostico = db.Column(db.Text)
     observaciones = db.Column(db.Text)
     suspendida = db.Column(db.Boolean, default=False)
+    provisorio = db.Column(db.Boolean, default=False)
     fechaDocumento = db.Column(db.String(20))
     status = db.Column(db.String(50))
     auditedAt = db.Column(db.String(50))
@@ -99,6 +100,14 @@ class OrdenInternacion(db.Model):
 
 with app.app_context():
     db.create_all()
+    # Safely alter table to add provisorio column if not exists
+    try:
+        db.session.execute(db.text("ALTER TABLE orden_internacion ADD COLUMN provisorio BOOLEAN DEFAULT 0"))
+        db.session.commit()
+    except Exception:
+        # Ignore if column already exists
+        pass
+
     # Initialize defaults if empty
     if not AppConfig.query.get('admin_pin'):
         db.session.add(AppConfig(key='admin_pin', value='1234'))

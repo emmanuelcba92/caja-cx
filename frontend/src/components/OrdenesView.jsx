@@ -16,6 +16,7 @@ import {
 import apiService from '../services/apiService.js';
 import { parseEmailToOrder } from '../services/aiService.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { logAction, AUDIT_ACTIONS } from '../services/auditService.js';
 import { scrollToTop } from '../utils/navigation.js';
 import { createPortal } from 'react-dom';
 import { CODIGOS_CIRUGIA, MODULOS_SM, CODIGOS_IOSFA, PRACTICAS_MEDICAS } from '../data/codigos.js';
@@ -108,6 +109,8 @@ const OrdenesView = (props) => {
     const [filterMaterial, setFilterMaterial] = useState(''); // 'con_material' | 'sin_material' | ''
     const [searchPaciente, setSearchPaciente] = useState('');
     const [localSearchTerm, setLocalSearchTerm] = useState('');
+    const [filterTipo, setFilterTipo] = useState(''); // '' | 'internacion' | 'estudio'
+    const [filterProvisorio, setFilterProvisorio] = useState(''); // '' | 'confirmada' | 'provisoria'
     const [visibleCount, setVisibleCount] = useState(15);
 
     // Autocomplete State
@@ -239,6 +242,7 @@ const OrdenesView = (props) => {
         suspendida: false, // New field for "not performed" status
         practicas: ['', '', '', '', ''], // Array of strings (practice names)
         estudioBajoAnestesia: false, // New field
+        provisorio: false, // Provisional date / pending authorization
     };
 
     const [formData, setFormData] = useState(emptyForm);
@@ -967,25 +971,49 @@ const OrdenesView = (props) => {
                         </div>
                     </div>
 
-                    {/* Estudio bajo anestesia toggle */}
-                    <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.estudioBajoAnestesia ? 'border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-900/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30'}`}>
-                        <label className="flex items-center gap-4 cursor-pointer group">
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.estudioBajoAnestesia ? 'bg-amber-600 text-white shadow-lg shadow-amber-200 dark:shadow-none' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600'}`}>
-                                <Stethoscope size={18} />
-                            </div>
-                            <input
-                                type="checkbox"
-                                checked={formData.estudioBajoAnestesia}
-                                onChange={(e) => handleInputChange('estudioBajoAnestesia', e.target.checked)}
-                                className="hidden"
-                            />
-                            <div className="flex flex-col">
-                                <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.estudioBajoAnestesia ? 'text-amber-700 dark:text-amber-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}>
-                                    Estudio bajo anestesia
-                                </span>
-                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Cambia el título y omite códigos obligatorios</span>
-                            </div>
-                        </label>
+                    {/* Toggles Container */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Estudio bajo anestesia toggle */}
+                        <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.estudioBajoAnestesia ? 'border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-900/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30'}`}>
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.estudioBajoAnestesia ? 'bg-amber-600 text-white shadow-lg shadow-amber-200 dark:shadow-none' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600'}`}>
+                                    <Stethoscope size={18} />
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.estudioBajoAnestesia}
+                                    onChange={(e) => handleInputChange('estudioBajoAnestesia', e.target.checked)}
+                                    className="hidden"
+                                />
+                                <div className="flex flex-col">
+                                    <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.estudioBajoAnestesia ? 'text-amber-700 dark:text-amber-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}>
+                                        Estudio bajo anestesia
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Cambia el título y omite códigos obligatorios</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        {/* Provisorio / Pendiente toggle */}
+                        <div className={`p-6 rounded-[2rem] border-2 transition-all ${formData.provisorio ? 'border-sky-200 dark:border-sky-900/50 bg-sky-50/50 dark:bg-sky-900/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30'}`}>
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${formData.provisorio ? 'bg-sky-600 text-white shadow-lg shadow-sky-200 dark:shadow-none' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600'}`}>
+                                    <Clock size={18} />
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.provisorio}
+                                    onChange={(e) => handleInputChange('provisorio', e.target.checked)}
+                                    className="hidden"
+                                />
+                                <div className="flex flex-col">
+                                    <span className={`font-black text-sm uppercase tracking-tight transition-colors ${formData.provisorio ? 'text-sky-700 dark:text-sky-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}>
+                                        Aguardando por fecha
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Aguardando autorización para fecha real</span>
+                                </div>
+                            </label>
+                        </div>
                     </div>
 
                     {/* Codes Section */}
@@ -1558,9 +1586,21 @@ const OrdenesView = (props) => {
                     }
                 }
                 await apiService.updateDocument(collectionName, editingId, orderData);
+                await logAction(
+                    AUDIT_ACTIONS.EDIT_ORDER,
+                    editingId,
+                    `Editado pedido/orden para: ${orderData.afiliado}`,
+                    { order: orderData }
+                );
             } else {
                 orderData.createdAt = new Date().toISOString();
-                await apiService.addDocument(collectionName, orderData);
+                const res = await apiService.addDocument(collectionName, orderData);
+                await logAction(
+                    AUDIT_ACTIONS.CREATE_ORDER,
+                    res.id,
+                    `Creado pedido/orden para: ${orderData.afiliado}`,
+                    { order: orderData }
+                );
             }
 
             // --- SYNC PATIENT DATA ---
@@ -1676,6 +1716,12 @@ const OrdenesView = (props) => {
 
         try {
             await apiService.updateDocument(collectionName, orden.id, { enviada: newStatus });
+            await logAction(
+                AUDIT_ACTIONS.EDIT_ORDER,
+                orden.id,
+                `${newStatus ? 'Marcado como enviado/autorizado' : 'Desmarcado como enviado/autorizado'} para: ${orden.afiliado}`,
+                { field: 'enviada', value: newStatus }
+            );
         } catch (error) {
             console.error("Error updating status:", error);
             // Revert on error
@@ -1701,6 +1747,12 @@ const OrdenesView = (props) => {
 
         try {
             await apiService.updateDocument(collectionName, orden.id, { [field]: newValue });
+            await logAction(
+                AUDIT_ACTIONS.EDIT_ORDER,
+                orden.id,
+                `Actualizado campo '${field}' a: ${newValue ? 'Sí' : 'No'} para: ${orden.afiliado}`,
+                { field, value: newValue }
+            );
         } catch (error) {
             console.error(`Error updating ${field}: `, error);
             // Revert on error
@@ -1735,6 +1787,11 @@ const OrdenesView = (props) => {
 
         try {
             await apiService.deleteDocument(collectionName, id);
+            await logAction(
+                AUDIT_ACTIONS.DELETE_ORDER,
+                id,
+                `Eliminada orden/pedido de internación de: ${item?.afiliado || 'Paciente desconocido'}`
+            );
             setOrdenes(prev => prev.filter(o => o.id !== id));
         } catch (error) {
             console.error("Error deleting order:", error);
@@ -2286,6 +2343,13 @@ const OrdenesView = (props) => {
                 orden.afiliado?.toLowerCase().includes(searchPaciente.toLowerCase()) ||
                 orden.dni?.toString().includes(searchPaciente);
 
+            const matchTipo = !filterTipo || (
+                filterTipo === 'estudio' ? orden.estudioBajoAnestesia : !orden.estudioBajoAnestesia
+            );
+            const matchProvisorio = !filterProvisorio || (
+                filterProvisorio === 'provisoria' ? orden.provisorio : !orden.provisorio
+            );
+
             const targetDateStr = orden.fechaCirugia || orden.fechaDocumento;
             let matchPeriodo = true;
             if (targetDateStr && filterPeriodo !== 'todas') {
@@ -2302,7 +2366,7 @@ const OrdenesView = (props) => {
                 matchPeriodo = false;
             }
 
-            return matchProfesional && matchObraSocial && matchDate && matchStatus && matchMaterial && matchPaciente && matchPeriodo;
+            return matchProfesional && matchObraSocial && matchDate && matchStatus && matchMaterial && matchPaciente && matchPeriodo && matchTipo && matchProvisorio;
         }).map(o => ({
             ...o,
             _isUrgent: getUrgency(o) // Pre-calculate for sorting
@@ -2318,7 +2382,7 @@ const OrdenesView = (props) => {
             const dateB = b.fechaCirugia || b.createdAt || b.fechaDocumento;
             return new Date(dateB) - new Date(dateA);
         });
-    }, [activeTab, ordenes, filterProfesional, filterObraSocial, filterDate, filterStatus, filterMaterial, searchPaciente, filterPeriodo, rangeStart, rangeEnd]);
+    }, [activeTab, ordenes, filterProfesional, filterObraSocial, filterDate, filterStatus, filterMaterial, searchPaciente, filterPeriodo, rangeStart, rangeEnd, filterTipo, filterProvisorio]);
 
     const checkUrgency = (orden) => {
         if (orden.autorizada) return false;
@@ -2550,7 +2614,7 @@ const OrdenesView = (props) => {
                                             </select>
                                             
                                             <button 
-                                                onClick={() => { setFilterDate(''); setFilterProfesional(''); setFilterObraSocial(''); setFilterStatus(''); setFilterMaterial(''); setLocalSearchTerm(''); }}
+                                                onClick={() => { setFilterDate(''); setFilterProfesional(''); setFilterObraSocial(''); setFilterStatus(''); setFilterMaterial(''); setLocalSearchTerm(''); setFilterTipo(''); setFilterProvisorio(''); }}
                                                 className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-400 rounded-xl hover:text-teal-600 border border-slate-200 dark:border-slate-700"
                                                 title="Limpiar filtros"
                                             >
@@ -2563,7 +2627,7 @@ const OrdenesView = (props) => {
 
                             {/* Secondary Filters Grid */}
                             {activeTab === 'internacion' && (
-                                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                                <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-7 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Profesional</label>
                                         <select
@@ -2615,6 +2679,32 @@ const OrdenesView = (props) => {
                                             <option value="">Todas</option>
                                             <option value="con_material">Con Material</option>
                                             <option value="sin_material">Sin Material</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Tipo</label>
+                                        <select
+                                            value={filterTipo}
+                                            onChange={(e) => setFilterTipo(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                                        >
+                                            <option value="">Todos</option>
+                                            <option value="internacion">Internación / Cirugía</option>
+                                            <option value="estudio">Estudios bajo Anestesia</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Fecha/Autoriz.</label>
+                                        <select
+                                            value={filterProvisorio}
+                                            onChange={(e) => setFilterProvisorio(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                                        >
+                                            <option value="">Todos</option>
+                                            <option value="confirmada">Confirmados</option>
+                                            <option value="provisoria">Aguardando por fecha</option>
                                         </select>
                                     </div>
 
@@ -2675,6 +2765,9 @@ const OrdenesView = (props) => {
                                                             <div className="flex gap-1.5">
                                                                 {isUrgent && !orden.suspendida && (
                                                                     <span className="px-2 py-0.5 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Urgente</span>
+                                                                )}
+                                                                {orden.provisorio && (
+                                                                    <span className="px-2 py-0.5 bg-sky-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Aguardando por fecha</span>
                                                                 )}
                                                                 {orden.autorizada ? (
                                                                     <button 
@@ -2792,6 +2885,9 @@ const OrdenesView = (props) => {
                                                             <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border ${orden.enviada ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-amber-500 text-white border-amber-600'}`}>
                                                                 {orden.enviada ? 'Enviada' : 'Pendiente'}
                                                             </span>
+                                                        )}
+                                                        {orden.provisorio && (
+                                                            <span className="px-2 py-1 bg-sky-500 text-white text-[8px] font-black uppercase tracking-widest rounded-lg">Aguardando por fecha</span>
                                                         )}
                                                     </div>
                                                 </div>

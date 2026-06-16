@@ -4,6 +4,7 @@ import { db, USE_LOCAL_DB, isTestEnv } from '../firebase/config';
 import { collection, addDoc, getDoc, getDocs, query, where, deleteDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { apiService } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
+import { logAction, AUDIT_ACTIONS } from '../services/auditService';
 import MoneyInput from './MoneyInput';
 import ModalPortal from './common/ModalPortal';
 import { scrollToTop } from '../utils/navigation';
@@ -315,16 +316,28 @@ const CajaForm = ({ lowPerfMode = false }) => {
         });
 
         try {
-            const promises = entriesWithDate.map(entry => {
+            const promises = entriesWithDate.map(async entry => {
                 const { id, ...dataToSave } = entry;
                 if (typeof id === 'string') {
                     // Safety check for production items in test environment
                     if (isTestEnv && !entry.isTest) {
-                        return Promise.reject(new Error("Cannot modify production data in test environment"));
+                        throw new Error("Cannot modify production data in test environment");
                     }
-                    return apiService.updateDocument("caja", id, dataToSave);
+                    await apiService.updateDocument("caja", id, dataToSave);
+                    await logAction(
+                        AUDIT_ACTIONS.EDIT_CAJA_ENTRY,
+                        id,
+                        `Cierre de caja - Editado registro para el paciente: ${entry.paciente}`,
+                        { entry: dataToSave }
+                    );
                 } else {
-                    return apiService.addDocument("caja", dataToSave);
+                    const docRef = await apiService.addDocument("caja", dataToSave);
+                    await logAction(
+                        AUDIT_ACTIONS.CREATE_CAJA_ENTRY,
+                        docRef.id,
+                        `Cierre de caja - Creado registro para el paciente: ${entry.paciente}`,
+                        { entry: dataToSave }
+                    );
                 }
             });
 
@@ -412,13 +425,25 @@ const CajaForm = ({ lowPerfMode = false }) => {
                     if (isTestEnv && !e.isTest) {
                         throw new Error(`No puedes editar registros de producción (${e.paciente}) desde el entorno de pruebas.`);
                     }
-                    return updateDoc(doc(db, "caja", id), finalData);
+                    await updateDoc(doc(db, "caja", id), finalData);
+                    await logAction(
+                        AUDIT_ACTIONS.EDIT_CAJA_ENTRY,
+                        id,
+                        `Editado registro de caja para el paciente: ${e.paciente}`,
+                        { entry: finalData }
+                    );
                 } else {
                     // It's a temporary numeric ID (new record)
-                    return addDoc(collection(db, "caja"), {
+                    const docRef = await addDoc(collection(db, "caja"), {
                         ...finalData,
                         createdAt: new Date(Date.now() + index).toISOString()
                     });
+                    await logAction(
+                        AUDIT_ACTIONS.CREATE_CAJA_ENTRY,
+                        docRef.id,
+                        `Creado registro de caja para el paciente: ${e.paciente}`,
+                        { entry: finalData }
+                    );
                 }
             });
 
@@ -560,7 +585,13 @@ const CajaForm = ({ lowPerfMode = false }) => {
         }
         if (!window.confirm("¿Seguro que deseas eliminar este registro?")) return;
         try {
+            const item = history.find(h => h.id === id);
             await apiService.deleteDocument("caja", id);
+            await logAction(
+                AUDIT_ACTIONS.DELETE_CAJA_ENTRY,
+                id,
+                `Eliminado registro de caja para el paciente: ${item?.paciente || 'Desconocido'}`
+            );
             fetchHistory();
             alert("Registro eliminado.");
         } catch (error) {
