@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { logAction, AUDIT_ACTIONS } from '../services/auditService';
-import { Printer, Calendar, User, FileText, CheckCircle2, RefreshCw, PenTool, Trash2, Eye } from 'lucide-react';
+import { Printer, Calendar, User, FileText, RefreshCw, PenTool, Trash2, Eye } from 'lucide-react';
 import MoneyInput from './MoneyInput';
 
 const ReciboLibreView = () => {
@@ -19,7 +20,7 @@ const ReciboLibreView = () => {
     const [patientName, setPatientName] = useState('');
     const [montoPesos, setMontoPesos] = useState(0);
     const [montoDolares, setMontoDolares] = useState(0);
-    const [concept, setConcept] = useState('Liquidación de honorarios médicos de cirugía');
+    const [concept, setConcept] = useState('');
     const [isTransfer, setIsTransfer] = useState(false);
 
     // Dynamic Lists
@@ -32,8 +33,14 @@ const ReciboLibreView = () => {
     const [savedReceipts, setSavedReceipts] = useState([]);
     const [loadingReceipts, setLoadingReceipts] = useState(false);
 
-    // Signature preview helper
-    const selectedProfData = profesionales.find(p => p.nombre === selectedProf);
+    // Sync concept with selected professional automatically if not modified manually
+    useEffect(() => {
+        if (selectedProf) {
+            setConcept(`Honorarios por técnica en común de por cuenta y orden de ${selectedProf}`);
+        } else {
+            setConcept('');
+        }
+    }, [selectedProf]);
 
     // Fetch professionals
     useEffect(() => {
@@ -70,7 +77,7 @@ const ReciboLibreView = () => {
         fetchDayPatients();
     }, [date]);
 
-    // Fetch saved receipts from the independent collection
+    // Fetch saved receipts
     const fetchSavedReceipts = async () => {
         const ownerToUse = catalogOwnerUid || viewingUid;
         if (!ownerToUse) return;
@@ -82,7 +89,6 @@ const ReciboLibreView = () => {
             );
             const querySnapshot = await getDocs(q);
             const list = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Sort client-side by date and createdAt desc
             list.sort((a, b) => {
                 const dateCompare = b.fecha.localeCompare(a.fecha);
                 if (dateCompare !== 0) return dateCompare;
@@ -100,6 +106,18 @@ const ReciboLibreView = () => {
         fetchSavedReceipts();
     }, [catalogOwnerUid, viewingUid]);
 
+    const formatMoney = (val) => {
+        return (val || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        if (dateStr.includes('-')) {
+            return dateStr.split('-').reverse().join('/');
+        }
+        return dateStr;
+    };
+
     // Handle patient selection change to autofill amounts
     const handleDayPatientChange = (patientId) => {
         setSelectedDayPatientId(patientId);
@@ -112,11 +130,9 @@ const ReciboLibreView = () => {
 
         const match = dayPatients.find(p => p.id === patientId);
         if (match) {
-            // Clean "(Liq. Manual)" if it exists
             const cleanName = match.paciente.replace(/\s*\(\s*Liq\.?\s*Manual\s*\)/gi, '');
             setPatientName(cleanName);
 
-            // Auto-detect liquidations for the currently selected professional
             let arVal = 0;
             let usVal = 0;
             const normSelected = selectedProf.trim().toLowerCase();
@@ -157,7 +173,6 @@ const ReciboLibreView = () => {
                 }
             }
 
-            // Fallback: If no professional matched or professional amounts are 0, use total patient payments
             if (arVal === 0 && usVal === 0) {
                 setMontoPesos(parseFloat(match.pesos) || 0);
                 setMontoDolares(parseFloat(match.dolares) || 0);
@@ -196,7 +211,6 @@ const ReciboLibreView = () => {
 
             const docRef = await addDoc(collection(db, "recibos_libres"), receiptData);
             
-            // Log action in audit logs
             await logAction(
                 AUDIT_ACTIONS.CREATE_CAJA_ENTRY,
                 docRef.id,
@@ -204,9 +218,7 @@ const ReciboLibreView = () => {
                 { receipt: receiptData }
             );
 
-            alert("Recibo registrado con éxito en la colección independiente. Se abrirá la ventana de impresión.");
-            
-            // Refresh history
+            alert("Recibo registrado con éxito. Se abrirá la ventana de impresión.");
             fetchSavedReceipts();
 
             setTimeout(() => {
@@ -214,7 +226,7 @@ const ReciboLibreView = () => {
             }, 150);
 
         } catch (error) {
-            console.error("Error saving independent receipt:", error);
+            console.error("Error saving manual receipt:", error);
             alert("Error al registrar: " + error.message);
         } finally {
             setIsSaving(false);
@@ -248,34 +260,109 @@ const ReciboLibreView = () => {
         setPatientName(receipt.paciente);
         setMontoPesos(receipt.montoPesos || 0);
         setMontoDolares(receipt.montoDolares || 0);
-        setConcept(receipt.concepto || 'Liquidación de honorarios médicos de cirugía');
+        setConcept(receipt.concepto || '');
         setIsTransfer(!!receipt.isTransfer);
         alert("Los datos del recibo seleccionado han sido cargados en el formulario.");
     };
 
+    const printStyle = `
+      @media print {
+        @page { size: auto; margin: 5mm; }
+        html, body { 
+            height: auto !important; 
+            overflow: visible !important; 
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100%;
+            background: white !important;
+            color: black !important;
+        }
+        #root { display: none !important; }
+        .print-portal {
+            display: block !important;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: auto;
+            z-index: 9999;
+            background: white !important;
+            color: black !important;
+            transform-origin: top left;
+        }
+        .print-portal * {
+            color: black !important;
+            background-color: transparent !important;
+            border-color: #000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        .print-portal img {
+            background-color: transparent !important;
+        }
+        .no-print { display: none !important; }
+      }
+      .print-portal { display: none; }
+    `;
+
     return (
         <div className="space-y-6">
-            <style>{`
-                @media print {
-                    body * {
-                        visibility: hidden;
-                    }
-                    .print-area-receipt, .print-area-receipt * {
-                        visibility: visible;
-                    }
-                    .print-area-receipt {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        background: white !important;
-                        color: black !important;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                }
-            `}</style>
+            <style>{printStyle}</style>
+
+            {/* Print Portal for perfect printed format (exact same style as Liquidaciones) */}
+            {createPortal(
+                <div className="print-portal bg-white text-black p-12">
+                    <div className="max-w-3xl mx-auto border-none p-12 bg-white">
+                        <div className="mb-8">
+                            <img src="/coat_logo.png" alt="COAT" className="h-20 object-contain mx-auto" />
+                        </div>
+                        <div className="grid grid-cols-[100px_1fr] gap-y-2 text-sm text-slate-800 mb-8 font-medium">
+                            <div className="font-bold text-slate-900">Fecha:</div>
+                            <div>{formatDate(date)}</div>
+                            <div className="font-bold text-slate-900">Movimiento:</div>
+                            <div>Egreso</div>
+                            <div className="font-bold text-slate-900">Concepto:</div>
+                            <div>{concept || `Honorarios por técnica en común de por cuenta y orden de ${selectedProf || '—'}`}</div>
+                            <div className="font-bold text-slate-900">Referencia:</div>
+                            <div className="text-xs">{patientName || '—'}</div>
+                        </div>
+                        <table className="w-full text-sm mb-12 border-t border-slate-300">
+                            <thead>
+                                <tr className="border-b border-slate-300">
+                                    <th className="text-left py-2 font-bold text-slate-900 w-1/3">M. de Pago</th>
+                                    <th className="text-left py-2 font-bold text-slate-900">Número</th>
+                                    <th className="text-left py-2 font-bold text-slate-900">F. Cobro</th>
+                                    <th className="text-right py-2 font-bold text-slate-900">Importe</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {montoPesos > 0 && (
+                                    <tr>
+                                        <td className="py-2 text-slate-600">Efectivo</td>
+                                        <td className="py-2"></td>
+                                        <td className="py-2"></td>
+                                        <td className="py-2 text-right font-mono font-bold text-slate-800">${formatMoney(montoPesos)}</td>
+                                    </tr>
+                                )}
+                                {montoDolares > 0 && (
+                                    <tr>
+                                        <td className="py-2 text-slate-600">Dólares</td>
+                                        <td className="py-2"></td>
+                                        <td className="py-2"></td>
+                                        <td className="py-2 text-right font-mono font-bold text-slate-800">USD {formatMoney(montoDolares)}</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                        <div className="mt-32 flex justify-end">
+                            <div className="text-center w-64 border-t border-slate-900 pt-2">
+                                <p className="font-bold text-slate-900 text-sm">Recibí conforme</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 no-print">
                 {/* Form Card */}
@@ -286,7 +373,7 @@ const ReciboLibreView = () => {
                         </div>
                         <div>
                             <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Recibo Libre / Especial</h2>
-                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Colección Independiente</p>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Formato oficial de liquidaciones</p>
                         </div>
                     </div>
 
@@ -427,103 +514,63 @@ const ReciboLibreView = () => {
                 <div className="premium-card p-6 bg-slate-50 dark:bg-slate-900/30 border-none shadow-inner">
                     <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 ml-1">Vista Previa Interactiva</h3>
                     
-                    {/* Printable Receipt Frame */}
-                    <div className="print-area-receipt bg-white text-slate-900 p-8 rounded-3xl border border-slate-200 shadow-md">
+                    {/* Printable Receipt Frame (Matching Liquidaciones Receipt Style) */}
+                    <div className="bg-white text-slate-900 p-12 rounded-3xl border border-slate-200 shadow-md">
                         {/* Header */}
-                        <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-6">
-                            <div>
-                                <div className="flex items-center gap-3 mb-2">
-                                    <div className="w-10 h-10 bg-slate-950 rounded-xl flex items-center justify-center text-white font-black text-lg">
-                                        C
-                                    </div>
-                                    <h1 className="text-xl font-black tracking-tighter uppercase leading-none text-black">COAT</h1>
-                                </div>
-                                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Centro de Otorrinolaringología y Alergia</p>
-                            </div>
-                            <div className="text-right">
-                                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">Recibo de Honorarios</h2>
-                                <p className="text-xs font-bold text-slate-900">Fecha: {date ? date.split('-').reverse().join('/') : today.split('-').reverse().join('/')}</p>
-                                <p className="text-[10px] font-semibold text-slate-500 mt-1 uppercase tracking-tight">Recibo Especial (Libre)</p>
-                            </div>
+                        <div className="mb-8">
+                            <img src="/coat_logo.png" alt="COAT" className="h-20 object-contain mx-auto" />
+                        </div>
+                        {/* Detail Info Grid */}
+                        <div className="grid grid-cols-[100px_1fr] gap-y-2 text-sm text-slate-800 mb-8 font-medium">
+                            <div className="font-bold text-slate-900">Fecha:</div>
+                            <div>{formatDate(date)}</div>
+                            <div className="font-bold text-slate-900">Movimiento:</div>
+                            <div>Egreso</div>
+                            <div className="font-bold text-slate-900">Concepto:</div>
+                            <div className="text-slate-900">{concept || `Honorarios por técnica en común de por cuenta y orden de ${selectedProf || '—'}`}</div>
+                            <div className="font-bold text-slate-900">Referencia:</div>
+                            <div className="text-xs text-slate-900">{patientName || '—'}</div>
                         </div>
 
-                        {/* Details */}
-                        <div className="space-y-6 text-sm">
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div className="text-xs font-bold text-slate-400 uppercase">Profesional:</div>
-                                    <div className="col-span-2 text-xs font-black text-slate-900">{selectedProf || '—'}</div>
-
-                                    <div className="text-xs font-bold text-slate-400 uppercase">Paciente:</div>
-                                    <div className="col-span-2 text-xs font-black text-slate-900">{patientName || '—'}</div>
-
-                                    <div className="text-xs font-bold text-slate-400 uppercase">Concepto:</div>
-                                    <div className="col-span-2 text-xs font-medium text-slate-750">{concept || '—'}</div>
-                                </div>
-                            </div>
-
-                            {/* Amounts Table */}
-                            <table className="w-full border-collapse text-left text-xs">
-                                <thead>
-                                    <tr className="border-b-2 border-slate-900">
-                                        <th className="py-2 font-black uppercase text-slate-400">Detalle de Valores</th>
-                                        <th className="py-2 text-right font-black uppercase text-slate-400">Importe</th>
+                        {/* Table */}
+                        <table className="w-full text-sm mb-12 border-t border-slate-300">
+                            <thead>
+                                <tr className="border-b border-slate-300">
+                                    <th className="text-left py-2 font-bold text-slate-900 w-1/3">M. de Pago</th>
+                                    <th className="text-left py-2 font-bold text-slate-900">Número</th>
+                                    <th className="text-left py-2 font-bold text-slate-900">F. Cobro</th>
+                                    <th className="text-right py-2 font-bold text-slate-900">Importe</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {montoPesos > 0 && (
+                                    <tr>
+                                        <td className="py-2 text-slate-600">Efectivo</td>
+                                        <td className="py-2"></td>
+                                        <td className="py-2"></td>
+                                        <td className="py-2 text-right font-mono font-bold text-slate-800">${formatMoney(montoPesos)}</td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    {montoPesos > 0 && (
-                                        <tr className="border-b border-slate-100">
-                                            <td className="py-3 font-semibold text-slate-800">Honorarios en Pesos (ARS)</td>
-                                            <td className="py-3 text-right font-bold tabular-nums text-slate-950">$ {montoPesos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
-                                        </tr>
-                                    )}
-                                    {montoDolares > 0 && (
-                                        <tr className="border-b border-slate-100">
-                                            <td className="py-3 font-semibold text-slate-800">Honorarios en Dólares (USD)</td>
-                                            <td className="py-3 text-right font-bold tabular-nums text-slate-950">U$D {montoDolares.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
-                                        </tr>
-                                    )}
-                                    {(montoPesos === 0 && montoDolares === 0) && (
-                                        <tr className="border-b border-slate-100">
-                                            <td className="py-3 text-slate-400 italic">Ingrese montos en el formulario...</td>
-                                            <td className="py-3 text-right font-bold">—</td>
-                                        </tr>
-                                    )}
-                                    <tr className="font-black text-sm">
-                                        <td className="py-4 uppercase text-slate-900">Total Entregado</td>
-                                        <td className="py-4 text-right tabular-nums text-slate-950">
-                                            <div className="flex flex-col items-end">
-                                                {montoPesos > 0 && <span>$ {montoPesos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>}
-                                                {montoDolares > 0 && <span>U$D {montoDolares.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>}
-                                                {montoPesos === 0 && montoDolares === 0 && <span>—</span>}
-                                            </div>
-                                        </td>
+                                )}
+                                {montoDolares > 0 && (
+                                    <tr>
+                                        <td className="py-2 text-slate-600">Dólares</td>
+                                        <td className="py-2"></td>
+                                        <td className="py-2"></td>
+                                        <td className="py-2 text-right font-mono font-bold text-slate-800">USD {formatMoney(montoDolares)}</td>
                                     </tr>
-                                </tbody>
-                            </table>
+                                )}
+                                {montoPesos === 0 && montoDolares === 0 && (
+                                    <tr>
+                                        <td className="py-2 text-slate-400 italic" colSpan="4">Ingrese montos en el formulario...</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
 
-                            {/* Signature Block */}
-                            <div className="pt-12 flex justify-between items-end">
-                                <div className="text-[10px] text-slate-400 font-bold max-w-[280px]">
-                                    {isTransfer ? (
-                                        <span className="px-2 py-1 bg-amber-50 rounded text-amber-700 border border-amber-100">Liquidado vía transferencia bancaria</span>
-                                    ) : (
-                                        <span>Recibí conforme el importe total especificado en este comprobante.</span>
-                                    )}
-                                </div>
-                                <div className="flex flex-col items-center min-w-[180px]">
-                                    {selectedProfData?.firmaUrl ? (
-                                        <div className="h-16 w-36 flex items-center justify-center border-b border-slate-300 pb-1 mb-1">
-                                            <img src={selectedProfData.firmaUrl} alt="Firma digital" className="max-h-full max-w-full object-contain" />
-                                        </div>
-                                    ) : (
-                                        <div className="h-16 w-36 border-b border-slate-350 border-dashed mb-1 flex items-center justify-center text-[9px] text-slate-400 italic">
-                                            Sin firma digital
-                                        </div>
-                                    )}
-                                    <span className="text-[9px] font-black uppercase text-slate-900">{selectedProf || 'Firma Profesional'}</span>
-                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Beneficiario</span>
-                                </div>
+                        {/* Hand signature section (no digital image, exact same height as original layout) */}
+                        <div className="mt-32 flex justify-end">
+                            <div className="text-center w-64 border-t border-slate-900 pt-2">
+                                <p className="font-bold text-slate-900 text-sm">Recibí conforme</p>
                             </div>
                         </div>
                     </div>
