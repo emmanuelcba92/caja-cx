@@ -14,6 +14,7 @@ import LoginView from './components/LoginView';
 // Lazy-loaded views
 const CajaForm = lazy(() => import('./components/CajaForm.jsx'));
 const LiquidacionView = lazy(() => import('./components/LiquidacionView.jsx'));
+const ReciboLibreView = lazy(() => import('./components/ReciboLibreView.jsx'));
 const ProfesionalesView = lazy(() => import('./components/ProfesionalesView.jsx'));
 const HistorialCaja = lazy(() => import('./components/HistorialCaja.jsx'));
 const AccessManager = lazy(() => import('./components/AccessManager.jsx'));
@@ -140,6 +141,7 @@ function AuthenticatedApp() {
         { id: 'caja', label: 'Caja de Cirugía', icon: LayoutDashboard },
         { id: 'historial', label: 'Historial', icon: HistoryIcon },
         { id: 'liquidaciones', label: 'Liquidaciones', icon: FileText },
+        { id: 'recibo_libre', label: 'Recibo Libre', icon: FileText },
         { id: 'profesionales', label: 'Profesionales', icon: Users }
       ]
     },
@@ -183,7 +185,7 @@ function AuthenticatedApp() {
         return isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes;
       }
       if (permissions?.can_view_shared_catalog) {
-        const allowed = ['caja', 'liquidaciones', 'profesionales', 'historial', 'notas'];
+        const allowed = ['caja', 'liquidaciones', 'recibo_libre', 'profesionales', 'historial', 'notas'];
         if (permissions?.can_view_ordenes) allowed.push('ordenes', 'control');
         return allowed.includes(tab.id);
       }
@@ -389,6 +391,7 @@ function AuthenticatedApp() {
                 { activeTab === 'pendientes' && <RemindersView /> }
                 { activeTab === 'historial' && <HistorialCaja /> }
                 {activeTab === 'liquidaciones' && <LiquidacionView />}
+                {activeTab === 'recibo_libre' && <ReciboLibreView />}
                 {activeTab === 'profesionales' && <ProfesionalesView />}
                 {activeTab === 'compartir' && <AccessManager />}
                 {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
