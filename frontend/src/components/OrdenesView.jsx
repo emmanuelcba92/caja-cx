@@ -5,10 +5,10 @@ import {
     Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search,
     CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle,
     AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban, Filter,
-    TableProperties, Sparkles, Loader2, Lock as LockIcon, Box, Check
+    TableProperties, Sparkles, Loader2, Lock as LockIcon, Box, Check, Mail, Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { db, USE_LOCAL_DB, isTestEnv } from '../firebase/config';
+import { db, USE_LOCAL_DB, isTestEnv, LOCAL_API_URL } from '../firebase/config';
 import { 
     collection, addDoc, updateDoc, doc, getDocs, deleteDoc, query, 
     where, getDoc, writeBatch, onSnapshot, setDoc 
@@ -119,6 +119,9 @@ const OrdenesView = (props) => {
     const [activeRow, setActiveRow] = useState(null); // { index: 0, field: 'codigo' | 'nombre' }
     const [highlightedIndex, setHighlightedIndex] = useState(0);
     const [dynamicConsents, setDynamicConsents] = useState({});
+    const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+    const [emailRecipients, setEmailRecipients] = useState('facturacion@coat.com.ar, administracion@coat.com.ar');
+    const [isSendingEmail, setIsSendingEmail] = useState(false);
 
     const searchTimeoutRef = useRef(null);
 
@@ -243,6 +246,8 @@ const OrdenesView = (props) => {
         practicas: ['', '', '', '', ''], // Array of strings (practice names)
         estudioBajoAnestesia: false, // New field
         provisorio: false, // Provisional date / pending authorization
+        facturado: false,
+        observacionesFacturacion: ''
     };
 
     const [formData, setFormData] = useState(emptyForm);
@@ -445,6 +450,8 @@ const OrdenesView = (props) => {
                 { header: 'Obra Social', key: 'obraSocial', width: 25 },
                 { header: 'Códigos', key: 'codigos', width: 45 },
                 { header: 'Cirujano', key: 'cirujano', width: 30 },
+                { header: 'Facturado', key: 'facturado', width: 15 },
+                { header: 'Observaciones de Facturación', key: 'observacionesFacturacion', width: 40 }
             ];
 
             ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -460,13 +467,22 @@ const OrdenesView = (props) => {
                     .filter(Boolean)
                     .join(' - ');
 
-                ws.addRow({
+                const row = ws.addRow({
                     fecha: formatDate(o.fechaCirugia),
                     paciente: (o.afiliado || '').toUpperCase(),
                     obraSocial: (o.obraSocial || '').toUpperCase(),
                     codigos: codigosStr,
-                    cirujano: shortProfName(o.profesional) || ''
+                    cirujano: shortProfName(o.profesional) || '',
+                    facturado: o.facturado ? 'SÍ' : 'NO',
+                    observacionesFacturacion: o.observacionesFacturacion || ''
                 });
+
+                const cell = row.getCell(6);
+                cell.dataValidation = {
+                    type: 'list',
+                    allowBlank: true,
+                    formulae: ['"SÍ,NO"']
+                };
             });
 
             // Alternate row colors for readability
@@ -490,6 +506,132 @@ const OrdenesView = (props) => {
         } catch (error) {
             console.error("Error generating Excel:", error);
             alert("Hubo un error al generar el Excel. Verifica la consola para más detalles.");
+        }
+    };
+
+    const handleSendWeeklyReportByEmail = async () => {
+        setIsSendingEmail(true);
+        try {
+            const ExcelJS = (await import('exceljs')).default || await import('exceljs');
+            const { startOfWeek, endOfWeek, isWithinInterval, parseISO, format } = await import('date-fns');
+
+            const now = new Date();
+            const start = rangeStart ? parseISO(rangeStart) : startOfWeek(now, { weekStartsOn: 1 });
+            const end = rangeEnd ? parseISO(rangeEnd) : endOfWeek(now, { weekStartsOn: 1 });
+
+            const weekOrdenes = ordenes.filter(o => {
+                if (o.suspendida) return false;
+                if (!o.fechaCirugia) return false;
+                try {
+                    const date = parseISO(o.fechaCirugia);
+                    return isWithinInterval(date, { start, end });
+                } catch (e) {
+                    return false;
+                }
+            }).sort((a, b) => new Date(a.fechaCirugia) - new Date(b.fechaCirugia));
+
+            if (weekOrdenes.length === 0) {
+                toast.error("No hay cirugías registradas (no suspendidas) para esta semana.");
+                setIsSendingEmail(false);
+                return;
+            }
+
+            const wb = new ExcelJS.Workbook();
+            const ws = wb.addWorksheet('Control Semanal');
+
+            ws.columns = [
+                { header: 'Fecha', key: 'fecha', width: 15 },
+                { header: 'Paciente', key: 'paciente', width: 35 },
+                { header: 'Obra Social', key: 'obraSocial', width: 25 },
+                { header: 'Códigos', key: 'codigos', width: 45 },
+                { header: 'Cirujano', key: 'cirujano', width: 30 },
+                { header: 'Facturado', key: 'facturado', width: 15 },
+                { header: 'Observaciones de Facturación', key: 'observacionesFacturacion', width: 40 }
+            ];
+
+            ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            ws.getRow(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF0F766E' } // teal-700
+            };
+
+            weekOrdenes.forEach(o => {
+                const codigosStr = (o.codigosCirugia || [])
+                    .map(c => c.codigo)
+                    .filter(Boolean)
+                    .join(' - ');
+
+                const row = ws.addRow({
+                    fecha: formatDate(o.fechaCirugia),
+                    paciente: (o.afiliado || '').toUpperCase(),
+                    obraSocial: (o.obraSocial || '').toUpperCase(),
+                    codigos: codigosStr,
+                    cirujano: shortProfName(o.profesional) || '',
+                    facturado: o.facturado ? 'SÍ' : 'NO',
+                    observacionesFacturacion: o.observacionesFacturacion || ''
+                });
+
+                const cell = row.getCell(6);
+                cell.dataValidation = {
+                    type: 'list',
+                    allowBlank: true,
+                    formulae: ['"SÍ,NO"']
+                };
+            });
+
+            ws.eachRow((row, rowNumber) => {
+                if (rowNumber > 1) {
+                    row.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: rowNumber % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' }
+                    };
+                }
+            });
+
+            const buffer = await wb.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+            const startDateStr = format(start, 'dd-MM-yyyy');
+            const endDateStr = format(end, 'dd-MM-yyyy');
+            const filename = `Control_Facturacion_${startDateStr}_al_${endDateStr}.xlsx`;
+
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = async () => {
+                try {
+                    const base64Data = reader.result.split(',')[1];
+                    const response = await fetch(`${LOCAL_API_URL}/send-email-gmail`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            to: emailRecipients,
+                            subject: `Planilla de Control Semanal (${startDateStr} al ${endDateStr})`,
+                            body: `Hola,\n\nSe adjunta la planilla de control semanal de cirugías para el período del ${startDateStr} al ${endDateStr} para su correspondiente procesamiento.\n\nSaludos,\nSistema Caja de Cirugía COAT`,
+                            attachment: base64Data,
+                            attachment_name: filename
+                        })
+                    });
+
+                    const resJson = await response.json();
+                    if (resJson.status === 'success') {
+                        toast.success('Email enviado con éxito.');
+                        setShowSendEmailModal(false);
+                    } else {
+                        toast.error(`Error al enviar: ${resJson.message || 'Error desconocido'}`);
+                    }
+                } catch (sendError) {
+                    console.error('Error in send request:', sendError);
+                    toast.error(`Error al enviar: ${sendError.message}`);
+                } finally {
+                    setIsSendingEmail(false);
+                }
+            };
+        } catch (error) {
+            console.error("Error generating Excel for email:", error);
+            toast.error("Hubo un error al preparar el reporte.");
+            setIsSendingEmail(false);
         }
     };
 
@@ -1279,6 +1421,8 @@ const OrdenesView = (props) => {
                             />
                         </div>
                     </div>
+
+
 
                     {/* Actions */}
                     <div className="flex items-center gap-3 pt-3">
@@ -2492,6 +2636,13 @@ const OrdenesView = (props) => {
                                     Excel
                                 </button>
                                 <button
+                                    onClick={() => setShowSendEmailModal(true)}
+                                    className="flex items-center gap-3 px-6 py-3.5 bg-sky-500/20 backdrop-blur-xl text-sky-50 rounded-xl font-black uppercase tracking-[0.1em] text-[10px] hover:bg-sky-500/40 transition-all border border-sky-400/30"
+                                >
+                                    <Mail size={18} />
+                                    Enviar por Mail
+                                </button>
+                                <button
                                     onClick={handlePrintWeeklyReport}
                                     className="flex items-center gap-3 px-6 py-3.5 bg-white/10 backdrop-blur-xl text-white rounded-xl font-black uppercase tracking-[0.1em] text-[10px] hover:bg-white/20 transition-all border border-white/20"
                                 >
@@ -2785,6 +2936,7 @@ const OrdenesView = (props) => {
                                                                         Autorizar
                                                                     </button>
                                                                 )}
+
                                                             </div>
                                                         </div>
                                                         
@@ -2807,6 +2959,7 @@ const OrdenesView = (props) => {
                                                                 )}
                                                             </span>
                                                         </div>
+
                                                     </div>
                                                 </div>
 
@@ -3203,6 +3356,76 @@ const OrdenesView = (props) => {
                                     Copiar Mensaje Institucional
                                 </button>
                                 <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-3">El mensaje se copiará al portapapeles</p>
+                            </div>
+                        </div>
+                    </div>
+                </ModalPortal>
+            )}
+
+            {/* SEND EMAIL MODAL */}
+            {showSendEmailModal && (
+                <ModalPortal onClose={() => setShowSendEmailModal(false)}>
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+                        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-sky-500/5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-sky-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
+                                    <Mail size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tight">Enviar Reporte por Mail</h3>
+                                    <p className="text-[9px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest">Facturación y Administración</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowSendEmailModal(false)} className="text-slate-400 hover:text-rose-500 transition-colors p-2">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                    Destinatarios (separados por coma)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={emailRecipients}
+                                    onChange={(e) => setEmailRecipients(e.target.value)}
+                                    className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl focus:outline-none ring-offset-0 transition-all text-xs font-medium text-slate-700 dark:text-slate-200"
+                                    placeholder="ejemplo1@mail.com, ejemplo2@mail.com"
+                                />
+                            </div>
+
+                            <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800/50 space-y-2">
+                                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Resumen del envío</p>
+                                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                                    Se generará y adjuntará el archivo Excel de control de cirugías para la semana seleccionada. El correo incluirá la copia a administración automáticamente.
+                                </p>
+                            </div>
+
+                            <div className="pt-2 flex items-center gap-3">
+                                <button
+                                    onClick={() => setShowSendEmailModal(false)}
+                                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleSendWeeklyReportByEmail}
+                                    disabled={isSendingEmail}
+                                    className="flex-[2] py-3 bg-sky-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-sky-700 transition-all shadow-xl shadow-sky-500/20 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {isSendingEmail ? (
+                                        <>
+                                            <Loader2 className="animate-spin" size={14} />
+                                            Enviando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Send size={14} />
+                                            Enviar Ahora
+                                        </>
+                                    )}
+                                </button>
                             </div>
                         </div>
                     </div>

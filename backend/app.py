@@ -97,6 +97,8 @@ class OrdenInternacion(db.Model):
     updatedAt = db.Column(db.String(50))
     createdAt = db.Column(db.String(50))
     userId = db.Column(db.String(100))
+    facturado = db.Column(db.Boolean, default=False)
+    observacionesFacturacion = db.Column(db.Text)
 
 with app.app_context():
     db.create_all()
@@ -106,6 +108,20 @@ with app.app_context():
         db.session.commit()
     except Exception:
         # Ignore if column already exists
+        pass
+
+    # Safely alter table to add facturado column if not exists
+    try:
+        db.session.execute(db.text("ALTER TABLE orden_internacion ADD COLUMN facturado BOOLEAN DEFAULT 0"))
+        db.session.commit()
+    except Exception:
+        pass
+
+    # Safely alter table to add observacionesFacturacion column if not exists
+    try:
+        db.session.execute(db.text("ALTER TABLE orden_internacion ADD COLUMN observacionesFacturacion TEXT"))
+        db.session.commit()
+    except Exception:
         pass
 
     # Initialize defaults if empty
@@ -534,16 +550,24 @@ def send_email_gmail():
         
         # Get recipients from DB or use default
         config_emails = AppConfig.query.get('notification_emails')
-        if config_emails and config_emails.value:
+        
+        # Use 'to' from request if provided (e.g. from the custom email send modal)
+        # otherwise fall back to configured emails
+        request_to = data.get('to')
+        if request_to:
+            recipients_str = request_to
+        elif config_emails and config_emails.value:
             recipients_str = config_emails.value
         else:
-            recipients_str = data.get('to', 'emmanuel.ag92@gmail.com')
+            recipients_str = 'emmanuel.ag92@gmail.com'
             
         # Split by comma and clean
         recipients = [r.strip() for r in recipients_str.split(',') if r.strip()]
         
         subject = data.get('subject', 'Nueva Internación Registrada')
         body = data.get('body', 'Se ha registrado una nueva orden de internación.')
+        attachment_base64 = data.get('attachment')
+        attachment_name = data.get('attachment_name', 'Control.xlsx')
 
         # Connect and send
         server = smtplib.SMTP('smtp.gmail.com', 587)
@@ -551,12 +575,25 @@ def send_email_gmail():
         server.login(gmail_user, gmail_password)
 
         for recipient in recipients:
-            # Create message for each recipient (or one with multiple To)
+            # Create message for each recipient
             msg = MIMEMultipart()
             msg['From'] = f"Sistema Caja de Cirugía <{gmail_user}>"
             msg['To'] = recipient
             msg['Subject'] = subject
             msg.attach(MIMEText(body, 'plain'))
+            
+            if attachment_base64:
+                import base64
+                from email.mime.base import MIMEBase
+                from email import encoders
+                try:
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(base64.b64decode(attachment_base64))
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition', f'attachment; filename="{attachment_name}"')
+                    msg.attach(part)
+                except Exception as attach_err:
+                    print(f"Error attaching file: {attach_err}")
             
             text = msg.as_string()
             server.sendmail(gmail_user, recipient, text)
