@@ -2271,7 +2271,7 @@ const OrdenesView = (props) => {
                             <img
                                 src={getSignatureUrl(previewData.profesional)}
                                 alt={`Firma`}
-                                className="h-20 object-contain mb-1"
+                                className="h-44 object-contain -mt-12 mb-2"
                                 onError={(e) => { e.target.style.display = 'none'; }}
                             />
                             <div className="text-[8pt] font-black uppercase leading-tight" style={{fontFamily: '"Arial Black", Arial, sans-serif'}}>
@@ -2365,7 +2365,7 @@ const OrdenesView = (props) => {
                         <img
                             src={getSignatureUrl(previewData.profesional)}
                             alt={`Firma`}
-                            className="h-20 object-contain mb-1"
+                            className="h-44 object-contain -mt-12 mb-2"
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
                         <div className="text-[8pt] font-black uppercase leading-tight" style={{fontFamily: '"Arial Black", Arial, sans-serif'}}>
