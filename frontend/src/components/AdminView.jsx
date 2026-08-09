@@ -15,7 +15,7 @@ import {
     ChevronDown, Filter, CheckCircle2, UserCheck, ShieldCheck, 
     Calendar, RefreshCw, Layers, HardDrive, Key, LayoutDashboard, FileText, X, File as FileIcon, PenTool, MessageSquare,
     History as HistoryIcon, ShieldAlert, Zap, MessageCircle, Save, Building2, User, AlertCircle,
-    Link2, FileBadge, Baby, Edit
+    Link2, FileBadge, Baby, Edit, CalendarX
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { logAction, AUDIT_ACTIONS } from '../services/auditService';
@@ -1378,7 +1378,7 @@ const AdminView = () => {
                             { label: 'Total Cirugías', value: stats.totalCirugias, color: 'blue', icon: Database, gradient: 'from-blue-500 to-indigo-600' },
                             { label: 'Realizadas', value: stats.realizadas, color: 'emerald', icon: CheckCircle2, gradient: 'from-emerald-500 to-teal-600' },
                             { label: 'Próximas', value: stats.proximas, color: 'amber', icon: Calendar, gradient: 'from-amber-500 to-orange-600' },
-                            { label: 'Canceladas', value: stats.canceladas, color: 'rose', icon: AlertTriangle, gradient: 'from-rose-500 to-red-600' }
+                            { label: 'No realizadas', value: stats.canceladas, color: 'rose', icon: CalendarX, gradient: 'from-rose-500 to-red-600' }
                         ].map((s, i) => (
                             <div key={i} className="premium-card p-10 group hover:scale-105 transition-all duration-500 cursor-default">
                                 <div className={`w-16 h-16 bg-gradient-to-br ${s.gradient} rounded-3xl flex items-center justify-center text-white mb-6 shadow-xl shadow-${s.color}-500/20 transform group-hover:rotate-6 transition-transform`}>
@@ -1405,7 +1405,7 @@ const AdminView = () => {
                                     {[
                                         { label: 'Realizadas', value: stats.realizadas, color: 'emerald', bg: 'bg-emerald-500' },
                                         { label: 'Próximas', value: stats.proximas, color: 'amber', bg: 'bg-amber-500' },
-                                        { label: 'Canceladas', value: stats.canceladas, color: 'rose', bg: 'bg-rose-500' }
+                                        { label: 'No realizadas', value: stats.canceladas, color: 'rose', bg: 'bg-rose-500' }
                                     ].map((item, i) => (
                                         <div key={i} className="group">
                                             <div className="flex justify-between items-end mb-4">

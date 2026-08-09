@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { supabase } from './supabase/config';
 import { ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
-import { Users, LayoutDashboard, FileText, History as HistoryIcon, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon, FileBadge, Clock, X } from 'lucide-react';
+import { Users, LayoutDashboard, FileText, History as HistoryIcon, Menu, ChevronLeft, ChevronRight, Share2, StickyNote, ClipboardList, Printer, Calendar as CalendarIcon, ShieldCheck, Sun, Moon, FileBadge, Clock, X, CalendarX } from 'lucide-react';
 
 // Static immediately-needed components
 import NotificationBell from './components/NotificationBell';
@@ -152,6 +152,7 @@ function AuthenticatedApp() {
       defaultTab: 'ordenes',
       tabs: [
         { id: 'ordenes', label: 'Órdenes', icon: ClipboardList },
+        { id: 'no_realizadas', label: 'No realizadas', icon: CalendarX },
         { id: 'pendientes', label: 'Pendientes', icon: Clock },
         { id: 'pacientes', label: 'Pacientes', icon: Users },
         { id: 'control', label: 'Control', icon: Printer },
@@ -180,13 +181,13 @@ function AuthenticatedApp() {
     ...module,
     tabs: module.tabs.filter(tab => {
       if (tab.id === 'admin') return isSuperAdmin || permissions?.can_view_admin;
-      if (userRole === 'medico') return ['notas', 'ordenes', 'control'].includes(tab.id);
-      if (tab.id === 'ordenes' || tab.id === 'control') {
+      if (userRole === 'medico') return ['notas', 'ordenes', 'control', 'no_realizadas'].includes(tab.id);
+      if (tab.id === 'ordenes' || tab.id === 'control' || tab.id === 'no_realizadas') {
         return isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes;
       }
       if (permissions?.can_view_shared_catalog) {
         const allowed = ['caja', 'liquidaciones', 'recibo_libre', 'profesionales', 'historial', 'notas'];
-        if (permissions?.can_view_ordenes) allowed.push('ordenes', 'control');
+        if (permissions?.can_view_ordenes) allowed.push('ordenes', 'control', 'no_realizadas');
         return allowed.includes(tab.id);
       }
       return true;
@@ -397,6 +398,14 @@ function AuthenticatedApp() {
                 {activeTab === 'ordenes' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
                   <OrdenesView
                     initialTab="internacion"
+                    draftData={draftSurgery}
+                    onDraftConsumed={() => setDraftSurgery(null)}
+                    lowPerfMode={lowPerfMode}
+                  />
+                )}
+                {activeTab === 'no_realizadas' && (isSuperAdmin || permissions?.can_view_ordenes || permissions?.can_share_ordenes) && (
+                  <OrdenesView
+                    initialTab="no_realizadas"
                     draftData={draftSurgery}
                     onDraftConsumed={() => setDraftSurgery(null)}
                     lowPerfMode={lowPerfMode}

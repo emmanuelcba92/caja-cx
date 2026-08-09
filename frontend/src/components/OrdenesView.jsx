@@ -5,7 +5,7 @@ import {
     Stethoscope, Pill, ClipboardList, Edit3, Trash2, Package, FileStack, Search,
     CheckCircle2, ArchiveRestore, ShieldCheck, Truck, Folder, Phone, MessageCircle,
     AlertCircle, Clock, Home, StickyNote, LayoutGrid, List, Ban, Filter,
-    TableProperties, Sparkles, Loader2, Lock as LockIcon, Box, Check, Mail, Send
+    TableProperties, Sparkles, Loader2, Lock as LockIcon, Box, Check, Mail, Send, CalendarX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, USE_LOCAL_DB, isTestEnv, LOCAL_API_URL } from '../firebase/config';
@@ -2452,8 +2452,14 @@ const OrdenesView = (props) => {
             return diffDays <= 15;
         };
 
+        const isNoRealizadaTab = activeTab === 'no_realizadas';
+
         // Filter and calculate urgency once
         const filtered = ordenes.filter(orden => {
+            if (isNoRealizadaTab) {
+                if (!orden.suspendida) return false;
+            }
+
             // IF CONTROL TAB: Only filter by range
             if (activeTab === 'control') {
                 if (orden.suspendida) return false;
@@ -2471,13 +2477,13 @@ const OrdenesView = (props) => {
                 return matchRange && matchPaciente;
             }
 
-            // IF INTERNACION TAB: Full filters
+            // IF INTERNACION OR NO REALIZADAS TAB: Full filters
             const matchProfesional = !filterProfesional || orden.profesional === filterProfesional;
             const matchObraSocial = !filterObraSocial || (orden.obraSocial?.trim().toUpperCase() === filterObraSocial.toUpperCase());
             const matchDate = !filterDate || orden.fechaCirugia === filterDate;
             const matchStatus = !filterStatus || (
-                filterStatus === 'enviadas' ? (orden.enviada && !orden.suspendida) :
-                    (!orden.enviada && !orden.suspendida)
+                filterStatus === 'enviadas' ? (orden.enviada && (isNoRealizadaTab ? true : !orden.suspendida)) :
+                    (!orden.enviada && (isNoRealizadaTab ? true : !orden.suspendida))
             );
             const matchMaterial = !filterMaterial || (
                 filterMaterial === 'con_material' ? orden.incluyeMaterial :
@@ -2496,7 +2502,9 @@ const OrdenesView = (props) => {
 
             const targetDateStr = orden.fechaCirugia || orden.fechaDocumento;
             let matchPeriodo = true;
-            if (targetDateStr && filterPeriodo !== 'todas') {
+            if (isNoRealizadaTab) {
+                matchPeriodo = true;
+            } else if (targetDateStr && filterPeriodo !== 'todas') {
                 if (filterPeriodo === 'proximas') {
                     matchPeriodo = targetDateStr >= todayStr && !orden.suspendida;
                 } else if (filterPeriodo === 'realizadas') {
@@ -2517,6 +2525,12 @@ const OrdenesView = (props) => {
         }));
 
         return filtered.sort((a, b) => {
+            if (activeTab === 'no_realizadas') {
+                const dateA = a.fechaCirugia || a.createdAt || a.fechaDocumento;
+                const dateB = b.fechaCirugia || b.createdAt || b.fechaDocumento;
+                return new Date(dateB) - new Date(dateA);
+            }
+
             // Priority 1: Urgent
             if (a._isUrgent && !b._isUrgent) return -1;
             if (!a._isUrgent && b._isUrgent) return 1;
@@ -2555,37 +2569,44 @@ const OrdenesView = (props) => {
                             <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-xl border border-white/20 flex items-center justify-center shadow-inner group transition-all duration-500 hover:scale-105 hover:bg-white/20">
                                 {activeTab === 'control' ? (
                                     <Printer size={32} className="text-white drop-shadow-md" />
+                                ) : activeTab === 'no_realizadas' ? (
+                                    <CalendarX size={32} className="text-white drop-shadow-md" />
                                 ) : (
                                     <FileText size={32} className="text-white drop-shadow-md" />
                                 )}
                             </div>
                             <div>
                                 <h2 className="text-2xl font-black tracking-tight drop-shadow-md">
-                                    {activeTab === 'control' ? 'Control Quirúrgico' : 'Gestión de Órdenes'}
+                                    {activeTab === 'control' ? 'Control Quirúrgico' : 
+                                     activeTab === 'no_realizadas' ? 'Cirugías No Realizadas' : 'Gestión de Órdenes'}
                                 </h2>
                                 <p className="text-teal-50/70 text-sm mt-1 font-medium tracking-wide">
                                     {activeTab === 'control' 
                                         ? 'Auditoría de facturación e impresiones semanales.' 
+                                        : activeTab === 'no_realizadas'
+                                        ? 'Seguimiento de cirugías que no se realizaron en su fecha principal.'
                                         : 'Consola central de internaciones y materiales.'}
                                 </p>
                             </div>
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-center gap-4">
-                            <div className="flex bg-black/20 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-xl">
-                                <button
-                                    onClick={() => { resetForm(); setActiveTab('internacion'); }}
-                                    className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-500 ${activeTab === 'internacion' ? 'bg-white text-teal-800 shadow-xl scale-105' : 'text-teal-50 hover:bg-white/10'}`}
-                                >
-                                    Internación
-                                </button>
-                                <button
-                                    onClick={() => { setActiveTab('control'); }}
-                                    className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-500 ${activeTab === 'control' ? 'bg-white text-teal-800 shadow-xl scale-105' : 'text-teal-50 hover:bg-white/10'}`}
-                                >
-                                    Control
-                                </button>
-                            </div>
+                            {initialTab !== 'no_realizadas' && (
+                                <div className="flex bg-black/20 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-xl">
+                                    <button
+                                        onClick={() => { resetForm(); setActiveTab('internacion'); }}
+                                        className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-500 ${activeTab === 'internacion' ? 'bg-white text-teal-800 shadow-xl scale-105' : 'text-teal-50 hover:bg-white/10'}`}
+                                    >
+                                        Internación
+                                    </button>
+                                    <button
+                                        onClick={() => { setActiveTab('control'); }}
+                                        className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-500 ${activeTab === 'control' ? 'bg-white text-teal-800 shadow-xl scale-105' : 'text-teal-50 hover:bg-white/10'}`}
+                                    >
+                                        Control
+                                    </button>
+                                </div>
+                            )}
 
                             {activeTab === 'internacion' && canShareOrdenes && (
                                 <button
@@ -2751,18 +2772,20 @@ const OrdenesView = (props) => {
                                         />
                                     </div>
 
-                                    {activeTab === 'internacion' && (
+                                    {(activeTab === 'internacion' || activeTab === 'no_realizadas') && (
                                         <div className="flex items-center gap-3">
-                                            <select
-                                                value={filterPeriodo}
-                                                onChange={(e) => setFilterPeriodo(e.target.value)}
-                                                className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider text-teal-700 dark:text-teal-400 focus:outline-none transition-all shadow-inner"
-                                            >
-                                                <option value="proximas">Próximas</option>
-                                                <option value="realizadas">Historial</option>
-                                                <option value="suspendidas">Canceladas</option>
-                                                <option value="todas">Todas</option>
-                                            </select>
+                                            {activeTab === 'internacion' && (
+                                                <select
+                                                    value={filterPeriodo}
+                                                    onChange={(e) => setFilterPeriodo(e.target.value)}
+                                                    className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider text-teal-700 dark:text-teal-400 focus:outline-none transition-all shadow-inner"
+                                                >
+                                                    <option value="proximas">Próximas</option>
+                                                    <option value="realizadas">Historial</option>
+                                                    <option value="suspendidas">No realizadas</option>
+                                                    <option value="todas">Todas</option>
+                                                </select>
+                                            )}
                                             
                                             <button 
                                                 onClick={() => { setFilterDate(''); setFilterProfesional(''); setFilterObraSocial(''); setFilterStatus(''); setFilterMaterial(''); setLocalSearchTerm(''); setFilterTipo(''); setFilterProvisorio(''); }}
@@ -2777,7 +2800,7 @@ const OrdenesView = (props) => {
                             </div>
 
                             {/* Secondary Filters Grid */}
-                            {activeTab === 'internacion' && (
+                            {(activeTab === 'internacion' || activeTab === 'no_realizadas') && (
                                 <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-7 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Profesional</label>
@@ -2891,7 +2914,7 @@ const OrdenesView = (props) => {
                                         return (
                                             <div
                                                 key={orden.id}
-                                                className={`group relative flex items-center justify-between p-2.5 rounded-xl transition-all duration-300 border ${orden.suspendida ? 'bg-slate-100/50 dark:bg-slate-800/30 opacity-60 grayscale border-slate-200 dark:border-slate-700' :
+                                                className={`group relative flex items-center justify-between p-2.5 rounded-xl transition-all duration-300 border ${orden.suspendida ? (activeTab === 'no_realizadas' ? 'bg-amber-50/20 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/40 hover:border-amber-300 shadow-sm' : 'bg-slate-100/50 dark:bg-slate-800/30 opacity-60 grayscale border-slate-200 dark:border-slate-700') :
                                                     orden.enviada ? 'bg-slate-50/80 dark:bg-slate-900/40 opacity-80 border-slate-100 dark:border-slate-800' :
                                                         isUrgent ? 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-900 shadow-sm shadow-red-500/5' : 
                                                             orden.incluyeMaterial ? 'bg-violet-50/10 dark:bg-violet-950/5 border-violet-200 dark:border-violet-800/40 hover:border-violet-300 shadow-sm' :
@@ -2899,24 +2922,25 @@ const OrdenesView = (props) => {
                                                     } `}
                                             >
                                                 {isUrgent && !orden.suspendida && (
-                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-red-500 rounded-r-full"></div>
+                                                    <span className="absolute -left-1.5 -top-1.5 flex h-3 w-3 z-10">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 shadow-md"></span>
+                                                    </span>
                                                 )}
                                                 
-                                                <div className="flex items-center gap-4 flex-1 min-w-0">
-                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${orden.suspendida ? 'bg-slate-200 text-slate-500' : (isUrgent ? 'bg-red-100 dark:bg-red-900/30 text-red-600' : (orden.enviada ? 'bg-emerald-100 text-emerald-600' : 'bg-teal-100 text-teal-600'))}`}>
-                                                        {orden.suspendida ? <Ban size={20} /> : (isUrgent ? <AlertCircle size={20} className="animate-pulse" /> : (orden.enviada ? <CheckCircle2 size={20} /> : <FileText size={20} />))}
+                                                <div className="flex items-center gap-3.5 min-w-0">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${orden.suspendida ? 'bg-amber-100 text-amber-600' : (isUrgent ? 'bg-red-100 dark:bg-red-900/30 text-red-600' : (orden.enviada ? 'bg-emerald-100 text-emerald-600' : 'bg-teal-100 text-teal-600'))}`}>
+                                                        {orden.suspendida ? <CalendarX size={20} /> : (isUrgent ? <AlertCircle size={20} className="animate-pulse" /> : (orden.enviada ? <CheckCircle2 size={20} /> : <FileText size={20} />))}
                                                     </div>
-                                                    
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2 mb-0.5">
-                                                            <h4 className={`text-sm font-black truncate tracking-tight ${orden.suspendida ? 'text-slate-400 line-through' : (orden.enviada ? 'text-slate-500' : 'text-slate-900 dark:text-white')}`}>
-                                                                {orden.afiliado?.toUpperCase()} 
-                                                                <span className="ml-3 text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-normal">DNI: {orden.dni || 'S/D'}</span>
+                                                    <div className="min-w-0 space-y-0.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className={`text-sm font-black truncate tracking-tight ${orden.suspendida ? (activeTab === 'no_realizadas' ? 'text-slate-900 dark:text-white' : 'text-slate-400 line-through') : (orden.enviada ? 'text-slate-500' : 'text-slate-900 dark:text-white')}`}>
+                                                                {orden.afiliado}
                                                             </h4>
+                                                            {isUrgent && !orden.suspendida && (
+                                                                <span className="px-1.5 py-0.5 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded animate-pulse">Urgente</span>
+                                                            )}
                                                             <div className="flex gap-1.5">
-                                                                {isUrgent && !orden.suspendida && (
-                                                                    <span className="px-2 py-0.5 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Urgente</span>
-                                                                )}
                                                                 {orden.provisorio && (
                                                                     <span className="px-2 py-0.5 bg-sky-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Aguardando por fecha</span>
                                                                 )}
@@ -2974,13 +2998,13 @@ const OrdenesView = (props) => {
                                                             <CheckCircle2 size={16} />
                                                         </button>
 
-                                                        {/* Acción: Suspender */}
+                                                        {/* Acción: Marcar como No Realizada / Programar */}
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleToggleField(orden, 'suspendida'); }} 
-                                                            className={`p-2 rounded-lg transition-all ${orden.suspendida ? 'text-rose-500 bg-rose-50 dark:bg-rose-950/30' : 'text-slate-400 hover:text-rose-500'}`}
-                                                            title={orden.suspendida ? 'Cirugía suspendida' : 'Suspender cirugía'}
+                                                            className={`p-2 rounded-lg transition-all ${orden.suspendida ? 'text-amber-600 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/50' : 'text-slate-400 hover:text-amber-600'}`}
+                                                            title={orden.suspendida ? 'Habilitar cirugía (Reprogramar)' : 'Marcar como no realizada'}
                                                         >
-                                                            <Ban size={16} />
+                                                            <CalendarX size={16} />
                                                         </button>
 
                                                         <div className="w-px h-4 bg-slate-200 dark:border-slate-700 mx-1"></div>
@@ -3011,7 +3035,7 @@ const OrdenesView = (props) => {
                                     return (
                                         <div
                                             key={orden.id}
-                                            className={`group relative bg-white dark:bg-slate-900 rounded-2xl border p-5 flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${orden.suspendida ? 'opacity-60 grayscale border-slate-200 dark:border-slate-800' :
+                                            className={`group relative bg-white dark:bg-slate-900 rounded-2xl border p-5 flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${orden.suspendida ? (activeTab === 'no_realizadas' ? 'bg-amber-50/20 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/40 hover:border-amber-300 shadow-sm' : 'opacity-60 grayscale border-slate-200 dark:border-slate-800') :
                                                 orden.enviada ? 'opacity-80 border-slate-100 dark:border-slate-800' :
                                                     isUrgent ? 'border-red-100 dark:border-red-900 shadow-md shadow-red-500/5' : 
                                                         orden.incluyeMaterial ? 'border-violet-200 dark:border-violet-800/50 bg-violet-50/10' :
