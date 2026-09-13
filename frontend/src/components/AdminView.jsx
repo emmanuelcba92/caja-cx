@@ -785,28 +785,68 @@ const AdminView = () => {
     };
 
     const handleExportData = async () => {
-        if (!maintenanceUser) {
-            alert("Selecciona un usuario.");
-            return;
-        }
         setLoading(true);
         try {
-            const collectionsToExport = ['pedidos_medicos', 'ordenes_internacion', 'profesionales', 'caja', 'notes'];
-            const exportData = { version: '1.0', exportDate: new Date().toISOString(), userId: maintenanceUser, data: {} };
+            // Si hay un usuario seleccionado, exporta ese usuario. Si está vacío (Global), exporta TODO el sistema.
+            const isGlobal = !maintenanceUser;
+            const collectionsToExport = [
+                'pedidos_medicos',
+                'ordenes_internacion',
+                'profesionales',
+                'caja',
+                'pacientes',
+                'reminders',
+                'notes',
+                'daily_comments',
+                'recibos_libres',
+                'deducciones',
+                'authorized_emails',
+                'roles',
+                'profiles',
+                'consentimientos',
+                'consent_mappings'
+            ];
+
+            const exportData = {
+                version: '2.0',
+                exportDate: new Date().toISOString(),
+                scope: isGlobal ? 'GLOBAL_MAESTRO' : maintenanceUser,
+                userId: maintenanceUser || 'GLOBAL',
+                data: {}
+            };
+
             for (const colName of collectionsToExport) {
-                const q = query(collection(db, colName), where("userId", "==", maintenanceUser));
-                const snap = await getDocs(q);
-                exportData.data[colName] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                try {
+                    let q;
+                    if (isGlobal) {
+                        q = collection(db, colName);
+                    } else {
+                        // Si es por usuario y la colección tiene userId
+                        q = query(collection(db, colName), where("userId", "==", maintenanceUser));
+                    }
+                    const snap = await getDocs(q);
+                    exportData.data[colName] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (colErr) {
+                    console.warn(`No se pudo exportar colección ${colName}:`, colErr);
+                    exportData.data[colName] = [];
+                }
             }
-            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+
+            const jsonStr = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `backup_${maintenanceUser}.json`;
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            const dateStr = new Date().toISOString().split('T')[0];
+            a.download = isGlobal ? `BACKUP_MAESTRO_COAT_${dateStr}.json` : `backup_${maintenanceUser}_${dateStr}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            toast.success(isGlobal ? "Backup Maestro generado con éxito" : `Backup de ${maintenanceUser} generado`);
         } catch (error) {
-            alert("Error: " + error.message);
+            console.error("Error en exportación:", error);
+            alert("Error al exportar backup: " + error.message);
         } finally {
             setLoading(false);
         }
