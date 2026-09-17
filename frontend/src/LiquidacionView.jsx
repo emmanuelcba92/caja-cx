@@ -84,6 +84,36 @@ export default function LiquidacionView({ history, currentUser, professionals })
     return Array.from(profMap.values()).sort((a, b) => a.localeCompare(b));
   }, [allEntries, professionals]);
 
+  const dateEntries = useMemo(() => {
+    let list = [];
+    if (dateMode === 'month') {
+      const monthStart = `${selectedYear}-${selectedMonth}-01`;
+      const monthEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).toISOString().split('T')[0];
+      list = allEntries.filter(h => h.fecha >= monthStart && h.fecha <= monthEnd);
+    } else {
+      list = allEntries.filter(h => h.fecha >= startDate && h.fecha <= endDate);
+    }
+    const seen = new Set();
+    return list.filter(h => {
+      const key = h.id || `${h.fecha}_${h.paciente}_${h.prof_1}_${h.pesos}_${h.dolares}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [allEntries, startDate, endDate, dateMode, selectedMonth, selectedYear]);
+
+  const profsWithData = useMemo(() => {
+    return availableProfs.filter(prof => {
+      const pKey = normProf(prof);
+      return dateEntries.some(h => {
+        return normProf(h.prof_1) === pKey ||
+               normProf(h.prof_2) === pKey ||
+               normProf(h.prof_3) === pKey ||
+               normProf(h.anestesista) === pKey;
+      });
+    });
+  }, [availableProfs, dateEntries]);
+
   const filtered = useMemo(() => {
     if (!selectedProf) return [];
     const p = normProf(selectedProf);
@@ -192,18 +222,6 @@ export default function LiquidacionView({ history, currentUser, professionals })
     setManualForm({ date: today, patient: '', totalPayment: '', currency: 'ARS', inReceipt: false, profs: [{ prof: selectedProf || '', amount: '' }] });
   };
 
-  const profsWithData = useMemo(() => {
-    return availableProfs.filter(prof => {
-      const pKey = normProf(prof);
-      return dateEntries.some(h => {
-        return normProf(h.prof_1) === pKey ||
-               normProf(h.prof_2) === pKey ||
-               normProf(h.prof_3) === pKey ||
-               normProf(h.anestesista) === pKey;
-      });
-    });
-  }, [availableProfs, dateEntries]);
-
   const handlePrintDetail = () => {
     const rows = liquidationData.rows.map(r => {
       const isT = r.isTransfer;
@@ -309,24 +327,6 @@ export default function LiquidacionView({ history, currentUser, professionals })
     printWin.onafterprint = () => { try { printWin.close(); } catch(e) {} };
     setTimeout(() => { printWin.print(); }, 500);
   };
-
-  const dateEntries = useMemo(() => {
-    let list = [];
-    if (dateMode === 'month') {
-      const monthStart = `${selectedYear}-${selectedMonth}-01`;
-      const monthEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).toISOString().split('T')[0];
-      list = allEntries.filter(h => h.fecha >= monthStart && h.fecha <= monthEnd);
-    } else {
-      list = allEntries.filter(h => h.fecha >= startDate && h.fecha <= endDate);
-    }
-    const seen = new Set();
-    return list.filter(h => {
-      const key = h.id || `${h.fecha}_${h.paciente}_${h.prof_1}_${h.pesos}_${h.dolares}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [allEntries, startDate, endDate, dateMode, selectedMonth, selectedYear]);
 
   const calcProfLiq = (entries, profName) => {
     const p = normProf(profName);
