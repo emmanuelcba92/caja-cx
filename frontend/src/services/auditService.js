@@ -3,9 +3,9 @@ import { db, auth } from '../firebase/config';
 
 /**
  * Registra una acción en el log de auditoría.
- * @param {string} action - Tipo de acción (ej: 'CREAR_REGISTRO_CAJA', 'ELIMINAR_PEDIDO')
+ * @param {string} action - Tipo de acción (ej: 'CREAR_REGISTRO_CAJA')
  * @param {string} targetId - ID del documento afectado
- * @param {string} targetName - Nombre o descripción del documento afectado
+ * @param {string} targetName - Nombre o descripción del documento
  * @param {object} details - Información adicional (opcional)
  */
 export const logAction = async (action, targetId, targetName, details = {}) => {
@@ -28,11 +28,14 @@ export const logAction = async (action, targetId, targetName, details = {}) => {
       }
     });
   } catch (error) {
-    console.error('Error recording audit log:', error);
-    // No lanzamos error para no romper la experiencia del usuario si falla el log
+    console.error('[AuditService] Error recording audit log:', error);
+    // No lanzamos error para no romper la experiencia del usuario
   }
 };
 
+/**
+ * Constantes de acciones de auditoría
+ */
 export const AUDIT_ACTIONS = {
   // Acciones de Caja
   CREATE_CAJA_ENTRY: 'CREAR_REGISTRO_CAJA',

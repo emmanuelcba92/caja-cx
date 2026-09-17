@@ -1,0 +1,361 @@
+import React, { useState, useEffect } from 'react';
+import { Save, Plus, Trash2, LayoutDashboard, Calendar, X, Edit2, Calculator, History, FileText } from 'lucide-react';
+import HistorialCajaView from './HistorialCajaView';
+import LiquidacionView from './LiquidacionView';
+
+export const STORAGE_KEY = 'caja_proto';
+
+export const formatMoney = (val) => (parseFloat(val) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+
+export const currencies = ['ARS', 'USD'];
+
+export const MoneyInput = ({ value, onChange, className }) => {
+  const [display, setDisplay] = useState('');
+  useEffect(() => { setDisplay(formatMoney(value)); }, [value]);
+
+  const parse = (val) => {
+    const clean = val.replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+    return parseFloat(clean) || 0;
+  };
+
+  const handleBlur = () => {
+    const num = parse(display);
+    onChange(num);
+    setDisplay(formatMoney(num));
+  };
+
+  return (
+    <input
+      type="text"
+      className={className}
+      value={display}
+      onChange={e => setDisplay(e.target.value)}
+      onBlur={handleBlur}
+      onFocus={e => e.target.select()}
+    />
+  );
+};
+
+const emptyEntry = () => ({
+  id: Date.now(),
+  fecha: new Date().toISOString().split('T')[0],
+  paciente: '', dni: '', obra_social: '',
+  prof_1: '', prof_2: '', prof_3: '',
+  showProf3: false,
+  pesos: 0, dolares: 0,
+  liq_prof_1: 0, liq_prof_1_currency: 'ARS',
+  liq_prof_2: 0, liq_prof_2_currency: 'ARS',
+  liq_prof_3: 0, liq_prof_3_currency: 'ARS',
+  anestesista: '', liq_anestesista: 0, liq_anestesista_currency: 'ARS',
+  coat_pesos: 0, coat_dolares: 0,
+  comentario: ''
+});
+
+export const calcLiq = (entry) => {
+  const e = { ...entry };
+  const pPesos = e.pesos || 0;
+  const pDolares = e.dolares || 0;
+
+  const autoCurr = (pDolares > 0 && pPesos === 0) ? 'USD' : 'ARS';
+  if (e.prof_1 && e.liq_prof_1_currency === 'ARS' && autoCurr === 'USD') e.liq_prof_1_currency = 'USD';
+  if (e.prof_2 && e.liq_prof_2_currency === 'ARS' && autoCurr === 'USD') e.liq_prof_2_currency = 'USD';
+  if (e.prof_3 && e.liq_prof_3_currency === 'ARS' && autoCurr === 'USD') e.liq_prof_3_currency = 'USD';
+  if (e.anestesista && e.liq_anestesista_currency === 'ARS' && autoCurr === 'USD') e.liq_anestesista_currency = 'USD';
+
+  let totalPesos = 0, totalUSD = 0;
+  const add = (val, curr) => { const v = parseFloat(val) || 0; if (curr === 'USD') totalUSD += v; else totalPesos += v; };
+  add(e.liq_prof_1, e.liq_prof_1_currency);
+  add(e.liq_prof_2, e.liq_prof_2_currency);
+  add(e.liq_prof_3, e.liq_prof_3_currency);
+  add(e.liq_anestesista, e.liq_anestesista_currency);
+
+  e.coat_pesos = pPesos - totalPesos;
+  e.coat_dolares = pDolares - totalUSD;
+  return e;
+};
+
+function CajaForm({ currentUser, history, setHistory }) {
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [entries, setEntries] = useState([{ ...emptyEntry(), id: Date.now() }]);
+  const [showProf3, setShowProf3] = useState(false);
+
+  const updateEntry = (id, field, value) => {
+    setEntries(prev => prev.map(e => e.id !== id ? e : calcLiq({ ...e, [field]: value })));
+  };
+
+  const addRow = () => {
+    setEntries([...entries, { ...emptyEntry(), id: Date.now(), showProf3 }]);
+  };
+
+  const removeRow = (id) => {
+    if (entries.length > 1) setEntries(entries.filter(e => e.id !== id));
+  };
+
+  const handleSave = () => {
+    const toSave = entries.filter(e => e.paciente.trim().length > 0);
+    if (toSave.length === 0) { alert('Complete al menos el nombre del paciente.'); return; }
+    const withMeta = toSave.map(e => ({
+      ...e,
+      fecha: date,
+      creadoPor: currentUser?.nombre || 'unknown',
+      createdAt: new Date().toISOString()
+    }));
+    setHistory(prev => [...prev, ...withMeta]);
+    setEntries([{ ...emptyEntry(), id: Date.now(), showProf3 }]);
+    alert('Operación guardada correctamente.');
+  };
+
+  const loadToEdit = (item) => {
+    setEntries([{ ...item, id: Date.now() }]);
+    setShowProf3(!!item.prof_3);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deleteHistory = (id) => {
+    if (!window.confirm('¿Eliminar este registro?')) return;
+    setHistory(prev => prev.filter(h => h.id !== id));
+  };
+
+  const historyForDate = history.filter(h => h.fecha === date);
+
+  const totals = historyForDate.reduce((acc, h) => {
+    acc.pesos += parseFloat(h.pesos) || 0;
+    acc.dolares += parseFloat(h.dolares) || 0;
+    acc.coat_pesos += parseFloat(h.coat_pesos) || 0;
+    acc.coat_dolares += parseFloat(h.coat_dolares) || 0;
+    return acc;
+  }, { pesos: 0, dolares: 0, coat_pesos: 0, coat_dolares: 0 });
+
+  const renderEntryForm = (entry, index) => (
+    <div key={entry.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-sm font-bold text-slate-500">{index + 1}</span>
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Paciente</span>
+        </div>
+        {entries.length > 1 && (
+          <button onClick={() => removeRow(entry.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={16} /></button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Paciente</label>
+          <input className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500" value={entry.paciente} onChange={e => updateEntry(entry.id, 'paciente', e.target.value)} placeholder="Nombre completo" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">DNI</label>
+          <input className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500" value={entry.dni} onChange={e => updateEntry(entry.id, 'dni', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Obra Social</label>
+          <input className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500" value={entry.obra_social} onChange={e => updateEntry(entry.id, 'obra_social', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="block text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Cobro Paciente</label>
+          <div className="space-y-2">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-sm">$</span>
+              <MoneyInput className="w-full pl-8 pr-3 py-2 rounded-lg border border-emerald-200 text-emerald-800 font-bold text-lg outline-none focus:ring-2 focus:ring-emerald-500" value={entry.pesos} onChange={v => updateEntry(entry.id, 'pesos', v)} />
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400 font-bold text-sm">U$D</span>
+              <MoneyInput className="w-full pl-12 pr-3 py-2 rounded-lg border border-blue-200 text-blue-800 font-bold text-lg outline-none focus:ring-2 focus:ring-blue-500" value={entry.dolares} onChange={v => updateEntry(entry.id, 'dolares', v)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider">Saldo COAT</label>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-orange-50 rounded-lg p-3 border border-orange-100">
+              <p className="text-[9px] font-bold text-orange-400 uppercase">ARS</p>
+              <p className="text-lg font-bold text-orange-700 tabular-nums">$ {formatMoney(entry.coat_pesos)}</p>
+            </div>
+            <div className="bg-orange-50 rounded-lg p-3 border border-orange-100">
+              <p className="text-[9px] font-bold text-orange-400 uppercase">USD</p>
+              <p className="text-lg font-bold text-orange-700 tabular-nums">U$D {formatMoney(entry.coat_dolares)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Honorarios</label>
+          {!entry.showProf3 && (
+            <button type="button" onClick={() => { updateEntry(entry.id, 'showProf3', true); setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, showProf3: true, prof_3: '', liq_prof_3: 0 } : e)); }} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 border border-blue-100">
+              <Plus size={12} /> Prof. 3
+            </button>
+          )}
+        </div>
+        {[1, 2, 3].map(n => {
+          if (n === 3 && !entry.showProf3) return null;
+          const nameKey = `prof_${n}`;
+          const liqKey = `liq_prof_${n}`;
+          const currKey = `liq_prof_${n}_currency`;
+          const borderColor = n === 1 ? 'border-blue-200' : n === 2 ? 'border-indigo-200' : 'border-teal-200';
+          const bgColor = n === 1 ? 'bg-blue-50' : n === 2 ? 'bg-indigo-50' : 'bg-teal-50';
+          return (
+            <div key={n} className={`${bgColor} ${borderColor} border rounded-lg p-3`}>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                <div className="md:col-span-2">
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Médico {n}</label>
+                  <div className="flex gap-2 items-center">
+                    <input className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-500" value={entry[nameKey]} onChange={e => updateEntry(entry.id, nameKey, e.target.value)} placeholder="Nombre del médico" />
+                    {n === 3 && (
+                      <button type="button" onClick={() => setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, showProf3: false, prof_3: '', liq_prof_3: 0 } : e))} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-all"><X size={16} /></button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Liquidación</label>
+                  <div className="flex gap-1">
+                    <select className="px-2 py-2 rounded-lg border border-slate-200 text-xs font-bold outline-none bg-white" value={entry[currKey]} onChange={e => updateEntry(entry.id, currKey, e.target.value)}>
+                      {currencies.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <MoneyInput className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500" value={entry[liqKey]} onChange={v => updateEntry(entry.id, liqKey, v)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">Anestesia</label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+          <div>
+            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Anestesista</label>
+            <input className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-purple-500" value={entry.anestesista} onChange={e => updateEntry(entry.id, 'anestesista', e.target.value)} placeholder="Nombre" />
+          </div>
+          <div>
+            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Liquidación</label>
+            <div className="flex gap-1">
+              <select className="px-2 py-2 rounded-lg border border-slate-200 text-xs font-bold outline-none bg-white" value={entry.liq_anestesista_currency} onChange={e => updateEntry(entry.id, 'liq_anestesista_currency', e.target.value)}>
+                {currencies.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <MoneyInput className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-bold outline-none focus:ring-2 focus:ring-purple-500" value={entry.liq_anestesista} onChange={v => updateEntry(entry.id, 'liq_anestesista', v)} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg"><LayoutDashboard size={20} /></div>
+          <div>
+            <h3 className="font-bold text-slate-700">Caja de Cirugía</h3>
+            <p className="text-[10px] text-slate-500">Nuevas entradas</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+            <Calendar size={14} className="text-blue-500" />
+            <input type="date" className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 outline-none" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div className="flex gap-3">
+            <div className="text-right">
+              <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Balance ARS</p>
+              <p className="text-base font-bold text-emerald-700 tabular-nums">$ {formatMoney(totals.coat_pesos)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Balance USD</p>
+              <p className="text-base font-bold text-blue-700 tabular-nums">U$D {formatMoney(totals.coat_dolares)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nuevas Entradas</h3>
+          <button onClick={addRow} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-emerald-600 hover:border-emerald-300 transition-all"><Plus size={14} /> Agregar</button>
+        </div>
+        {entries.map((entry, i) => renderEntryForm(entry, i))}
+      </div>
+
+      <div className="flex justify-end gap-3">
+        <button onClick={handleSave} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 transition-all active:scale-95"><Save size={18} /> Guardar Operación</button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calculator size={18} className="text-slate-400" />
+            <h3 className="font-bold text-slate-700">Historial - {date}</h3>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold">{historyForDate.length} registros</span>
+        </div>
+        {historyForDate.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 text-sm">No hay registros para esta fecha.</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {historyForDate.map(item => (
+              <div key={item.id} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-slate-50 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 font-bold text-lg shrink-0">{(item.paciente || '?')[0]}</div>
+                  <div>
+                    <p className="font-bold text-slate-800">{item.paciente}</p>
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      {item.obra_social && <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">{item.obra_social}</span>}
+                      {item.dni && <span>DNI: {item.dni}</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <div className="text-right">
+                    {item.pesos > 0 && <p className="text-emerald-600 font-bold">$ {formatMoney(item.pesos)}</p>}
+                    {item.dolares > 0 && <p className="text-blue-600 font-bold">U$D {formatMoney(item.dolares)}</p>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => loadToEdit(item)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit2 size={16} /></button>
+                    <button onClick={() => deleteHistory(item.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function CajaView({ currentUser }) {
+  const [subTab, setSubTab] = useState('caja');
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) { try { setHistory(JSON.parse(saved)); } catch {} }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  }, [history]);
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+        <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg w-fit">
+          <button onClick={() => setSubTab('caja')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${subTab === 'caja' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><LayoutDashboard size={16} />Caja</button>
+          <button onClick={() => setSubTab('historial')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${subTab === 'historial' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><History size={16} />Historial</button>
+          <button onClick={() => setSubTab('liquidaciones')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${subTab === 'liquidaciones' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><FileText size={16} />Liquidaciones</button>
+        </div>
+      </div>
+
+      {subTab === 'caja' && <CajaForm currentUser={currentUser} history={history} setHistory={setHistory} />}
+      {subTab === 'historial' && <HistorialCajaView history={history} setHistory={setHistory} currentUser={currentUser} />}
+      {subTab === 'liquidaciones' && <LiquidacionView history={history} currentUser={currentUser} />}
+    </div>
+  );
+}

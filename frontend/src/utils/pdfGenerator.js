@@ -11,9 +11,9 @@ const optimizeImage = async (src, maxWidth = 600) => {
             canvas.width = img.width * scale;
             canvas.height = img.height * scale;
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve({ 
-                data: canvas.toDataURL('image/png', 0.8), 
-                ratio: img.width / img.height 
+            resolve({
+                data: canvas.toDataURL('image/png', 0.8),
+                ratio: img.width / img.height
             });
         };
         img.onerror = () => resolve(null);
@@ -38,23 +38,25 @@ const formatLongDate = (dateStr) => {
     } catch (e) { return dateStr; }
 };
 
+/**
+ * Generate PDF for surgery orders (internación or material)
+ * @param {Object} previewData - Surgery data
+ * @param {string} type - 'internacion' | 'material' | 'ambas'
+ * @param {string} mode - 'save' | 'print'
+ */
 export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const pageHeight = doc.internal.pageSize.height;
     const centerX = pageWidth / 2;
-
-    const isInternacion = type === 'internacion' || type === 'ambas';
-    const isMaterial = type === 'material' || type === 'ambas';
 
     const drawPage = async (targetDoc, pageType) => {
         const isInternacionPage = pageType === 'internacion';
-        const isEstudio = previewData.estudioBajoAnestesia;
+        const isEstudio = previewData.tipoProcedimiento === 'ESTUDIO' || !!previewData.estudioBajoAnestesia;
         const title = isInternacionPage
             ? (isEstudio ? 'PEDIDO DE ESTUDIO BAJO ANESTESIA' : 'ORDEN DE INTERNACIÓN')
             : 'ORDEN DE PEDIDO DE MATERIAL';
 
-        // 1. Header: Logo and Clinic Info
+        // Header: Logo and Clinic Info
         if (isInternacionPage) {
             try {
                 const logoData = await optimizeImage('/coat_logo.png', 400);
@@ -67,7 +69,7 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
             targetDoc.setFontSize(13);
             targetDoc.setFont("helvetica", "bold");
             targetDoc.text("CENTRO OTOAUDIOLÓGICO DE ALTA TECNOLOGÍA", centerX, 22, { align: 'center' });
-            
+
             targetDoc.setFontSize(9);
             targetDoc.setFont("helvetica", "normal");
             targetDoc.text("NARIZ • GARGANTA • OÍDO", centerX, 28, { align: 'center' });
@@ -79,226 +81,128 @@ export const generateOrdenPDF = async (previewData, type, mode = 'save') => {
             // Date
             targetDoc.setFontSize(11);
             targetDoc.setFont("helvetica", "normal");
-            const dateStr = `Córdoba, ${formatLongDate(previewData.fechaDocumento)}`;
-            targetDoc.text(dateStr, pageWidth - 15, 45, { align: 'right' });
-
-            // Title Positioning
-            targetDoc.setFontSize(14);
-            targetDoc.setFont("helvetica", "bold");
-            targetDoc.text(title, centerX, 60, { align: 'center' });
-            
-        } else {
-            try {
-                const logoData = await optimizeImage('/coat_logo.png', 400);
-                if (logoData) {
-                    targetDoc.addImage(logoData.data, 'PNG', 15, 12, 30, 30 / logoData.ratio, undefined, 'FAST');
-                }
-            } catch (e) {}
-
-            targetDoc.setFontSize(11);
-            targetDoc.setFont("helvetica", "normal");
-            targetDoc.setTextColor(0);
-            const dateStr = `Córdoba, ${formatLongDate(previewData.fechaDocumento)}`;
-            targetDoc.text(dateStr, pageWidth - 15, 20, { align: 'right' });
-
-            targetDoc.setFontSize(14);
-            targetDoc.setFont("helvetica", "bold");
-            targetDoc.text(title, centerX, 55, { align: 'center' });
+            targetDoc.text(`Córdoba, ${formatLongDate(previewData.fechaCirugia || previewData.fechaDocumento)}`, pageWidth - 15, 22, { align: 'right' });
         }
 
-        // 4. Patient Info
-        let y = isInternacionPage ? 75 : 70;
-        targetDoc.setFontSize(11);
-        targetDoc.setFont("helvetica", "normal");
-        
-        const info = [
-            { label: 'Afiliado:', value: (previewData.afiliado || '').toUpperCase() },
-            { label: 'Obra social:', value: (previewData.obraSocial || '').toUpperCase() },
-            { label: 'Número de afiliado:', value: previewData.numeroAfiliado || '-' },
-        ];
-        if (previewData.dni) info.push({ label: 'DNI:', value: previewData.dni });
+        // Title
+        targetDoc.setFontSize(14);
+        targetDoc.setFont("helvetica", "bold");
+        targetDoc.text(title, centerX, isInternacionPage ? 42 : 22, { align: 'center' });
 
-        info.forEach(item => {
+        targetDoc.setLineWidth(0.2);
+        targetDoc.setDrawColor(200);
+        targetDoc.line(15, (isInternacionPage ? 46 : 26), pageWidth - 15, (isInternacionPage ? 46 : 26));
+
+        // Content
+        let y = isInternacionPage ? 54 : 34;
+        const lineHeight = 7;
+
+        const addField = (label, value) => {
+            if (!value) return;
+            targetDoc.setFontSize(10);
             targetDoc.setFont("helvetica", "bold");
-            targetDoc.text(item.label, 20, y);
-            const labelWidth = targetDoc.getTextWidth(item.label);
+            targetDoc.text(`${label}:`, 15, y);
             targetDoc.setFont("helvetica", "normal");
-            targetDoc.text(String(item.value), 20 + labelWidth + 2, y);
-            y += 8;
-        });
+            targetDoc.text(String(value), 60, y);
+            y += lineHeight;
+        };
 
-        // 5. Codes or Materials
-        y += 4;
         if (isInternacionPage) {
-            targetDoc.setFont("helvetica", "bold");
-            const codesLabel = isEstudio ? 'Estudio a realizar:' : 'Códigos de cirugía:';
-            targetDoc.text(codesLabel, 20, y);
-            y += 8;
-            targetDoc.setFont("helvetica", "normal");
-            if (previewData.codigosCirugia && previewData.codigosCirugia.length > 0) {
-                previewData.codigosCirugia.forEach(cod => {
-                    if (cod.codigo || cod.nombre) {
-                        const line = `${isEstudio ? '' : cod.codigo} ${cod.nombre ? cod.nombre.toUpperCase() : ''}`;
-                        targetDoc.text(line, 25, y);
-                        y += 6;
-                    }
+            addField("Profesional", previewData.profesional);
+            addField("Paciente", previewData.afiliado || previewData.paciente);
+            addField("DNI", previewData.dni);
+            addField("Obra Social", previewData.obraSocial);
+            addField("N° Afiliado", previewData.numeroAfiliado);
+            addField(isEstudio ? "Fecha del Estudio" : "Fecha de Cirugía", formatDate(previewData.fechaCirugia));
+            addField("Hora", previewData.horaCirugia);
+            addField("Sala", previewData.salaCirugia);
+            addField("Anestesia", previewData.tipoAnestesia);
+            addField("Diagnóstico", previewData.diagnostico);
+            y += 3;
+
+            // Codes
+            if (previewData.codigosCirugia?.length > 0) {
+                targetDoc.setFont("helvetica", "bold");
+                targetDoc.text(isEstudio ? "Estudios:" : "Códigos:", 15, y);
+                y += lineHeight;
+                targetDoc.setFont("helvetica", "normal");
+                previewData.codigosCirugia.forEach(code => {
+                    targetDoc.text(`• ${code.codigo} - ${code.nombre}`, 20, y);
+                    y += lineHeight;
                 });
             }
-        } else {
-            targetDoc.setFont("helvetica", "bold");
-            targetDoc.text("Detalle del material:", 20, y);
-            y += 8;
-            targetDoc.setFont("helvetica", "normal");
-            const splitMaterial = targetDoc.splitTextToSize(previewData.descripcionMaterial || '-', pageWidth - 40);
-            targetDoc.text(splitMaterial, 20, y);
-            y += (splitMaterial.length * 6);
-        }
+            y += 3;
 
-        // 6. Common fields
-        y += 4;
-        const details = [
-            { label: 'Tipo de anestesia:', value: previewData.tipoAnestesia },
-            { label: 'Fecha de cirugía:', value: formatDate(previewData.fechaCirugia) },
-        ];
-        if (isInternacionPage) details.push({ label: 'Material:', value: previewData.incluyeMaterial ? 'si' : 'no' });
-        details.push({ label: 'Diagnóstico:', value: previewData.diagnostico });
-
-        details.forEach(item => {
-            targetDoc.setFont("helvetica", "bold");
-            targetDoc.text(item.label, 20, y);
-            const labelWidth = targetDoc.getTextWidth(item.label);
-            targetDoc.setFont("helvetica", "normal");
-            targetDoc.text(String(item.value), 20 + labelWidth + 2, y);
-            y += 8;
-        });
-
-        // 7. Signature Area
-        const sigX = pageWidth - 60;
-        const sigY = pageHeight - 65;
-        
-        const profName = previewData.profesional;
-        const signatureUrl = previewData.firmaUrl;
-        
-        if (signatureUrl) {
-            try {
-                const sigData = await optimizeImage(signatureUrl, 400);
-                if (sigData) {
-                    const maxW = 45;
-                    const maxH = 22;
-                    let w = maxW;
-                    let h = maxW / sigData.ratio;
-
-                    if (h > maxH) {
-                        h = maxH;
-                        w = maxH * sigData.ratio;
-                    }
-
-                    // Center the image horizontally relative to the signature text block
-                    const sigCenterX = sigX + 10;
-                    const imgX = sigCenterX - (w / 2);
-                    
-                    // Place the image such that its bottom is exactly 2mm above the doctor's name (sigY)
-                    const imgY = (sigY - 2) - h;
-
-                    targetDoc.addImage(sigData.data, 'PNG', imgX, imgY, w, h, undefined, 'FAST');
-                }
-            } catch (e) {
-                console.error("Error loading signature image:", e);
+            // Material
+            if (previewData.incluyeMaterial && previewData.descripcionMaterial) {
+                targetDoc.setFont("helvetica", "bold");
+                targetDoc.text("Material:", 15, y);
+                y += lineHeight;
+                targetDoc.setFont("helvetica", "normal");
+                const materialLines = targetDoc.splitTextToSize(previewData.descripcionMaterial, pageWidth - 40);
+                targetDoc.text(materialLines, 20, y);
+                y += materialLines.length * lineHeight;
             }
-        }
 
-        targetDoc.setFontSize(9);
-        targetDoc.setFont("helvetica", "bold");
-        targetDoc.text(profName.toUpperCase(), sigX + 10, sigY, { align: 'center' });
-        
-        const profData = previewData.profesionalData || {};
-        targetDoc.setFont("helvetica", "normal");
-        const especialidad = profData.especialidad || 'Médico';
-        targetDoc.text(especialidad, sigX + 10, sigY + 4, { align: 'center' });
-        
-        if (profData.mp) {
-            let matLine = `MP ${profData.mp}`;
-            if (profData.me) matLine += ` - ME ${profData.me}`;
-            targetDoc.text(matLine, sigX + 10, sigY + 8, { align: 'center' });
-        }
-
-        // 8. Footer for Internacion
-        if (isInternacionPage) {
-            targetDoc.setDrawColor(30, 58, 138); // Navy blue #1e3a8a
-            targetDoc.setLineWidth(0.5);
-            targetDoc.line(15, pageHeight - 20, pageWidth - 15, pageHeight - 20);
-
-            targetDoc.setFontSize(8);
+            // Signature area
+            y += 20;
+            targetDoc.setLineWidth(0.2);
+            targetDoc.line(15, y, 80, y);
+            targetDoc.setFontSize(9);
             targetDoc.setFont("helvetica", "normal");
-            targetDoc.setTextColor(100);
-            
-            const line1 = "Urquiza 401 - Alberdi • Córdoba • Tel: (0351) 423-0530 / 423-9428 • WhatsApp: 3543579794";
-            const line2 = "Email: info@coat.com.ar • Web: www.coat.com.ar";
-            
-            targetDoc.text(line1, centerX, pageHeight - 15, { align: 'center' });
-            targetDoc.text(line2, centerX, pageHeight - 10, { align: 'center' });
+            targetDoc.text("Firma y sello del profesional", 15, y + 5);
+
+            targetDoc.line(pageWidth - 80, y, pageWidth - 15, y);
+            targetDoc.text("Aclaración", pageWidth - 80, y + 5);
+        } else {
+            // Material page
+            addField("Profesional", previewData.profesional);
+            addField("Paciente", previewData.afiliado || previewData.paciente);
+            addField("Fecha", formatDate(previewData.fechaCirugia));
+            y += 5;
+
+            if (previewData.descripcionMaterial) {
+                targetDoc.setFont("helvetica", "bold");
+                targetDoc.text("Material solicitado:", 15, y);
+                y += lineHeight;
+                targetDoc.setFont("helvetica", "normal");
+                const materialLines = targetDoc.splitTextToSize(previewData.descripcionMaterial, pageWidth - 40);
+                targetDoc.text(materialLines, 20, y);
+            }
         }
     };
 
+    // Draw pages
+    const isAmbas = type === 'ambas';
 
-    const fileName = `${type === 'caratula' ? 'Caratula' : 'Orden'}_${(previewData.afiliado || 'Paciente').replace(/\s+/g, '_').toUpperCase()}.pdf`;
-    
-    // Set document properties so browsers use the correct name when saving from preview
-    doc.setProperties({
-        title: fileName,
-        subject: 'Orden de Internación / Material',
-        author: 'COAT Cirugías'
-    });
-
-    if (type === 'caratula') {
-        const drawCaratula = (targetDoc) => {
-            targetDoc.setFontSize(24);
-            targetDoc.setFont("helvetica", "normal");
-            targetDoc.setTextColor(0);
-            
-            let cy = 55; // Starting lower than 45mm to account for text baseline
-            
-            // Function to center text and move cursor
-            const addLine = (text) => {
-                targetDoc.text((text || '').toUpperCase(), centerX, cy, { align: 'center' });
-                cy += 12; // Adjusted spacing
-            };
-
-            addLine(previewData.afiliado);
-            addLine(`DNI ${previewData.dni || '-'}`);
-            addLine(previewData.obraSocial);
-            
-            // Match the short name logic from OrdenesView
-            const shortName = (name) => {
-                if (!name) return '';
-                const parts = name.split(' ');
-                if (parts.length <= 2) return name;
-                return `${parts[0]} ${parts[parts.length - 1]}`;
-            };
-            addLine(shortName(previewData.profesional));
-            
-            addLine(formatDate(previewData.fechaCirugia || previewData.fechaDocumento));
-            addLine(`ALERGIA (${previewData.alergias?.toUpperCase() || '-'})`);
-            
-            if (previewData.habitacion) {
-                targetDoc.setFontSize(20);
-                targetDoc.text(previewData.habitacion, pageWidth - 20, 10, { align: 'right' });
-            }
-        };
-        drawCaratula(doc);
-    } else if (type === 'generico') {
-        // For generic, we just open the generic PDF URL from Firebase
-    } else if (type === 'ambas') {
+    if (type === 'internacion' || isAmbas) {
         await drawPage(doc, 'internacion');
-        doc.addPage();
-        await drawPage(doc, 'material');
-    } else {
-        await drawPage(doc, type);
     }
 
-    if (mode === 'save') {
-        doc.save(fileName);
-    } else {
-        window.open(doc.output('bloburl'), '_blank');
+    if (isAmbas) {
+        doc.addPage();
     }
+
+    if (type === 'material' || isAmbas) {
+        await drawPage(doc, 'material');
+    }
+
+    // Output
+    const fileName = `orden_${previewData.afiliado || previewData.paciente || 'paciente'}_${previewData.fechaCirugia || 'fecha'}.pdf`;
+
+    if (mode === 'print') {
+        doc.autoPrint();
+        const blob = doc.output('blob');
+        const url = URL.createObjectURL(blob);
+        const printWindow = window.open(url);
+        if (printWindow) {
+            printWindow.onload = () => {
+                printWindow.print();
+            };
+        }
+    } else {
+        doc.save(fileName);
+    }
+
+    return fileName;
 };

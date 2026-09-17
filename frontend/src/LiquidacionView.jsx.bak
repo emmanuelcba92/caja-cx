@@ -1,0 +1,178 @@
+import React, { useState, useMemo } from 'react';
+import { FileText, Printer, Search, TrendingUp, DollarSign } from 'lucide-react';
+import { formatMoney, currencies } from './CajaView';
+
+export default function LiquidacionView({ history, currentUser }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+  const [selectedProf, setSelectedProf] = useState('');
+
+  const professionals = useMemo(() => {
+    const names = new Set();
+    history.forEach(h => {
+      if (h.prof_1) names.add(h.prof_1);
+      if (h.prof_2) names.add(h.prof_2);
+      if (h.prof_3) names.add(h.prof_3);
+      if (h.anestesista) names.add(h.anestesista);
+    });
+    return [...names].sort();
+  }, [history]);
+
+  const filtered = useMemo(() => {
+    if (!selectedProf) return [];
+    return history.filter(h => {
+      if (h.fecha < startDate || h.fecha > endDate) return false;
+      const norm = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
+      const p = norm(selectedProf);
+      return norm(h.prof_1) === p || norm(h.prof_2) === p || norm(h.prof_3) === p || norm(h.anestesista) === p;
+    });
+  }, [history, selectedProf, startDate, endDate]);
+
+  const liquidationData = useMemo(() => {
+    let totalPesos = 0, totalDolares = 0;
+    const rows = filtered.map(h => {
+      let liqAmount = 0, liqCurrency = 'ARS';
+      const norm = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
+      const p = norm(selectedProf);
+
+      if (norm(h.prof_1) === p) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
+      else if (norm(h.prof_2) === p) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
+      else if (norm(h.prof_3) === p) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
+      else if (norm(h.anestesista) === p) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
+
+      if (liqCurrency === 'USD') totalDolares += liqAmount;
+      else totalPesos += liqAmount;
+
+      return { ...h, liqAmount, liqCurrency, key: h.id };
+    });
+    return { rows, totalPesos, totalDolares };
+  }, [filtered, selectedProf]);
+
+  const handlePrint = () => {
+    const printWin = window.open('', '_blank', 'height=600,width=900');
+    if (!printWin) return;
+
+    const rows = liquidationData.rows.map(h => `
+      <tr>
+        <td>${h.fecha ? h.fecha.split('-').reverse().join('/') : '-'}</td>
+        <td>${h.paciente}</td>
+        <td>${h.dni || '-'}</td>
+        <td>${h.obra_social || '-'}</td>
+        <td style="text-align:right">${h.pesos > 0 ? '$ ' + formatMoney(h.pesos) : '-'}</td>
+        <td style="text-align:right">${h.dolares > 0 ? 'U$D ' + formatMoney(h.dolares) : '-'}</td>
+        <td style="text-align:right;font-weight:bold">${h.liqCurrency === 'USD' ? 'U$D ' : '$ '}${formatMoney(h.liqAmount)}</td>
+      </tr>
+    `).join('');
+
+    printWin.document.write(`<!DOCTYPE html><html><head><title>Liquidación - ${selectedProf}</title><style>
+      body{font-family:Arial;padding:20px;font-size:10px;color:#000}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #999;padding:4px 6px;text-align:left}
+      th{background:#e5e7eb;font-weight:700}
+      .header{display:flex;align-items:center;gap:16px;margin-bottom:24px;border-bottom:2px solid #1e3a8a;padding-bottom:12px}
+      .header img{height:50px}
+      .totals{margin-top:16px;font-weight:700;font-size:12px}
+      @media print{@page{size:landscape;margin:10mm}}
+    </style></head><body>
+    <div class="header"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'"><h2 style="margin:0">Liquidación: ${selectedProf}</h2></div>
+    <p style="margin-bottom:12px">Período: ${startDate} al ${endDate}</p>
+    <table><thead><tr><th>Fecha</th><th>Paciente</th><th>DNI</th><th>O.S.</th><th>Pesos</th><th>USD</th><th>Liquidación</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="totals"><p>Total Liquidación: $ ${formatMoney(liquidationData.totalPesos)}${liquidationData.totalDolares > 0 ? ' | U$D ' + formatMoney(liquidationData.totalDolares) : ''}</p></div>
+    </body></html>`);
+    printWin.document.close();
+    setTimeout(() => { printWin.print(); printWin.close(); }, 500);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="flex items-center gap-2">
+          <FileText size={18} className="text-indigo-500" />
+          <h3 className="font-bold text-slate-700">Liquidaciones</h3>
+        </div>
+      </div>
+
+      <div className="p-6 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Profesional</label>
+            <select className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={selectedProf} onChange={e => setSelectedProf(e.target.value)}>
+              <option value="">Seleccionar profesional...</option>
+              {professionals.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Desde</label>
+            <input type="date" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={startDate} onChange={e => setStartDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Hasta</label>
+            <input type="date" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          </div>
+          <div className="flex gap-2">
+            {selectedProf && liquidationData.rows.length > 0 && (
+              <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-all shadow-md"><Printer size={14} /> Imprimir</button>
+            )}
+          </div>
+        </div>
+
+        {selectedProf && (
+          <>
+            {liquidationData.rows.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-sm">No se encontraron registros para {selectedProf} en el período seleccionado.</div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase">Total Liquidación ARS</p>
+                    <p className="text-2xl font-bold text-emerald-700">$ {formatMoney(liquidationData.totalPesos)}</p>
+                  </div>
+                  {liquidationData.totalDolares > 0 && (
+                    <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                      <p className="text-[10px] font-bold text-blue-600 uppercase">Total Liquidación USD</p>
+                      <p className="text-2xl font-bold text-blue-700">U$D {formatMoney(liquidationData.totalDolares)}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                        <th className="px-4 py-3">Fecha</th>
+                        <th className="px-4 py-3">Paciente</th>
+                        <th className="px-4 py-3">DNI</th>
+                        <th className="px-4 py-3">Obra Social</th>
+                        <th className="px-4 py-3 text-right">Pesos</th>
+                        <th className="px-4 py-3 text-right">USD</th>
+                        <th className="px-4 py-3 text-right">Liquidación</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {liquidationData.rows.map(h => (
+                        <tr key={h.key} className="hover:bg-slate-50 transition-all">
+                          <td className="px-4 py-3 text-sm text-slate-600">{h.fecha ? h.fecha.split('-').reverse().join('/') : '-'}</td>
+                          <td className="px-4 py-3 font-semibold text-slate-800">{h.paciente}</td>
+                          <td className="px-4 py-3 text-sm text-slate-500">{h.dni || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-500">{h.obra_social || '-'}</td>
+                          <td className="px-4 py-3 text-right text-emerald-600 font-bold tabular-nums">{h.pesos > 0 ? '$ ' + formatMoney(h.pesos) : '-'}</td>
+                          <td className="px-4 py-3 text-right text-blue-600 font-bold tabular-nums">{h.dolares > 0 ? 'U$D ' + formatMoney(h.dolares) : '-'}</td>
+                          <td className="px-4 py-3 text-right font-bold text-indigo-600 tabular-nums">{h.liqCurrency === 'USD' ? 'U$D ' : '$ '}{formatMoney(h.liqAmount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {!selectedProf && (
+          <div className="py-12 text-center text-slate-400 text-sm">Seleccioná un profesional para ver su liquidación.</div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,266 @@
+import React, { useState, useMemo } from 'react';
+import { History, ChevronLeft, ChevronRight, Printer, Edit2, Trash2, Save, X, TrendingUp, DollarSign, Download } from 'lucide-react';
+import { formatMoney, currencies, MoneyInput } from './CajaView';
+
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+export default function HistorialCajaView({ history, setHistory, currentUser }) {
+  const [view, setView] = useState('years');
+  const [selectedYear, setSelectedYear] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
+  const getYears = () => [...new Set(history.map(h => h.fecha?.split('-')[0]).filter(Boolean))].sort().reverse();
+  const getMonths = (year) => [...new Set(history.filter(h => h.fecha?.startsWith(year)).map(h => parseInt(h.fecha.split('-')[1]) - 1))].sort((a, b) => b - a);
+  const getDays = (year, month) => {
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    return [...new Set(history.filter(h => h.fecha?.startsWith(prefix)).map(h => h.fecha))].sort().reverse();
+  };
+
+  const dateEntries = selectedDate ? history.filter(h => h.fecha === selectedDate) : [];
+
+  const totals = dateEntries.reduce((acc, h) => {
+    acc.pesos += parseFloat(h.pesos) || 0;
+    acc.dolares += parseFloat(h.dolares) || 0;
+    acc.coat_pesos += parseFloat(h.coat_pesos) || 0;
+    acc.coat_dolares += parseFloat(h.coat_dolares) || 0;
+    return acc;
+  }, { pesos: 0, dolares: 0, coat_pesos: 0, coat_dolares: 0 });
+
+  const allTotals = useMemo(() => history.reduce((acc, h) => {
+    acc.pesos += parseFloat(h.pesos) || 0;
+    acc.dolares += parseFloat(h.dolares) || 0;
+    acc.coat_pesos += parseFloat(h.coat_pesos) || 0;
+    acc.coat_dolares += parseFloat(h.coat_dolares) || 0;
+    return acc;
+  }, { pesos: 0, dolares: 0, coat_pesos: 0, coat_dolares: 0 }), [history]);
+
+  const handleEditClick = (item) => {
+    setEditId(item.id);
+    setEditForm({ ...item });
+  };
+
+  const handleEditChange = (field, value) => {
+    setEditForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleEditSave = () => {
+    setHistory(prev => prev.map(h => h.id === editId ? { ...h, ...editForm } : h));
+    setEditId(null);
+    setEditForm({});
+  };
+
+  const handleDelete = (id) => {
+    if (!window.confirm('¿Eliminar este registro permanentemente?')) return;
+    setHistory(prev => prev.filter(h => h.id !== id));
+    if (editId === id) { setEditId(null); setEditForm({}); }
+  };
+
+  const handlePrint = () => {
+    const printWin = window.open('', '_blank', 'height=600,width=900');
+    if (!printWin) return;
+    const rows = dateEntries.map(h => {
+      const profs = [h.prof_1, h.prof_2, h.prof_3].filter(Boolean).join(', ');
+      return `<tr><td>${h.paciente}</td><td>${h.dni || ''}</td><td>${h.obra_social || ''}</td><td style="text-align:right">${h.pesos > 0 ? '$ ' + formatMoney(h.pesos) : '-'}</td><td style="text-align:right">${h.dolares > 0 ? 'U$D ' + formatMoney(h.dolares) : '-'}</td><td>${profs}</td><td style="text-align:right">${h.liq_prof_1 > 0 ? '$ ' + formatMoney(h.liq_prof_1) : '-'}</td><td style="text-align:right">$ ${formatMoney(h.coat_pesos)}</td><td style="text-align:right">${h.coat_dolares > 0 ? 'U$D ' + formatMoney(h.coat_dolares) : '-'}</td></tr>`;
+    }).join('');
+
+    printWin.document.write(`<!DOCTYPE html><html><head><title>Caja - ${selectedDate}</title><style>
+      body{font-family:Arial;padding:20px;font-size:10px;color:#000}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #999;padding:4px 6px;text-align:left}
+      th{background:#e5e7eb;font-weight:700}
+      .header{display:flex;align-items:center;gap:16px;margin-bottom:24px;border-bottom:2px solid #1e3a8a;padding-bottom:12px}
+      .header img{height:50px}
+      .totals{margin-top:16px;font-weight:700}
+      @media print{@page{size:landscape;margin:10mm}}
+    </style></head><body>
+    <div class="header"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'"><h2 style="margin:0">Caja de Cirugía - ${selectedDate}</h2></div>
+    <table><thead><tr><th>Paciente</th><th>DNI</th><th>Obra Social</th><th>Pesos</th><th>USD</th><th>Profesionales</th><th>Liq. Prof 1</th><th>COAT $</th><th>COAT USD</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="totals"><p>Total COAT: $ ${formatMoney(totals.coat_pesos)} | U$D ${formatMoney(totals.coat_dolares)}</p></div>
+    </body></html>`);
+    printWin.document.close();
+    setTimeout(() => { printWin.print(); printWin.close(); }, 500);
+  };
+
+  const handleBackup = () => {
+    const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_caja_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const navigateHome = () => { setView('years'); setSelectedYear(null); setSelectedMonth(null); setSelectedDate(null); };
+  const navigateBack = () => {
+    if (view === 'table') { setView('days'); setSelectedDate(null); }
+    else if (view === 'days') { setView('months'); setSelectedMonth(null); }
+    else if (view === 'months') { setView('years'); setSelectedYear(null); }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="flex items-center gap-2">
+          <History size={18} className="text-indigo-500" />
+          <h3 className="font-bold text-slate-700">Historial de Caja</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={handleBackup} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-indigo-600 transition-all"><Download size={14} /> Backup</button>
+          {view === 'table' && (
+            <button onClick={handlePrint} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-blue-600 transition-all"><Printer size={14} /> Imprimir</button>
+          )}
+          {view !== 'years' && (
+            <button onClick={navigateBack} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-slate-700 transition-all"><ChevronLeft size={14} /> Volver</button>
+          )}
+        </div>
+      </div>
+
+      <div className="p-6">
+        {view === 'years' && (
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Totales Generales</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100"><p className="text-[10px] font-bold text-emerald-600 uppercase">Recaudado $</p><p className="text-xl font-bold text-emerald-700">$ {formatMoney(allTotals.pesos)}</p></div>
+              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100"><p className="text-[10px] font-bold text-blue-600 uppercase">Recaudado USD</p><p className="text-xl font-bold text-blue-700">U$D {formatMoney(allTotals.dolares)}</p></div>
+              <div className="bg-orange-50 rounded-xl p-4 border border-orange-100"><p className="text-[10px] font-bold text-orange-600 uppercase">COAT ARS</p><p className="text-xl font-bold text-orange-700">$ {formatMoney(allTotals.coat_pesos)}</p></div>
+              <div className="bg-purple-50 rounded-xl p-4 border border-purple-100"><p className="text-[10px] font-bold text-purple-600 uppercase">COAT USD</p><p className="text-xl font-bold text-purple-700">U$D {formatMoney(allTotals.coat_dolares)}</p></div>
+            </div>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Años</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {getYears().map(y => (
+                <button key={y} onClick={() => { setSelectedYear(y); setView('months'); }} className="p-6 bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all text-center">
+                  <p className="text-2xl font-bold text-slate-800">{y}</p>
+                  <p className="text-xs text-slate-500 mt-1">{history.filter(h => h.fecha?.startsWith(y)).length} registros</p>
+                </button>
+              ))}
+              {getYears().length === 0 && <p className="col-span-full text-center text-slate-400 py-12">No hay registros en el historial.</p>}
+            </div>
+          </div>
+        )}
+
+        {view === 'months' && selectedYear && (
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{selectedYear}</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {getMonths(selectedYear).map(m => (
+                <button key={m} onClick={() => { setSelectedMonth(m); setView('days'); }} className="p-6 bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all text-center">
+                  <p className="text-lg font-bold text-slate-800">{MONTHS[m]}</p>
+                  <p className="text-xs text-slate-500 mt-1">{history.filter(h => h.fecha?.startsWith(`${selectedYear}-${String(m + 1).padStart(2, '0')}`)).length} registros</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {view === 'days' && selectedYear !== null && selectedMonth !== null && (
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{MONTHS[selectedMonth]} {selectedYear}</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {getDays(selectedYear, selectedMonth).map(d => {
+                const dayEntries = history.filter(h => h.fecha === d);
+                const dayTotals = dayEntries.reduce((a, h) => { a.coat_pesos += parseFloat(h.coat_pesos) || 0; a.coat_dolares += parseFloat(h.coat_dolares) || 0; return a; }, { coat_pesos: 0, coat_dolares: 0 });
+                return (
+                  <button key={d} onClick={() => { setSelectedDate(d); setView('table'); }} className="p-4 bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all text-left">
+                    <p className="font-bold text-slate-800">{d.split('-').reverse().join('/')}</p>
+                    <p className="text-xs text-slate-500">{dayEntries.length} ops</p>
+                    <p className="text-xs text-emerald-600 font-bold">$ {formatMoney(dayTotals.coat_pesos)}</p>
+                    {dayTotals.coat_dolares > 0 && <p className="text-xs text-blue-600 font-bold">U$D {formatMoney(dayTotals.coat_dolares)}</p>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {view === 'table' && selectedDate && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-slate-700">{selectedDate.split('-').reverse().join('/')}</h4>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-orange-500 uppercase">COAT ARS</p>
+                  <p className="font-bold text-orange-700">$ {formatMoney(totals.coat_pesos)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-blue-500 uppercase">COAT USD</p>
+                  <p className="font-bold text-blue-700">U$D {formatMoney(totals.coat_dolares)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                    <th className="px-4 py-3">Paciente</th>
+                    <th className="px-4 py-3">DNI</th>
+                    <th className="px-4 py-3">OS</th>
+                    <th className="px-4 py-3 text-right">$</th>
+                    <th className="px-4 py-3 text-right">USD</th>
+                    <th className="px-4 py-3">Profesionales</th>
+                    <th className="px-4 py-3 text-right">Liq.</th>
+                    <th className="px-4 py-3 text-right">COAT $</th>
+                    <th className="px-4 py-3 text-right">COAT USD</th>
+                    <th className="px-4 py-3 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dateEntries.map(h => (
+                    editId === h.id ? (
+                      <tr key={h.id} className="bg-blue-50">
+                        <td className="px-4 py-2"><input className="w-full px-2 py-1 rounded border border-slate-300 text-xs outline-none" value={editForm.paciente || ''} onChange={e => handleEditChange('paciente', e.target.value)} /></td>
+                        <td className="px-4 py-2"><input className="w-full px-2 py-1 rounded border border-slate-300 text-xs outline-none" value={editForm.dni || ''} onChange={e => handleEditChange('dni', e.target.value)} /></td>
+                        <td className="px-4 py-2"><input className="w-full px-2 py-1 rounded border border-slate-300 text-xs outline-none" value={editForm.obra_social || ''} onChange={e => handleEditChange('obra_social', e.target.value)} /></td>
+                        <td className="px-4 py-2"><MoneyInput className="w-full px-2 py-1 rounded border border-slate-300 text-xs font-bold text-right outline-none" value={editForm.pesos || 0} onChange={v => handleEditChange('pesos', v)} /></td>
+                        <td className="px-4 py-2"><MoneyInput className="w-full px-2 py-1 rounded border border-slate-300 text-xs font-bold text-right outline-none" value={editForm.dolares || 0} onChange={v => handleEditChange('dolares', v)} /></td>
+                        <td className="px-4 py-2">
+                          <input className="w-full px-2 py-1 rounded border border-slate-300 text-xs outline-none mb-1" placeholder="Prof 1" value={editForm.prof_1 || ''} onChange={e => handleEditChange('prof_1', e.target.value)} />
+                          <input className="w-full px-2 py-1 rounded border border-slate-300 text-xs outline-none" placeholder="Prof 2" value={editForm.prof_2 || ''} onChange={e => handleEditChange('prof_2', e.target.value)} />
+                        </td>
+                        <td className="px-4 py-2"><MoneyInput className="w-full px-2 py-1 rounded border border-slate-300 text-xs font-bold text-right outline-none" value={editForm.liq_prof_1 || 0} onChange={v => handleEditChange('liq_prof_1', v)} /></td>
+                        <td className="px-4 py-2"><MoneyInput className="w-full px-2 py-1 rounded border border-slate-300 text-xs font-bold text-right outline-none" value={editForm.coat_pesos || 0} onChange={v => handleEditChange('coat_pesos', v)} /></td>
+                        <td className="px-4 py-2"><MoneyInput className="w-full px-2 py-1 rounded border border-slate-300 text-xs font-bold text-right outline-none" value={editForm.coat_dolares || 0} onChange={v => handleEditChange('coat_dolares', v)} /></td>
+                        <td className="px-4 py-2 text-center">
+                          <div className="flex gap-1 justify-center">
+                            <button onClick={handleEditSave} className="p-1.5 rounded bg-emerald-100 text-emerald-600 hover:bg-emerald-200"><Save size={14} /></button>
+                            <button onClick={() => setEditId(null)} className="p-1.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200"><X size={14} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={h.id} className="hover:bg-slate-50 transition-all">
+                        <td className="px-4 py-3 font-semibold text-slate-800">{h.paciente}</td>
+                        <td className="px-4 py-3 text-slate-500 text-sm">{h.dni || '-'}</td>
+                        <td className="px-4 py-3 text-slate-500 text-sm">{h.obra_social || '-'}</td>
+                        <td className="px-4 py-3 text-right text-emerald-600 font-bold tabular-nums">{h.pesos > 0 ? '$ ' + formatMoney(h.pesos) : '-'}</td>
+                        <td className="px-4 py-3 text-right text-blue-600 font-bold tabular-nums">{h.dolares > 0 ? 'U$D ' + formatMoney(h.dolares) : '-'}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{[h.prof_1, h.prof_2, h.prof_3].filter(Boolean).join(', ') || '-'}</td>
+                        <td className="px-4 py-3 text-right font-bold tabular-nums">{h.liq_prof_1 > 0 ? '$ ' + formatMoney(h.liq_prof_1) : '-'}</td>
+                        <td className="px-4 py-3 text-right text-orange-600 font-bold tabular-nums">$ {formatMoney(h.coat_pesos)}</td>
+                        <td className="px-4 py-3 text-right text-purple-600 font-bold tabular-nums">{h.coat_dolares > 0 ? 'U$D ' + formatMoney(h.coat_dolares) : '-'}</td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex gap-1 justify-center">
+                            <button onClick={() => handleEditClick(h)} className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50"><Edit2 size={14} /></button>
+                            <button onClick={() => handleDelete(h.id)} className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {dateEntries.length === 0 && (
+              <div className="py-12 text-center text-slate-400 text-sm">No hay registros para esta fecha.</div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

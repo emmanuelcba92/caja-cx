@@ -1,95 +1,76 @@
-// Mapeo de códigos de cirugía a consentimientos
-// Cada cirugía puede tener versión adulto y/o menor
+const BASE_STORAGE_URL = 'https://qmjycvqcwerzbfsbbnla.supabase.co/storage/v1/object/public/Cirugias/consentimientos';
 
-// Consentimientos COMBO - requieren múltiples códigos juntos
-// Se evalúan PRIMERO, y si aplican, se omiten los individuales de esos códigos
 export const CONSENTIMIENTOS_COMBO = [
     {
         nombre: 'TimpanoMastoide',
-        codigos: ['030202', '030207'], // Debe tener AMBOS códigos
-        adulto: 'TimpanoMastoide adulto.pdf',
-        menor: 'TimpanoMastoide Menor.pdf'
+        codigos: ['030202', '030207'],
+        adulto: `${BASE_STORAGE_URL}/1777217969335_Timpanoplastia_Adulto__1_.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217970998_Timpanoplastia_Menor__1_.pdf`
     }
 ];
 
-// Consentimientos individuales por código
 export const CONSENTIMIENTOS_MAP = {
-    // Amigdalectomía
     '031301': {
         nombre: 'Amigdalectomía',
-        adulto: 'Amigdalectomia adulto.pdf',
-        menor: 'Amigdalectomia meno.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217936367_Amigdalectomia_COAT.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217933976_Amigdalectomia_COAT_Menor_Radiofrecuencia.pdf`
     },
-
-    // Microcirugía de laringe (solo uno, sin distinción adulto/menor)
     '030608': {
         nombre: 'Microcirugía de Laringe',
-        adulto: 'Microcirugia de laringe.pdf',
-        menor: 'Microcirugia de laringe.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217951383_MCL_COAT__1_.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217951383_MCL_COAT__1_.pdf`
     },
-
-    // Miringoplastia (solo menor disponible)
     '030201': {
         nombre: 'Miringoplastia',
         adulto: null,
-        menor: 'Miringoplastia Menor.pdf'
+        menor: `${BASE_STORAGE_URL}/1777217954742_Miringotomia_COAT_Menor__1_.pdf`
     },
-
-    // Miringotomia
     '030203': {
         nombre: 'Miringotomía',
-        adulto: 'Miringotomia adulto.pdf',
-        menor: 'Miringotomia menor.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217953620_Miringotomia_COAT__2_.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217954742_Miringotomia_COAT_Menor__1_.pdf`
     },
-
-    // Septumplastia
     '030409': {
         nombre: 'Septumplastia',
-        adulto: 'Septumplastia adulto.pdf',
-        menor: 'Septumplastia menor.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217964397_Septumplastia_COAT__2_.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217965429_Septumplastia_COAT_Menor__1_.pdf`
     },
     '030412': {
         nombre: 'Septumplastia',
-        adulto: 'Septumplastia adulto.pdf',
-        menor: 'Septumplastia menor.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217964397_Septumplastia_COAT__2_.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217965429_Septumplastia_COAT_Menor__1_.pdf`
     },
-
-    // Timpanoplastia
     '030202': {
         nombre: 'Timpanoplastia',
-        adulto: 'Timpanoplastia Adulto.pdf',
-        menor: 'Timpanoplastia Menor.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217969335_Timpanoplastia_Adulto__1_.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217970998_Timpanoplastia_Menor__1_.pdf`
     },
-
-    // Mastoide (código individual, para cuando no viene con timpano)
     '030207': {
         nombre: 'Mastoidectomía',
-        adulto: null,  // Si no tiene consentimiento individual, poner null
+        adulto: null,
         menor: null
     },
-
-    // Cirugía Endoscópica
     '030517': {
         nombre: 'Cirugía Endoscópica',
-        adulto: 'Cirugia Endoscopica adulto.pdf',
-        menor: 'Cirugia Endoscopica menor.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217939294_CirugiaEndoscopica_COAT.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217937513_CirugiaEndoscopica_COAT__menor_.pdf`
     },
     '030562': {
         nombre: 'Cirugía Endoscópica',
-        adulto: 'Cirugia Endoscopica adulto.pdf',
-        menor: 'Cirugia Endoscopica menor.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217939294_CirugiaEndoscopica_COAT.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217937513_CirugiaEndoscopica_COAT__menor_.pdf`
     },
     '030565': {
         nombre: 'Cirugía Endoscópica',
-        adulto: 'Cirugia Endoscopica adulto.pdf',
-        menor: 'Cirugia Endoscopica menor.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217939294_CirugiaEndoscopica_COAT.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217937513_CirugiaEndoscopica_COAT__menor_.pdf`
     },
     '030566': {
         nombre: 'Cirugía Endoscópica',
-        adulto: 'Cirugia Endoscopica adulto.pdf',
-        menor: 'Cirugia Endoscopica menor.pdf'
+        adulto: `${BASE_STORAGE_URL}/1777217939294_CirugiaEndoscopica_COAT.pdf`,
+        menor: `${BASE_STORAGE_URL}/1777217937513_CirugiaEndoscopica_COAT__menor_.pdf`
     }
 };
 
-// Archivo genérico
-export const CONSENTIMIENTO_GENERICO = 'Consentimiento_Generico.pdf';
+export const CONSENTIMIENTO_GENERICO = `${BASE_STORAGE_URL}/1777217942110_Generico_COAT.pdf`;
+

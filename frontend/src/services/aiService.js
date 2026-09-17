@@ -1,14 +1,13 @@
 /**
- * AI Service — Google Gemini integration for auto-filling orders from email text
+ * AI Service - Google Gemini integration for auto-filling orders from email text
  */
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 const makeUrl = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
 /**
  * Parses raw email text and extracts structured order data using Gemini AI.
- * Tries multiple models as fallback if one hits quota limits.
  * @param {string} emailText - The raw email content pasted by the user
  * @param {Array} profesionalesList - List of professionals [{nombre: "Dr. X"}, ...]
  * @returns {Promise<Object>} Parsed order data matching the form fields
@@ -27,44 +26,21 @@ Te voy a dar el texto de un email y necesito que extraigas los datos y los devue
 REGLAS:
 - "profesional": Intentá hacer match con alguno de estos profesionales del sistema: [${profNames}]. Si no hay match exacto, usá el nombre tal cual viene en el email pero siempre incluí el título (Dr., Dra., etc.) y asegurate de que sea nombre y apellido. NO pongas iniciales o letras sueltas.
 - "afiliado": Nombre del paciente en MAYÚSCULAS.
-- "obraSocial": Estandarizá el nombre en MAYÚSCULAS para evitar duplicados. Si dice "APROS", "apross" o "Apros", devolvé SIEMPRE "APROSS". Si es "OSDE", "Osde", devolvé "OSDE". Si es "OMINT", devolvé "OMINT". Si es "SANCOR", devolvé "SANCOR SALUD". Corregí cualquier otro error de tipeo a su versión oficial en mayúsculas (ej: "swiss mwdical" → "SWISS MEDICAL", "ospedyc" → "OSPEDYC").
+- "obraSocial": Estandarizá el nombre en MAYÚSCULAS para evitar duplicados. Si dice "APROS", "apross" o "Apros", devolvé SIEMPRE "APROSS". Si es "OSDE", "Osde", devolvé "OSDE". Si es "OMINT", devolvé "OMINT". Si es "SANCOR", devolvé "SANCOR SALUD". Corregí cualquier otro error de tipeo a su versión oficial en mayúsculas.
 - "numeroAfiliado": Número de afiliado si está disponible, sino cadena vacía.
 - "dni": DNI del paciente como string.
 - "edad": Edad del paciente como string.
-- "telefono": Número de teléfono/celular. Eliminá el 0 y el 15 del inicio si los tiene (ej: "03541200806" → "3541200806").
+- "telefono": Número de teléfono/celular. Eliminá el 0 y el 15 del inicio si los tiene.
 - "tutor": Nombre del tutor si el paciente es menor de edad o se menciona uno.
-- "codigosCirugia": Array de objetos {codigo: "XXXXXX", nombre: "descripción"}. Si el código viene con descripción entre paréntesis, separá código y nombre. Si solo hay descripción sin código, dejá el código vacío.
-- "tipoAnestesia": Debe ser exactamente uno de: "general", "local", "regional", "sedación". Convertí a minúsculas.
-- "fechaCirugia": Fecha en formato YYYY-MM-DD. Convertí cualquier formato de fecha al correcto.
-- "horaCirugia": Hora en formato HH:mm si está disponible (ej: "08:30").
-- "salaCirugia": Nombre de la sala o quirófano si se menciona (ej: "Quirófano 1").
-- "incluyeMaterial": true si hay materiales a solicitar (que no sean "." o vacío o "no"), false si no.
+- "codigosCirugia": Array de objetos {codigo: "XXXXXX", nombre: "descripción"}.
+- "tipoAnestesia": Debe ser exactamente uno de: "general", "local", "regional", "sedación".
+- "fechaCirugia": Fecha en formato YYYY-MM-DD.
+- "horaCirugia": Hora en formato HH:mm si está disponible.
+- "salaCirugia": Nombre de la sala o quirófano si se menciona.
+- "incluyeMaterial": true si hay materiales a solicitar, false si no.
 - "descripcionMaterial": Descripción del material si aplica, sino cadena vacía.
-- "diagnostico": Diagnóstico o justificación de la cirugía. Si dice "." o está vacío, dejá cadena vacía.
-- "anotacionCalendario": "Auto-completado por IA". SOLO agregá datos extra MUY breves si es absolutamente necesario (no pegues el email original acá).
-- "habitacion": Cadena vacía (no suele venir en el email).
-
-EJEMPLO DE RESPUESTA:
-{
-  "profesional": "Dr Pablo Jasin",
-  "afiliado": "GARCIA MARIA",
-  "obraSocial": "OSDE",
-  "numeroAfiliado": "12345/0",
-  "dni": "12345678",
-  "edad": "45",
-  "telefono": "3512345678",
-  "tutor": "",
-  "codigosCirugia": [{"codigo": "030608", "nombre": "MICROCIRUGIA DE LARINGE"}],
-  "tipoAnestesia": "general",
-  "fechaCirugia": "2026-03-18",
-  "horaCirugia": "09:00",
-  "salaCirugia": "Quirófano 2",
-  "incluyeMaterial": false,
-  "descripcionMaterial": "",
-  "diagnostico": "Disfonía",
-  "anotacionCalendario": "Auto-completado por IA. Duración estimada 1h.",
-  "habitacion": ""
-}
+- "diagnostico": Diagnóstico o justificación de la cirugía.
+- "habitacion": Cadena vacía.
 
 TEXTO DEL EMAIL:
 ${emailText}`;
@@ -77,7 +53,6 @@ ${emailText}`;
             temperature: 0.1,
             topP: 0.8,
             maxOutputTokens: 1024,
-            responseMimeType: "application/json"
         }
     };
 
@@ -94,9 +69,8 @@ ${emailText}`;
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                const status = response.status;
-                console.warn(`[AI] Model ${model} failed with status ${status}: ${errorData?.error?.message || 'Error desconocido'}`);
-                lastError = new Error(`Model ${model}: ${errorData?.error?.message || `HTTP ${status}`}`);
+                console.warn(`[AI] Model ${model} failed:`, errorData?.error?.message);
+                lastError = new Error(`Model ${model}: ${errorData?.error?.message || `HTTP ${response.status}`}`);
                 continue;
             }
 
@@ -106,7 +80,7 @@ ${emailText}`;
                 throw new Error('Gemini no devolvió una respuesta válida.');
             }
 
-            // Extract JSON from response (may be wrapped in ```json ... ```)
+            // Extract JSON from response
             let jsonStr = textResponse.trim();
             const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
             if (jsonMatch) {
@@ -122,7 +96,6 @@ ${emailText}`;
                 lastError = e;
                 continue;
             }
-            // For JSON parse errors, try to give a better message
             if (e instanceof SyntaxError) {
                 console.error('[AI] Failed to parse response as JSON:', e);
                 lastError = new Error('No se pudo interpretar la respuesta de la IA. Intentá de nuevo.');
@@ -132,6 +105,5 @@ ${emailText}`;
         }
     }
 
-    // All models failed
     throw lastError || new Error('Todos los modelos de IA están temporalmente no disponibles. Intentá en unos minutos.');
 }
