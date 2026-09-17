@@ -17,6 +17,7 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [deductions, setDeductions] = useState([]);
+  const [manualLiqs, setManualLiqs] = useState([]);
 
   useEffect(() => {
     const fetchDeductions = async () => {
@@ -34,12 +35,21 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
       }
     };
     fetchDeductions();
+
+    try {
+      const localManual = localStorage.getItem('liquidaciones_manuales');
+      if (localManual) setManualLiqs(JSON.parse(localManual));
+    } catch {}
   }, []);
+
+  const normProf = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
+  const cleanName = (name) => name?.replace(/\s*\(\s*Liq\.?\s*Manual\s*\)/gi, '').trim() || '';
 
   const shortProfName = (fullName) => {
     if (!fullName) return '';
-    const parts = fullName.trim().split(/\s+/);
-    const prefixes = ['dr', 'dra', 'lic', 'dr.', 'dra.', 'lic.'];
+    const clean = cleanName(fullName);
+    const parts = clean.trim().split(/\s+/);
+    const prefixes = ['dr', 'dra', 'lic', 'dr.', 'dra.', 'lic.', 'anestesista'];
     if (parts.length >= 2 && prefixes.includes(parts[0].toLowerCase())) {
       return `${parts[0]} ${parts[1]}`.toUpperCase();
     }
@@ -52,46 +62,60 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
     const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
     const endDateStr = `${selectedYear}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
-    const entries = (history || []).filter(e => e.fecha >= startDateStr && e.fecha <= endDateStr);
+    const allEntries = [...(history || []), ...(manualLiqs || [])];
+    const entries = allEntries.filter(e => e.fecha >= startDateStr && e.fecha <= endDateStr);
 
     const matrix = {};
     const activeProfs = new Set();
     const dates = new Set();
 
-    const processEntry = (date, name, amt, cur) => {
-      if (!name || !amt || isNaN(Number(amt)) || Number(amt) <= 0) return;
-      activeProfs.add(name);
+    const getDisplayName = (name) => {
+      if (!name) return '';
+      const clean = cleanName(name);
+      const key = normProf(clean);
+      if (professionals && Array.isArray(professionals)) {
+        const found = professionals.find(p => normProf(typeof p === 'string' ? p : p?.nombre) === key);
+        if (found) return typeof found === 'string' ? found : found.nombre;
+      }
+      return clean;
+    };
+
+    const processEntry = (date, name, amt, cur, isTransfer) => {
+      if (!name || isNaN(Number(amt)) || Number(amt) <= 0 || isTransfer) return;
+      const displayProf = getDisplayName(name);
+      activeProfs.add(displayProf);
       dates.add(date);
       if (!matrix[date]) matrix[date] = {};
-      if (!matrix[date][name]) matrix[date][name] = { ARS: 0, USD: 0 };
-      if (cur === 'USD') matrix[date][name].USD += Number(amt);
-      else matrix[date][name].ARS += Number(amt);
+      if (!matrix[date][displayProf]) matrix[date][displayProf] = { ARS: 0, USD: 0 };
+      if (cur === 'USD') matrix[date][displayProf].USD += Number(amt);
+      else matrix[date][displayProf].ARS += Number(amt);
     };
 
     entries.forEach(e => {
       const date = e.fecha;
+      const isTransfer = e.isTransfer || false;
       if (e.prof_1) {
-        processEntry(date, e.prof_1, e.liq_prof_1, e.liq_prof_1_currency);
-        if (e.showSecondary_1) processEntry(date, e.prof_1, e.liq_prof_1_secondary, e.liq_prof_1_currency_secondary);
+        processEntry(date, e.prof_1, e.liq_prof_1, e.liq_prof_1_currency, isTransfer);
+        if (e.showSecondary_1) processEntry(date, e.prof_1, e.liq_prof_1_secondary, e.liq_prof_1_currency_secondary, isTransfer);
       }
       if (e.prof_2) {
-        processEntry(date, e.prof_2, e.liq_prof_2, e.liq_prof_2_currency);
-        if (e.showSecondary_2) processEntry(date, e.prof_2, e.liq_prof_2_secondary, e.liq_prof_2_currency_secondary);
+        processEntry(date, e.prof_2, e.liq_prof_2, e.liq_prof_2_currency, isTransfer);
+        if (e.showSecondary_2) processEntry(date, e.prof_2, e.liq_prof_2_secondary, e.liq_prof_2_currency_secondary, isTransfer);
       }
       if (e.prof_3) {
-        processEntry(date, e.prof_3, e.liq_prof_3, e.liq_prof_3_currency);
-        if (e.showSecondary_3) processEntry(date, e.prof_3, e.liq_prof_3_secondary, e.liq_prof_3_currency_secondary);
+        processEntry(date, e.prof_3, e.liq_prof_3, e.liq_prof_3_currency, isTransfer);
+        if (e.showSecondary_3) processEntry(date, e.prof_3, e.liq_prof_3_secondary, e.liq_prof_3_currency_secondary, isTransfer);
       }
       if (e.anestesista) {
-        processEntry(date, e.anestesista, e.liq_anestesista, e.liq_anestesista_currency);
-        if (e.showSecondaryAnes) processEntry(date, e.anestesista, e.liq_anestesista_secondary, e.liq_anestesista_currency_secondary);
+        processEntry(date, e.anestesista, e.liq_anestesista, e.liq_anestesista_currency, isTransfer);
+        if (e.showSecondaryAnes) processEntry(date, e.anestesista, e.liq_anestesista_secondary, e.liq_anestesista_currency_secondary, isTransfer);
       }
     });
 
     const filteredDeds = (deductions || []).filter(d => d.date >= startDateStr && d.date <= endDateStr);
     filteredDeds.forEach(d => {
       const date = d.date;
-      const prof = d.profesional;
+      const prof = getDisplayName(d.profesional);
       const amt = Math.abs(Number(d.amount || 0));
       const cur = d.currency || 'ARS';
       if (!prof || !amt) return;
@@ -107,21 +131,14 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
       return { dates: [], profs: [], matrix: {}, totals: {} };
     }
 
-    const sortedProfs = Array.from(activeProfs).sort();
+    const sortedProfs = Array.from(activeProfs).sort((a, b) => a.localeCompare(b));
     const sortedDates = Array.from(dates).sort();
     
-    const profNameToCategory = {};
-    (professionals || []).forEach(p => { if (p.nombre) profNameToCategory[p.nombre] = p.categoria; });
-    const filteredReportProfs = sortedProfs.filter(name => {
-      const cat = profNameToCategory[name];
-      return cat !== 'Tutoras' && cat !== 'Tutoria' && name !== 'Tutoria' && name !== 'Tutoras';
-    });
-
     const totals = {};
-    filteredReportProfs.forEach(p => { totals[p] = { ARS: 0, USD: 0 }; });
+    sortedProfs.forEach(p => { totals[p] = { ARS: 0, USD: 0 }; });
 
     sortedDates.forEach(d => {
-      filteredReportProfs.forEach(p => {
+      sortedProfs.forEach(p => {
         const cell = matrix[d]?.[p];
         if (cell) {
           totals[p].ARS += cell.ARS || 0;
@@ -132,11 +149,11 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
 
     return {
       dates: sortedDates,
-      profs: filteredReportProfs,
+      profs: sortedProfs,
       matrix,
       totals
     };
-  }, [history, deductions, selectedMonth, selectedYear, professionals]);
+  }, [history, manualLiqs, deductions, selectedMonth, selectedYear, professionals]);
 
   const monthName = useMemo(() => {
     return new Date(selectedYear, selectedMonth - 1).toLocaleString('es-AR', { month: 'long' });

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Plus, Trash2, LayoutDashboard, Calendar, X, Edit2, Calculator, History, FileText, MessageSquare, CheckCircle2, Circle, Bell, Shield, Lock, Printer, Download } from 'lucide-react';
+import { Save, Plus, Trash2, LayoutDashboard, Calendar, X, Edit2, Calculator, History, FileText, MessageSquare, CheckCircle2, Circle, Bell, Shield, Lock, Printer, Download, FileSpreadsheet } from 'lucide-react';
 import HistorialCajaView, { exportCajaDayToExcel, printCajaDay } from './HistorialCajaView';
 import LiquidacionView from './LiquidacionView';
+import StaffLiquidacionesView from './components/StaffLiquidacionesView';
 import { SEED_CAJA, SEED_DAILY_COMMENTS } from './data/seedData';
 import ReciboLibreView from './components/ReciboLibreView';
 import apiService from './services/apiService';
@@ -923,10 +924,11 @@ export default function CajaView({ currentUser, professionals: professionalsProp
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-        <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg w-fit">
+        <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg w-fit flex-wrap">
           <button onClick={() => setSubTab('caja')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${subTab === 'caja' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><LayoutDashboard size={16} />Caja</button>
           <button onClick={() => setSubTab('historial')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${subTab === 'historial' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><History size={16} />Historial</button>
           <button onClick={() => setSubTab('liquidaciones')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${subTab === 'liquidaciones' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><FileText size={16} />Liquidaciones</button>
+          <button onClick={() => setSubTab('resumen_mensual')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${subTab === 'resumen_mensual' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><FileSpreadsheet size={16} />Resumen Mensual</button>
           <button onClick={() => setSubTab('recibo_libre')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${subTab === 'recibo_libre' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><FileText size={16} />Recibo Libre</button>
         </div>
       </div>
@@ -934,6 +936,7 @@ export default function CajaView({ currentUser, professionals: professionalsProp
       {subTab === 'caja' && <CajaForm currentUser={currentUser} history={history} setHistory={setHistory} professionals={professionals} surgeries={surgeries} />}
       {subTab === 'historial' && <HistorialCajaView history={history} setHistory={setHistory} currentUser={currentUser} professionals={professionals} />}
       {subTab === 'liquidaciones' && <LiquidacionView history={history} currentUser={currentUser} professionals={professionals} />}
+      {subTab === 'resumen_mensual' && <StaffLiquidacionesView history={history} professionals={professionals} />}
       {subTab === 'recibo_libre' && <ReciboLibreView />}
     </div>
   );
