@@ -6,7 +6,390 @@ import { saveAs } from 'file-saver';
 import { SEED_DAILY_COMMENTS } from './data/seedData';
 import apiService from './services/apiService';
 
-const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+export const exportCajaDayToExcel = async (selectedDate, dateEntries, dailyComment = '') => {
+  if (!dateEntries || dateEntries.length === 0) {
+    alert("No hay datos para exportar en esta fecha");
+    return;
+  }
+  
+  try {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Caja', {
+      pageSetup: { orientation: 'landscape', fitToPage: true, paperSize: 9 }
+    });
+
+    // Try to load COAT logo
+    try {
+      const res = await fetch('/coat_logo.png');
+      if (res.ok) {
+        const blob = await res.blob();
+        const base64Logo = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const resStr = reader.result || '';
+            resolve(resStr.includes(',') ? resStr.split(',')[1] : null);
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
+        if (base64Logo) {
+          const imageId = wb.addImage({
+            base64: base64Logo,
+            extension: 'png',
+          });
+          ws.addImage(imageId, {
+            tl: { col: 0.1, row: 0.1 },
+            ext: { width: 140, height: 46 }
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Logo could not be added to Excel:", err);
+    }
+
+    // Spacing rows for header
+    ws.getRow(1).height = 20;
+    ws.getRow(2).height = 20;
+    ws.getRow(3).height = 10;
+
+    // Row 4: Title & Date
+    const normDate = normalizeDate(selectedDate);
+    const dateFormatted = normDate.includes('-') ? normDate.split('-').reverse().join('/') : normDate;
+    const row4 = ws.getRow(4);
+    row4.getCell(1).value = 'Caja de cirugía';
+    row4.getCell(1).font = { name: 'Calibri', size: 11, bold: true };
+    row4.getCell(2).value = dateFormatted;
+    row4.getCell(2).font = { name: 'Calibri', size: 11, bold: true };
+    row4.height = 20;
+
+    // Row 5: Monto COAT super-header over columns 14 & 15 (Coat $, Coat USD)
+    const row5 = ws.getRow(5);
+    row5.getCell(14).value = 'Monto COAT';
+    row5.getCell(14).font = { name: 'Calibri', size: 9, bold: true };
+    row5.getCell(14).alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.mergeCells('N5:O5');
+    row5.height = 16;
+
+    // Row 6: Table Headers
+    const headers = [
+      'Paciente', 'DNI', 'Obra social', 'Prof. 1', 'Prof. 2', 'Prof. 3',
+      'Pesos', 'Dolares', 'Liq. P1', 'Liq. P2', 'Liq. P3', 'Anest.', 'Liq. Anest.',
+      'Coat $', 'Coat USD'
+    ];
+    const row6 = ws.getRow(6);
+    row6.values = headers;
+    row6.height = 22;
+    row6.eachCell((cell, colNum) => {
+      cell.font = { name: 'Calibri', size: 10, bold: true };
+      cell.alignment = { 
+        horizontal: colNum >= 7 ? 'right' : (colNum === 2 || colNum === 3 ? 'center' : 'left'), 
+        vertical: 'middle' 
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFB0B0B0' } },
+        bottom: { style: 'thin', color: { argb: 'FFB0B0B0' } }
+      };
+    });
+
+    // Data rows
+    let rowIndex = 7;
+    let totalCoatARS = 0;
+    let totalCoatUSD = 0;
+
+    dateEntries.forEach(item => {
+      const row = ws.getRow(rowIndex);
+      const pPesos = parseFloat(item.pesos) || 0;
+      const pDolares = parseFloat(item.dolares) || 0;
+      const liq1 = parseFloat(item.liq_prof_1) || 0;
+      const liq2 = parseFloat(item.liq_prof_2) || 0;
+      const liq3 = parseFloat(item.liq_prof_3) || 0;
+      const liqAn = parseFloat(item.liq_anestesista) || 0;
+      const coatPesos = parseFloat(item.coat_pesos) || 0;
+      const coatUSD = parseFloat(item.coat_dolares) || 0;
+
+      totalCoatARS += coatPesos;
+      totalCoatUSD += coatUSD;
+
+      const liq1Str = liq1 > 0 ? `${item.liq_prof_1_currency === 'USD' ? 'USD ' : '$ '}${formatMoney(liq1)}` : (item.prof_1 ? '$ 0,00' : '');
+      const liq2Str = liq2 > 0 ? `${item.liq_prof_2_currency === 'USD' ? 'USD ' : '$ '}${formatMoney(liq2)}` : (item.prof_2 ? '$ 0,00' : '');
+      const liq3Str = liq3 > 0 ? `${item.liq_prof_3_currency === 'USD' ? 'USD ' : '$ '}${formatMoney(liq3)}` : (item.prof_3 ? '$ 0,00' : '');
+      const liqAnStr = liqAn > 0 ? `${item.liq_anestesista_currency === 'USD' ? 'USD ' : '$'}${formatMoney(liqAn)}` : (item.anestesista ? '-' : '');
+
+      row.values = [
+        item.paciente || '',
+        item.dni ? String(item.dni) : '',
+        item.obra_social || '',
+        item.prof_1 || '',
+        item.prof_2 || '',
+        item.prof_3 || '',
+        formatMoney(pPesos),
+        formatMoney(pDolares),
+        liq1Str,
+        liq2Str,
+        liq3Str,
+        item.anestesista || '',
+        liqAnStr,
+        formatMoney(coatPesos),
+        formatMoney(coatUSD)
+      ];
+
+      row.eachCell((cell, colNum) => {
+        cell.font = { name: 'Calibri', size: 9 };
+        cell.alignment = { 
+          horizontal: colNum >= 7 ? 'right' : (colNum === 2 || colNum === 3 ? 'center' : 'left'), 
+          vertical: 'middle' 
+        };
+      });
+      row.height = 18;
+      rowIndex++;
+    });
+
+    // Totals Row
+    const totalRow = ws.getRow(rowIndex + 1);
+    totalRow.getCell(12).value = 'Total';
+    totalRow.getCell(12).font = { name: 'Calibri', size: 10, bold: true };
+    totalRow.getCell(12).alignment = { horizontal: 'right', vertical: 'middle' };
+
+    totalRow.getCell(14).value = formatMoney(totalCoatARS);
+    totalRow.getCell(14).font = { name: 'Calibri', size: 10, bold: true };
+    totalRow.getCell(14).alignment = { horizontal: 'right', vertical: 'middle' };
+    totalRow.getCell(14).border = {
+      top: { style: 'thin' },
+      bottom: { style: 'double' }
+    };
+
+    totalRow.getCell(15).value = formatMoney(totalCoatUSD);
+    totalRow.getCell(15).font = { name: 'Calibri', size: 10, bold: true };
+    totalRow.getCell(15).alignment = { horizontal: 'right', vertical: 'middle' };
+    totalRow.getCell(15).border = {
+      top: { style: 'thin' },
+      bottom: { style: 'double' }
+    };
+    totalRow.height = 20;
+
+    // Observations
+    if (dailyComment && dailyComment.trim()) {
+      const obsRow = ws.getRow(rowIndex + 3);
+      obsRow.getCell(1).value = `Observaciones: ${dailyComment.trim()}`;
+      obsRow.getCell(1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF555555' } };
+    }
+
+    // Column Widths
+    ws.columns = [
+      { width: 26 }, // Paciente
+      { width: 14 }, // DNI
+      { width: 16 }, // Obra social
+      { width: 18 }, // Prof. 1
+      { width: 18 }, // Prof. 2
+      { width: 18 }, // Prof. 3
+      { width: 14 }, // Pesos
+      { width: 12 }, // Dolares
+      { width: 15 }, // Liq. P1
+      { width: 15 }, // Liq. P2
+      { width: 15 }, // Liq. P3
+      { width: 18 }, // Anest.
+      { width: 15 }, // Liq. Anest.
+      { width: 14 }, // Coat $
+      { width: 12 }  // Coat USD
+    ];
+
+    const buf = await wb.xlsx.writeBuffer();
+    const fileDate = normDate.replace(/\//g, '-');
+    saveAs(new Blob([buf]), `CAJA_CX_${fileDate}.xlsx`);
+  } catch(e) { 
+    console.error("Error exporting excel:", e);
+    alert("Error al exportar Excel: " + e.message); 
+  }
+};
+
+export const printCajaDay = (selectedDate, dateEntries, dailyComment = '', totals = null) => {
+  if (!dateEntries || dateEntries.length === 0) {
+    alert("No hay datos para imprimir en esta fecha");
+    return;
+  }
+
+  const printWin = window.open('', '_blank', 'height=800,width=1100');
+  if (!printWin) return;
+
+  const normDate = normalizeDate(selectedDate);
+  const dateFormatted = normDate.includes('-') ? normDate.split('-').reverse().join('/') : normDate;
+  
+  // Requirement: "Al imprimir o descargar pdf p3 no sale si no se carga algun profesional"
+  const hasProf3 = dateEntries.some(h => (h.prof_3 && h.prof_3.trim() !== '') || (parseFloat(h.liq_prof_3) > 0));
+
+  let calcTotals = totals;
+  if (!calcTotals) {
+    calcTotals = dateEntries.reduce((acc, h) => {
+      acc.pesos = (acc.pesos || 0) + (parseFloat(h.pesos) || 0);
+      acc.dolares = (acc.dolares || 0) + (parseFloat(h.dolares) || 0);
+      acc.coat_pesos = (acc.coat_pesos || 0) + (parseFloat(h.coat_pesos) || 0);
+      acc.coat_dolares = (acc.coat_dolares || 0) + (parseFloat(h.coat_dolares) || 0);
+      return acc;
+    }, { pesos: 0, dolares: 0, coat_pesos: 0, coat_dolares: 0 });
+  }
+
+  const rowsHtml = dateEntries.map(h => {
+    const pPesos = parseFloat(h.pesos) || 0;
+    const pDolares = parseFloat(h.dolares) || 0;
+    const liq1 = parseFloat(h.liq_prof_1) || 0;
+    const liq2 = parseFloat(h.liq_prof_2) || 0;
+    const liq3 = parseFloat(h.liq_prof_3) || 0;
+    const liqAn = parseFloat(h.liq_anestesista) || 0;
+    const coatPesos = parseFloat(h.coat_pesos) || 0;
+    const coatUSD = parseFloat(h.coat_dolares) || 0;
+
+    const liq1Str = liq1 > 0 ? `${h.liq_prof_1_currency === 'USD' ? 'USD ' : '$ '}${formatMoney(liq1)}` : (h.prof_1 ? '$ 0,00' : '-');
+    const liq2Str = liq2 > 0 ? `${h.liq_prof_2_currency === 'USD' ? 'USD ' : '$ '}${formatMoney(liq2)}` : (h.prof_2 ? '$ 0,00' : '-');
+    const liq3Str = liq3 > 0 ? `${h.liq_prof_3_currency === 'USD' ? 'USD ' : '$ '}${formatMoney(liq3)}` : (h.prof_3 ? '$ 0,00' : '-');
+    const liqAnStr = liqAn > 0 ? `${h.liq_anestesista_currency === 'USD' ? 'USD ' : '$'}${formatMoney(liqAn)}` : (h.anestesista ? '-' : '-');
+
+    return `
+      <tr>
+        <td class="font-bold">${h.paciente || ''}</td>
+        <td class="text-center">${h.dni || '-'}</td>
+        <td class="text-center">${h.obra_social || '-'}</td>
+        <td>${h.prof_1 || '-'}</td>
+        <td>${h.prof_2 || '-'}</td>
+        ${hasProf3 ? `<td>${h.prof_3 || '-'}</td>` : ''}
+        <td class="text-right">${pPesos > 0 ? '$ ' + formatMoney(pPesos) : '-'}</td>
+        <td class="text-right">${pDolares > 0 ? 'U$D ' + formatMoney(pDolares) : '-'}</td>
+        <td class="text-right">${liq1Str}</td>
+        <td class="text-right">${liq2Str}</td>
+        ${hasProf3 ? `<td class="text-right">${liq3Str}</td>` : ''}
+        <td>${h.anestesista || '-'}</td>
+        <td class="text-right">${liqAnStr}</td>
+        <td class="text-right font-bold text-orange">${coatPesos > 0 ? '$ ' + formatMoney(coatPesos) : '-'}</td>
+        <td class="text-right font-bold text-blue">${coatUSD > 0 ? 'U$D ' + formatMoney(coatUSD) : '-'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  printWin.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Caja de Cirugía - ${dateFormatted}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 8.5pt; color: #1e293b; padding: 15px; }
+    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0284c7; padding-bottom: 10px; margin-bottom: 12px; }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .header-left img { height: 42px; width: auto; object-fit: contain; }
+    .header-left h2 { font-size: 14pt; color: #0f172a; font-weight: 800; }
+    .header-right { text-align: right; }
+    .header-right .date { font-size: 12pt; font-weight: 700; color: #0284c7; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 8pt; }
+    th, td { border: 1px solid #cbd5e1; padding: 4px 6px; vertical-align: middle; }
+    th { background-color: #f1f5f9; font-weight: 700; color: #334155; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.3px; }
+    tr:nth-child(even) { background-color: #f8fafc; }
+    
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .font-bold { font-weight: 700; }
+    .text-orange { color: #c2410c; }
+    .text-blue { color: #0369a1; }
+    
+    .totals-box { margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 9.5pt; }
+    .totals-grid { display: flex; gap: 20px; }
+    .total-item strong { color: #64748b; font-size: 7.5pt; text-transform: uppercase; display: block; }
+    .total-item span { font-weight: 800; font-size: 10.5pt; }
+    
+    .obs-box { margin-top: 10px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; font-size: 8.5pt; color: #92400e; }
+    
+    @media print {
+      @page { size: landscape; margin: 8mm; }
+      body { padding: 0; }
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'" />
+      <div>
+        <h2>Caja de Cirugía</h2>
+        <p style="font-size: 8pt; color: #64748b;">Centro Otológico de Alta Tecnología</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="date">${dateFormatted}</div>
+      <div style="font-size: 8pt; color: #64748b;">${dateEntries.length} ${dateEntries.length === 1 ? 'registro' : 'registros'}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Paciente</th>
+        <th>DNI</th>
+        <th>OS</th>
+        <th>Prof. 1</th>
+        <th>Prof. 2</th>
+        ${hasProf3 ? '<th>Prof. 3</th>' : ''}
+        <th class="text-right">Pesos</th>
+        <th class="text-right">USD</th>
+        <th class="text-right">Liq. P1</th>
+        <th class="text-right">Liq. P2</th>
+        ${hasProf3 ? '<th class="text-right">Liq. P3</th>' : ''}
+        <th>Anest.</th>
+        <th class="text-right">Liq. Anest.</th>
+        <th class="text-right">COAT $</th>
+        <th class="text-right">COAT USD</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+    <tfoot>
+      <tr style="background: #e2e8f0; font-weight: bold;">
+        <td colspan="${hasProf3 ? 13 : 11}" style="text-align: right; padding: 6px 8px; font-size: 8.5pt;">TOTAL COAT:</td>
+        <td class="text-right text-orange" style="font-size: 9pt; font-weight: 800;">$ ${formatMoney(calcTotals.coat_pesos)}</td>
+        <td class="text-right text-blue" style="font-size: 9pt; font-weight: 800;">${calcTotals.coat_dolares > 0 ? 'U$D ' + formatMoney(calcTotals.coat_dolares) : 'U$D 0,00'}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  ${dailyComment && dailyComment.trim() ? `
+    <div class="obs-box">
+      <strong>Observaciones del día:</strong> ${dailyComment.trim()}
+    </div>
+  ` : ''}
+
+  <div class="totals-box">
+    <div class="totals-grid">
+      <div class="total-item">
+        <strong>Total Recaudado ARS</strong>
+        <span>$ ${formatMoney(calcTotals.pesos)}</span>
+      </div>
+      <div class="total-item">
+        <strong>Total Recaudado USD</strong>
+        <span>U$D ${formatMoney(calcTotals.dolares)}</span>
+      </div>
+      <div class="total-item">
+        <strong>Retención COAT ARS</strong>
+        <span class="text-orange">$ ${formatMoney(calcTotals.coat_pesos)}</span>
+      </div>
+      <div class="total-item">
+        <strong>Retención COAT USD</strong>
+        <span class="text-blue">U$D ${formatMoney(calcTotals.coat_dolares)}</span>
+      </div>
+    </div>
+    <div style="font-size: 7.5pt; color: #94a3b8; text-align: right;">
+      Emitido el ${new Date().toLocaleDateString('es-AR')} ${new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+    </div>
+  </div>
+</body>
+</html>`);
+
+  printWin.document.close();
+  setTimeout(() => {
+    printWin.print();
+  }, 400);
+};
 
 export default function HistorialCajaView({ history, setHistory, currentUser, professionals }) {
   const [view, setView] = useState('years');
@@ -164,66 +547,51 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
     setNewEntry({});
   };
 
-  const handleExportExcel = async () => {
-    if (dateEntries.length === 0) return alert("No hay datos para exportar");
-    try {
-      const ExcelJS = (await import('exceljs')).default;
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('Caja', { pageSetup: { orientation: 'landscape', fitToPage: true } });
-      const headerStyle = { font: { bold: true, size: 10 }, alignment: { horizontal: 'center' }, border: { bottom: { style: 'thin' } } };
-      ws.getCell('A1').value = `Caja de Cirugía - ${selectedDate}`;
-      ws.getCell('A1').font = { bold: true, size: 14 };
-      ws.getRow(3).values = ['Paciente', 'DNI', 'OS', 'Prof.1', 'Prof.2', 'Prof.3', 'Pesos', 'USD', 'Liq.P1', 'Liq.P2', 'Liq.P3', 'Anest.', 'Liq.An.', 'COAT $', 'COAT USD'];
-      ws.getRow(3).eachCell(c => { c.font = headerStyle.font; c.alignment = headerStyle.alignment; c.border = headerStyle.border; });
-      let ri = 4;
-      let tcARS = 0, tcUSD = 0;
-      dateEntries.forEach(item => {
-        const row = ws.getRow(ri);
-        row.values = [item.paciente, item.dni, item.obra_social, item.prof_1||'', item.prof_2||'', item.prof_3||'', item.pesos, item.dolares,
-          `${item.liq_prof_1_currency === 'USD' ? 'USD' : '$'}${formatMoney(item.liq_prof_1)}`,
-          `${item.liq_prof_2_currency === 'USD' ? 'USD' : '$'}${formatMoney(item.liq_prof_2)}`,
-          `${item.liq_prof_3_currency === 'USD' ? 'USD' : '$'}${formatMoney(item.liq_prof_3)}`,
-          item.anestesista||'', `${item.liq_anestesista_currency === 'USD' ? 'USD ' : '$'}${formatMoney(item.liq_anestesista)}`,
-          item.coat_pesos, item.coat_dolares];
-        tcARS += item.coat_pesos||0; tcUSD += item.coat_dolares||0; ri++;
-      });
-      ws.getRow(ri+1).getCell(13).value = 'Total COAT:'; ws.getRow(ri+1).getCell(13).font = { bold: true };
-      ws.getRow(ri+1).getCell(14).value = tcARS; ws.getRow(ri+1).getCell(15).value = tcUSD;
-      ws.columns = [{width:22},{width:14},{width:18},{width:18},{width:18},{width:18},{width:12},{width:12},{width:14},{width:14},{width:14},{width:18},{width:14},{width:12},{width:12}];
-      if (dailyComment) { ws.getRow(ri+3).getCell(1).value = `Observaciones: ${dailyComment}`; ws.getRow(ri+3).getCell(1).font = { italic: true, color: { argb: 'FF666666' } }; }
-      const buf = await wb.xlsx.writeBuffer();
-      saveAs(new Blob([buf]), `CAJA_CX_${selectedDate}.xlsx`);
-    } catch(e) { alert("Error al exportar: " + e.message); }
+  const [showRangeModal, setShowRangeModal] = useState(false);
+
+  const handleExportExcel = () => {
+    exportCajaDayToExcel(selectedDate, dateEntries, dailyComment);
+  };
+
+  const handlePrint = () => {
+    printCajaDay(selectedDate, dateEntries, dailyComment, totals);
   };
 
   const handleExportRange = async () => {
-    if (!rangeStart || !rangeEnd) return alert("Seleccione rango de fechas.");
-    if (rangeStart > rangeEnd) return alert("Fecha inicio debe ser anterior a fin.");
+    if (!rangeStart || !rangeEnd) return alert("Seleccione fecha de inicio y fin.");
+    if (rangeStart > rangeEnd) return alert("La fecha de inicio debe ser anterior o igual a la fecha de fin.");
+    
     const dates = [];
     let d = new Date(rangeStart + 'T00:00:00');
     const end = new Date(rangeEnd + 'T00:00:00');
-    while (d <= end) { dates.push(d.toISOString().split('T')[0]); d.setDate(d.getDate() + 1); }
+    while (d <= end) { 
+      dates.push(d.toISOString().split('T')[0]); 
+      d.setDate(d.getDate() + 1); 
+    }
+
+    const availableDays = dates.filter(ds => history.some(h => normalizeDate(h.fecha) === ds));
+    if (availableDays.length === 0) {
+      return alert("No se encontraron registros de caja en el rango de fechas seleccionado.");
+    }
+
     setIsExportingRange(true);
     try {
       const comments = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
-      for (const ds of dates) {
-        const data = history.filter(h => h.fecha === ds);
+      let exportedCount = 0;
+      for (const ds of availableDays) {
+        const data = history.filter(h => normalizeDate(h.fecha) === ds);
         if (data.length === 0) continue;
-        const ExcelJS = (await import('exceljs')).default;
-        const wb = new ExcelJS.Workbook();
-        const ws = wb.addWorksheet('Caja');
-        ws.getCell('A1').value = `Caja - ${ds}`; ws.getCell('A1').font = { bold: true };
-        ws.getRow(3).values = ['Paciente','DNI','OS','Pesos','USD','COAT $','COAT USD'];
-        let ri = 4;
-        data.forEach(item => { ws.getRow(ri).values = [item.paciente, item.dni, item.obra_social, item.pesos, item.dolares, item.coat_pesos, item.coat_dolares]; ri++; });
-        if (comments[ds]) { ws.getRow(ri+1).getCell(1).value = `Obs: ${comments[ds]}`; }
-        ws.columns = [{width:22},{width:14},{width:20},{width:12},{width:12},{width:12},{width:12}];
-        const buf = await wb.xlsx.writeBuffer();
-        saveAs(new Blob([buf]), `CAJA_CX_${ds}.xlsx`);
-        await new Promise(r => setTimeout(r, 200));
+        await exportCajaDayToExcel(ds, data, comments[ds] || '');
+        exportedCount++;
+        await new Promise(r => setTimeout(r, 350));
       }
-      alert("Exportación de rango finalizada.");
-    } catch(e) { alert("Error: " + e.message); } finally { setIsExportingRange(false); }
+      setShowRangeModal(false);
+      alert(`¡Exportación finalizada! Se descargaron ${exportedCount} archivos Excel.`);
+    } catch(e) { 
+      alert("Error al exportar rango: " + e.message); 
+    } finally { 
+      setIsExportingRange(false); 
+    }
   };
 
   const handleBackup = () => {
@@ -242,13 +610,22 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-        <div className="flex items-center gap-2"><History size={18} className="text-indigo-500" /><h3 className="font-bold text-slate-700">Historial de Caja</h3></div>
+      <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
         <div className="flex items-center gap-2">
+          <History size={18} className="text-indigo-500" />
+          <h3 className="font-bold text-slate-700">Historial de Caja</h3>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={handleBackup} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-indigo-600 transition-all"><Download size={14} /> Backup</button>
+          
+          <button onClick={() => setShowRangeModal(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:text-emerald-600 hover:border-emerald-200 transition-all" title="Exportar un Excel por cada día dentro de un rango">
+            <Download size={14} className="text-emerald-600" /> Rango Fechas
+          </button>
+
           {view === 'table' && (
             <>
-              <button onClick={handleExportExcel} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-600 hover:bg-emerald-100 transition-all"><Download size={14} /> Excel</button>
+              <button onClick={handleExportExcel} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition-all"><Download size={14} /> Excel</button>
+              <button onClick={handlePrint} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-all"><Printer size={14} /> Imprimir</button>
               <button onClick={() => { if (!isAdmin) setShowPinModal(true); else setShowAddModal(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-blue-600 transition-all"><Plus size={14} /> Agregar</button>
             </>
           )}
@@ -257,6 +634,78 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
           )}
         </div>
       </div>
+
+      {/* RANGE EXPORT MODAL */}
+      {showRangeModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isExportingRange && setShowRangeModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                  <Download size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Exportar Rango de Fechas</h3>
+                  <p className="text-[11px] text-slate-500">Descarga un archivo Excel individual por cada día</p>
+                </div>
+              </div>
+              <button onClick={() => !isExportingRange && setShowRangeModal(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Fecha Desde</label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={rangeStart}
+                    onChange={e => setRangeStart(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Fecha Hasta</label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={rangeEnd}
+                    onChange={e => setRangeEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                <p className="font-bold text-slate-700">Formato del Excel:</p>
+                <p>• Incluye logo institucional de COAT</p>
+                <p>• Desglose completo de profesionales (Prof 1, 2, 3) y anestesia</p>
+                <p>• Retenciones COAT ARS y USD con totales</p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRangeModal(false)}
+                  disabled={isExportingRange}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportRange}
+                  disabled={isExportingRange || !rangeStart || !rangeEnd}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Download size={14} />
+                  <span>{isExportingRange ? 'Exportando...' : 'Descargar Excels'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PIN MODAL */}
       {showPinModal && (

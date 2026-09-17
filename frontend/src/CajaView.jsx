@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Plus, Trash2, LayoutDashboard, Calendar, X, Edit2, Calculator, History, FileText, MessageSquare, CheckCircle2, Circle, Bell, Shield, Lock } from 'lucide-react';
-import HistorialCajaView from './HistorialCajaView';
+import { Save, Plus, Trash2, LayoutDashboard, Calendar, X, Edit2, Calculator, History, FileText, MessageSquare, CheckCircle2, Circle, Bell, Shield, Lock, Printer, Download } from 'lucide-react';
+import HistorialCajaView, { exportCajaDayToExcel, printCajaDay } from './HistorialCajaView';
 import LiquidacionView from './LiquidacionView';
 import { SEED_CAJA, SEED_DAILY_COMMENTS } from './data/seedData';
 import ReciboLibreView from './components/ReciboLibreView';
@@ -712,9 +712,34 @@ function CajaForm({ currentUser, history, setHistory, professionals, surgeries =
 
       {/* HISTORY */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div className="flex items-center gap-2"><Calculator size={18} className="text-slate-400" /><h3 className="font-bold text-slate-700">Historial - {date}</h3></div>
-          <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold">{historyForDate.length} registros</span>
+        <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Calculator size={18} className="text-slate-400" />
+            <h3 className="font-bold text-slate-700">Historial - {date}</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold">{historyForDate.length} registros</span>
+            {historyForDate.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => printCajaDay(date, historyForDate, dailyComment, totals)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs font-bold text-blue-700 transition-all"
+                  title="Imprimir caja de esta fecha"
+                >
+                  <Printer size={14} /> Imprimir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportCajaDayToExcel(date, historyForDate, dailyComment)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold text-emerald-700 transition-all"
+                  title="Descargar Excel de esta fecha"
+                >
+                  <Download size={14} /> Excel
+                </button>
+              </>
+            )}
+          </div>
         </div>
         {historyForDate.length === 0 ? (
           <div className="py-12 text-center text-slate-400 text-sm">No hay registros para esta fecha.</div>
