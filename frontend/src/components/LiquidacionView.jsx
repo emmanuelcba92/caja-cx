@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Printer, Download, Search, FileText, Plus, X, Pencil, Lock as LockIcon, Save, Trash2, CircleHelp, Trash } from 'lucide-react';
+import { User, Printer, Download, Search, FileText, Plus, X, Pencil, Lock as LockIcon, Save, Trash2, CircleHelp, Trash, Briefcase } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { isLocalEnv } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import ModalPortal from './common/ModalPortal';
+import StaffLiquidacionesView from './StaffLiquidacionesView';
 // Dynamic import used for exceljs
 import { saveAs } from 'file-saver';
 
@@ -109,6 +110,7 @@ const LiquidacionView = () => {
     };
 
     const today = new Date().toISOString().split('T')[0];
+    const [subTab, setSubTab] = useState(() => localStorage.getItem('liq_subTab') || 'profesional');
     const [profesionales, setProfesionales] = useState([]);
     const [selectedProf, setSelectedProf] = useState(() => localStorage.getItem('liq_selectedProf') || '');
     const [modelo, setModelo] = useState(1); // 1: Detallado, 2: Solo Liquidación
@@ -1275,6 +1277,43 @@ const LiquidacionView = () => {
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
             <style>{printStyle}</style>
 
+            {/* Subtab Toggle Selector */}
+            <div className="flex items-center gap-2 bg-slate-200/70 dark:bg-white/5 p-1.5 rounded-2xl w-fit border border-slate-200/50 dark:border-white/5 no-print mb-2">
+                <button
+                    onClick={() => {
+                        setSubTab('profesional');
+                        localStorage.setItem('liq_subTab', 'profesional');
+                    }}
+                    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center gap-2 cursor-pointer ${
+                        subTab === 'profesional'
+                            ? 'bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 shadow-md scale-105'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                >
+                    <User size={15} />
+                    <span>Por Profesional</span>
+                </button>
+                <button
+                    onClick={() => {
+                        setSubTab('staff_mensual');
+                        localStorage.setItem('liq_subTab', 'staff_mensual');
+                    }}
+                    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center gap-2 cursor-pointer ${
+                        subTab === 'staff_mensual'
+                            ? 'bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 shadow-md scale-105'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                >
+                    <Briefcase size={15} />
+                    <span>Staff Médico (Matriz Mensual)</span>
+                </button>
+            </div>
+
+            {subTab === 'staff_mensual' ? (
+                <StaffLiquidacionesView />
+            ) : (
+                <>
+
             {createPortal(
                 <div className="print-portal bg-white text-black">
                     {(isBatchPrint ? batchData : (data ? [data] : [])).map((rpt, rptIdx) => {
@@ -1977,7 +2016,9 @@ const LiquidacionView = () => {
                     </div>
                 </ModalPortal>
             )}
-        </div >
+                </>
+            )}
+        </div>
     );
 };
 
