@@ -181,6 +181,7 @@ const ROLES = {
   MEDICO: 'Medico',
   DIRECTORA: 'Directora',
   SECRE: 'Secre',
+  SECRE_ESTUDIOS: 'Secre Estudios',
   ADMIN: 'Admin',
   RESIDENTE: 'Residente',
 };
@@ -1537,7 +1538,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   // Map Firebase Auth user to legacy format for SurgeryApp compatibility
   const [currentUser, setCurrentUser] = useState(() => {
     if (authUser) {
-      const roleMap = { admin: 'Admin', secre: 'Secre', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
+      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
       const rawName = authUser.displayName || getCleanUsername(authUser.email);
       return { id: authUser.uid, nombre: rawName, rol: roleMap[authRole] || 'Admin', email: authUser.email };
     }
@@ -1593,14 +1594,15 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const [showNewUserLogin, setShowNewUserLogin] = useState(false);
 
   const userRole = currentUser?.rol || null;
+  const isSecreEstudios = userRole === ROLES.SECRE_ESTUDIOS;
 
   const [formData, setFormData] = useState({ 
     emailProfesional: '', 
     nombreProfesional: '', 
     professionalId: null,
     residente: '',
-    tipoProcedimiento: 'CIRUGIA',
-    estudioBajoAnestesia: false,
+    tipoProcedimiento: isSecreEstudios ? 'ESTUDIO' : 'CIRUGIA',
+    estudioBajoAnestesia: isSecreEstudios,
     fechaSolicitud: new Date().toISOString().slice(0, 10),
     fecha: '', 
     duracion: '1:00 hs', 
@@ -1679,15 +1681,15 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const [dniFoundMessage, setDniFoundMessage] = useState('');
   const [editDniFoundMessage, setEditDniFoundMessage] = useState('');
 
-  const canCreate = userRole && (userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN);
+  const canCreate = userRole && (userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN || userRole === ROLES.SECRE_ESTUDIOS);
   const canAudit = userRole && (userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN);
-  const canManageStatus = userRole === ROLES.SECRE || userRole === ROLES.ADMIN;
-  const canCancelOwn = userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE;
+  const canManageStatus = userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.ADMIN;
+  const canCancelOwn = userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.SECRE_ESTUDIOS;
   const isAdmin = userRole === ROLES.ADMIN;
 
   useEffect(() => {
     if (authUser) {
-      const roleMap = { admin: 'Admin', secre: 'Secre', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
+      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
       const matchingUser = (users || []).find(u => u.email?.toLowerCase() === authUser.email?.toLowerCase());
       const displayName = matchingUser?.profesionalName || authUser.displayName || getCleanUsername(authUser.email);
       setCurrentUser({ id: authUser.uid, nombre: displayName, rol: roleMap[authRole] || 'Admin', email: authUser.email });
@@ -2074,10 +2076,12 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     setActiveCodeField(null);
     setMaterialSelections({});
     const isResidente = currentUser?.rol === ROLES.RESIDENTE;
-    const isEstudio = tipo === 'ESTUDIO';
+    const isSecreEstudiosUser = currentUser?.rol === ROLES.SECRE_ESTUDIOS;
+    const effectiveTipo = isSecreEstudiosUser ? 'ESTUDIO' : tipo;
+    const isEstudio = effectiveTipo === 'ESTUDIO';
     setFormData({ 
       emailProfesional: '', 
-      nombreProfesional: isResidente ? '' : (currentUser?.nombre || ''), 
+      nombreProfesional: (isResidente || isSecreEstudiosUser) ? '' : (currentUser?.nombre || ''), 
       professionalId: null,
       residente: isResidente ? (currentUser?.nombre || '') : '',
       tipoProcedimiento: isEstudio ? 'ESTUDIO' : 'CIRUGIA',
@@ -2110,7 +2114,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   };
 
   const handleOpenNewSurgery = (tipo = 'CIRUGIA') => {
-    resetForm(tipo);
+    const isSecreEstudiosUser = currentUser?.rol === ROLES.SECRE_ESTUDIOS;
+    resetForm(isSecreEstudiosUser ? 'ESTUDIO' : tipo);
     setShowCreateModal(true);
   };
 
@@ -2964,6 +2969,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       } else {
         filtered = surgeries;
       }
+    } else if (userRole === ROLES.SECRE_ESTUDIOS) {
+      filtered = surgeries.filter(s => s.tipoProcedimiento === 'ESTUDIO' || !!s.estudioBajoAnestesia);
     } else if (userRole === ROLES.SECRE) {
       if (encargadoFilter === 'Pendientes') filtered = surgeries.filter(s => s.estado === 'SOLICITADA');
       else if (encargadoFilter === 'Auditadas') filtered = surgeries.filter(s => s.estado !== 'SOLICITADA');
@@ -3041,9 +3048,13 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
   const canEditSurgery = (s) => {
     if (isAdmin) return true;
+    if (userRole === ROLES.SECRE_ESTUDIOS) {
+      return s.tipoProcedimiento === 'ESTUDIO' || !!s.estudioBajoAnestesia;
+    }
     if (userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.DIRECTORA) {
       return s.creador === currentUser?.nombre || isSurgeryCreatedOrAssignedToUser(s, currentUser);
     }
+    if (userRole === ROLES.SECRE) return true;
     return false;
   };
 
@@ -3164,7 +3175,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-8">
         {/* TAB BAR */}
-        {(userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN || userRole === ROLES.SECRE || userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) && (
+        {(userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN || userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) && (
           <div className="mb-6 flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm w-fit">
             {userRole === ROLES.DIRECTORA && (
               <>
@@ -3198,6 +3209,13 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 <button onClick={() => { setCurrentTab('Notas'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Notas' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Notas</button>
               </>
             )}
+            {userRole === ROLES.SECRE_ESTUDIOS && (
+              <>
+                <button onClick={() => setCurrentTab('Solicitud')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Solicitud' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Estudios</button>
+                <button onClick={() => setCurrentTab('Pacientes')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Pacientes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Pacientes</button>
+                <button onClick={() => setCurrentTab('Calendario')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Calendario' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><CalendarIcon size={14} className="inline mr-1" />Calendario</button>
+              </>
+            )}
             {(userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) && (
               <>
                 <button onClick={() => setCurrentTab('Solicitud')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Solicitud' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Solicitud</button>
@@ -3215,15 +3233,15 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         )}
 
         {/* CALENDARIO TAB */}
-        {currentTab === 'Calendario' && (userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN || userRole === ROLES.SECRE || userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) && (
+        {currentTab === 'Calendario' && (userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN || userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) && (
           <CalendarioView 
-            surgeries={surgeries} 
+            surgeries={userRole === ROLES.SECRE_ESTUDIOS ? surgeries.filter(s => s.tipoProcedimiento === 'ESTUDIO' || !!s.estudioBajoAnestesia) : surgeries} 
             onOpenForm={handleOpenFormFromCalendar}
-            onNewSurgery={canCreate ? handleOpenNewSurgery : undefined}
+            onNewSurgery={canCreate ? () => handleOpenNewSurgery(userRole === ROLES.SECRE_ESTUDIOS ? 'ESTUDIO' : 'CIRUGIA') : undefined}
             onEditSurgery={(s) => openEditModal(s)}
             onDragSurgery={handleDragSurgery}
             currentUser={currentUser}
-            restrictDrag={userRole === ROLES.SECRE || (userRole === ROLES.MEDICO && restrictCalendarDrag)}
+            restrictDrag={userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || (userRole === ROLES.MEDICO && restrictCalendarDrag)}
           />
         )}
 
@@ -3273,8 +3291,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                         <PlusCircle size={20} />
                       </div>
                       <div>
-                        <h3 className="font-bold text-slate-800 text-sm">{isEditing ? 'Editar Solicitud de Cirugía' : 'Nueva Solicitud de Cirugía'}</h3>
-                        <p className="text-[11px] text-slate-500">{isEditing ? 'Modifique los campos y guarde los cambios' : 'Complete los datos clínicos para programar la cirugía'}</p>
+                        <h3 className="font-bold text-slate-800 text-sm">
+                          {isEditing 
+                            ? (formData.tipoProcedimiento === 'ESTUDIO' ? 'Editar Solicitud de Estudio' : 'Editar Solicitud de Cirugía') 
+                            : (formData.tipoProcedimiento === 'ESTUDIO' ? 'Nueva Solicitud de Estudio' : 'Nueva Solicitud de Cirugía')}
+                        </h3>
+                        <p className="text-[11px] text-slate-500">
+                          {isEditing 
+                            ? 'Modifique los campos y guarde los cambios' 
+                            : (formData.tipoProcedimiento === 'ESTUDIO' ? 'Complete los datos clínicos para programar el estudio bajo anestesia' : 'Complete los datos clínicos para programar la cirugía')}
+                        </p>
                       </div>
                       <HelpTooltip content={[
                         <p key="1"><strong>Profesional:</strong> Quién realiza la cirugía. Se autocompleta email.</p>,
@@ -3754,22 +3780,28 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                         <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest">
                           {formData.tipoProcedimiento === 'ESTUDIO' ? 'Detalles del Estudio bajo Anestesia' : 'Detalles de la Cirugía'}
                         </h4>
-                        <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
-                          <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'CIRUGIA', estudioBajoAnestesia: false }))}
-                            className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento !== 'ESTUDIO' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                          >
-                            Cirugía
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'ESTUDIO', estudioBajoAnestesia: true }))}
-                            className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento === 'ESTUDIO' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                          >
+                        {userRole !== ROLES.SECRE_ESTUDIOS ? (
+                          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'CIRUGIA', estudioBajoAnestesia: false }))}
+                              className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento !== 'ESTUDIO' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                              Cirugía
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'ESTUDIO', estudioBajoAnestesia: true }))}
+                              className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento === 'ESTUDIO' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                              Estudio bajo Anestesia
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="px-3 py-1 text-xs font-bold rounded-md bg-purple-600 text-white shadow-sm">
                             Estudio bajo Anestesia
-                          </button>
-                        </div>
+                          </span>
+                        )}
                       </div>
 
                       {formData.tipoProcedimiento === 'ESTUDIO' && (
@@ -4210,9 +4242,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                       <FileText size={20} />
                     </div>
                     <h3 className="font-bold text-slate-700">
-                      {(userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.DIRECTORA) && currentTab === 'Solicitud'
-                        ? 'Mis Solicitudes de Cirugía' 
-                        : (currentTab === 'Auditoría' ? 'Auditoría Médica' : currentTab === 'Gestión' ? 'Gestión de Casos' : 'Solicitudes y Casos')}
+                      {userRole === ROLES.SECRE_ESTUDIOS
+                        ? 'Estudios Bajo Anestesia'
+                        : (userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.DIRECTORA) && currentTab === 'Solicitud'
+                          ? 'Mis Solicitudes de Cirugía' 
+                          : (currentTab === 'Auditoría' ? 'Auditoría Médica' : currentTab === 'Gestión' ? 'Gestión de Casos' : 'Solicitudes y Casos')}
                     </h3>
                     <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg ml-2">
                       <button onClick={() => setViewMode('cards')} className={`p-1.5 rounded-md transition-all ${viewMode === 'cards' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Vista tarjetas"><LayoutGrid size={16} /></button>
@@ -4222,14 +4256,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     {/* Botones Nueva Cirugía / Nuevo Estudio */}
                     {canCreate && (
                       <div className="flex items-center gap-1.5 ml-2">
-                        <button
-                          onClick={() => handleOpenNewSurgery('CIRUGIA')}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
-                          title="Crear nueva solicitud de cirugía"
-                        >
-                          <PlusCircle size={14} />
-                          <span>Nueva Cirugía</span>
-                        </button>
+                        {userRole !== ROLES.SECRE_ESTUDIOS && (
+                          <button
+                            onClick={() => handleOpenNewSurgery('CIRUGIA')}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
+                            title="Crear nueva solicitud de cirugía"
+                          >
+                            <PlusCircle size={14} />
+                            <span>Nueva Cirugía</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => handleOpenNewSurgery('ESTUDIO')}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"

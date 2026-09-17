@@ -40,6 +40,25 @@ export const DEFAULT_ROLES = {
       is_ephemeral: false
     }
   },
+  secre_estudios: {
+    name: 'Secretaria de Estudios',
+    isSystem: true,
+    permissions: {
+      can_view_admin: false,
+      can_manage_users: false,
+      can_view_shared_catalog: false,
+      can_view_ordenes: true,
+      can_share_ordenes: false,
+      can_view_stats: false,
+      can_delete_data: false,
+      can_edit_data: true,
+      can_edit_own: true,
+      can_delete_own: false,
+      readonly_caja: true,
+      only_estudios: true,
+      is_ephemeral: false
+    }
+  },
   direccion_medica: {
     name: 'Dirección Médica',
     isSystem: true,

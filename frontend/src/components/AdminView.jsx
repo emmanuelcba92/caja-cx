@@ -139,6 +139,7 @@ const AdminView = () => {
     const colors = {
       admin: 'bg-rose-100 text-rose-600',
       secre: 'bg-amber-100 text-amber-600',
+      secre_estudios: 'bg-purple-100 text-purple-700',
       direccion_medica: 'bg-indigo-100 text-indigo-600',
       medico: 'bg-emerald-100 text-emerald-600',
       residente: 'bg-teal-100 text-teal-700',
