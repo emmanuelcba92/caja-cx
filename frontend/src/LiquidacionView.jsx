@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { FileText, Printer, Trash2, MinusCircle, Plus, X, Download, Calendar } from 'lucide-react';
+import { FileText, Printer, Trash2, MinusCircle, Plus, X, Download, Calendar, FileSpreadsheet } from 'lucide-react';
 import { formatMoney } from './CajaView';
 
 const saveAs = (blob, filename) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); };
@@ -499,6 +499,203 @@ export default function LiquidacionView({ history, currentUser, professionals })
     } catch(e) { alert("Error al exportar: " + e.message); }
   };
 
+  const handleExportMonthlyHonorariosExcel = async () => {
+    let monthStart, monthEnd, titlePeriod, fileNamePeriod;
+    if (dateMode === 'month') {
+      monthStart = `${selectedYear}-${selectedMonth}-01`;
+      const lastDay = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).getDate();
+      monthEnd = `${selectedYear}-${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+      const mName = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1).toLocaleString('es-AR', { month: 'long' });
+      titlePeriod = `${mName.toUpperCase()} ${selectedYear}`;
+      fileNamePeriod = `${mName.toUpperCase()}_${selectedYear}`;
+    } else {
+      monthStart = startDate;
+      monthEnd = endDate;
+      titlePeriod = `${formatDate(startDate)} AL ${formatDate(endDate)}`;
+      fileNamePeriod = `${startDate}_${endDate}`;
+    }
+
+    const periodEntries = allEntries.filter(e => e.fecha >= monthStart && e.fecha <= monthEnd);
+    const periodDeds = deductions.filter(d => d.date >= monthStart && d.date <= monthEnd);
+
+    const matrix = {};
+    const activeProfs = new Set();
+    const dates = new Set();
+
+    const processEntry = (date, name, amt, cur, isTransfer) => {
+      if (!name || isNaN(Number(amt)) || Number(amt) <= 0 || isTransfer) return;
+      const cleanP = cleanName(name).trim();
+      const pKey = normProf(cleanP);
+      const displayProf = availableProfs.find(p => normProf(p) === pKey) || cleanP;
+      activeProfs.add(displayProf);
+      dates.add(date);
+      if (!matrix[date]) matrix[date] = {};
+      if (!matrix[date][displayProf]) matrix[date][displayProf] = { ARS: 0, USD: 0 };
+      if (cur === 'USD') matrix[date][displayProf].USD += Number(amt);
+      else matrix[date][displayProf].ARS += Number(amt);
+    };
+
+    periodEntries.forEach(e => {
+      const date = e.fecha;
+      if (e.prof_1) processEntry(date, e.prof_1, e.liq_prof_1, e.liq_prof_1_currency, e.isTransfer);
+      if (e.prof_2) processEntry(date, e.prof_2, e.liq_prof_2, e.liq_prof_2_currency, e.isTransfer);
+      if (e.prof_3) processEntry(date, e.prof_3, e.liq_prof_3, e.liq_prof_3_currency, e.isTransfer);
+      if (e.anestesista) processEntry(date, e.anestesista, e.liq_anestesista, e.liq_anestesista_currency, e.isTransfer);
+    });
+
+    periodDeds.forEach(d => {
+      const date = d.date;
+      const prof = d.profesional;
+      const amt = Math.abs(Number(d.amount || 0));
+      const cur = d.currency || 'ARS';
+      if (!prof || !amt) return;
+      const pKey = normProf(prof);
+      const displayProf = availableProfs.find(p => normProf(p) === pKey) || prof;
+      if (!matrix[date]) matrix[date] = {};
+      if (!matrix[date][displayProf]) matrix[date][displayProf] = { ARS: 0, USD: 0 };
+      dates.add(date);
+      activeProfs.add(displayProf);
+      if (cur === 'USD') matrix[date][displayProf].USD -= amt;
+      else matrix[date][displayProf].ARS -= amt;
+    });
+
+    if (activeProfs.size === 0) {
+      alert('No se encontraron honorarios ni movimientos de liquidación para el período seleccionado.');
+      return;
+    }
+
+    const sortedProfs = Array.from(activeProfs).sort((a, b) => a.localeCompare(b));
+    const sortedDates = Array.from(dates).sort();
+
+    const totals = {};
+    sortedProfs.forEach(p => { totals[p] = { ARS: 0, USD: 0 }; });
+
+    sortedDates.forEach(d => {
+      sortedProfs.forEach(p => {
+        const cell = matrix[d]?.[p];
+        if (cell) {
+          totals[p].ARS += cell.ARS || 0;
+          totals[p].USD += cell.USD || 0;
+        }
+      });
+    });
+
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Honorarios', { pageSetup: { orientation: 'landscape', fitToPage: true } });
+
+      ws.mergeCells(1, 1, 1, sortedProfs.length + 1);
+      const titleCell = ws.getCell(1, 1);
+      titleCell.value = `RESUMEN MENSUAL DE HONORARIOS • ${titlePeriod}`;
+      titleCell.font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getRow(1).height = 30;
+
+      const headerRow = ws.getRow(3);
+      headerRow.getCell(1).value = 'FECHA';
+      headerRow.getCell(1).font = { bold: true, size: 10 };
+      headerRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      headerRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+      headerRow.getCell(1).border = {
+        top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' }
+      };
+
+      sortedProfs.forEach((p, i) => {
+        const cell = headerRow.getCell(i + 2);
+        cell.value = p;
+        cell.font = { bold: true, size: 10 };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+        cell.border = {
+          top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' }
+        };
+      });
+      headerRow.height = 24;
+
+      let currentRow = 4;
+      sortedDates.forEach(d => {
+        const row = ws.getRow(currentRow);
+        const [y, m, da] = d.split('-');
+        const dateCell = row.getCell(1);
+        dateCell.value = `${da}/${m}`;
+        dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        dateCell.font = { bold: true, size: 9 };
+        dateCell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        sortedProfs.forEach((p, i) => {
+          const cell = row.getCell(i + 2);
+          const cellData = matrix[d]?.[p];
+          let val = '—';
+          if (cellData) {
+            const arr = [];
+            if (cellData.ARS !== 0) arr.push(`$ ${formatMoney(cellData.ARS)}`);
+            if (cellData.USD !== 0) arr.push(`USD ${formatMoney(cellData.USD)}`);
+            if (arr.length > 0) val = arr.join(' + ');
+          }
+          cell.value = val;
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.font = { size: 9 };
+          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        row.height = 20;
+        currentRow++;
+      });
+
+      // TOTALES ARS
+      const totArsRow = ws.getRow(currentRow);
+      const labelArs = totArsRow.getCell(1);
+      labelArs.value = 'TOTALES ARS';
+      labelArs.font = { bold: true, size: 10, color: { argb: 'FF065F46' } };
+      labelArs.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+      labelArs.alignment = { horizontal: 'center', vertical: 'middle' };
+      labelArs.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+      sortedProfs.forEach((p, i) => {
+        const cell = totArsRow.getCell(i + 2);
+        const tot = totals[p]?.ARS || 0;
+        cell.value = tot !== 0 ? `$ ${formatMoney(tot)}` : '—';
+        cell.font = { bold: true, size: 9, color: { argb: 'FF065F46' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFDF5' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      });
+      totArsRow.height = 22;
+      currentRow++;
+
+      // TOTALES USD
+      const totUsdRow = ws.getRow(currentRow);
+      const labelUsd = totUsdRow.getCell(1);
+      labelUsd.value = 'TOTALES USD';
+      labelUsd.font = { bold: true, size: 10, color: { argb: 'FF1E40AF' } };
+      labelUsd.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+      labelUsd.alignment = { horizontal: 'center', vertical: 'middle' };
+      labelUsd.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
+
+      sortedProfs.forEach((p, i) => {
+        const cell = totUsdRow.getCell(i + 2);
+        const tot = totals[p]?.USD || 0;
+        cell.value = tot !== 0 ? `USD ${formatMoney(tot)}` : '—';
+        cell.font = { bold: true, size: 9, color: { argb: 'FF1E40AF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
+      });
+      totUsdRow.height = 22;
+
+      ws.getColumn(1).width = 16;
+      sortedProfs.forEach((_, i) => {
+        ws.getColumn(i + 2).width = 22;
+      });
+
+      const buf = await wb.xlsx.writeBuffer();
+      saveAs(new Blob([buf]), `RESUMEN_HONORARIOS_${fileNamePeriod}.xlsx`);
+    } catch (err) {
+      console.error('Error al exportar Excel de honorarios:', err);
+      alert('Error al generar el Excel: ' + err.message);
+    }
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
@@ -565,6 +762,9 @@ export default function LiquidacionView({ history, currentUser, professionals })
                 </button>
                 <button onClick={() => handlePrintAll('receipt')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600 transition-all shadow-sm">
                   <FileText size={14} /> Recibos Todos ({profsWithData.length})
+                </button>
+                <button onClick={handleExportMonthlyHonorariosExcel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold hover:bg-emerald-800 transition-all shadow-sm" title="Descargar planilla Excel con la matriz de honorarios de todos los profesionales por día y totales en ARS / USD">
+                  <FileSpreadsheet size={14} /> Resumen Honorarios (Excel)
                 </button>
               </>
             )}
