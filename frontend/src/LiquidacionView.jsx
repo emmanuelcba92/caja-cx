@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { FileText, Printer, Trash2, MinusCircle, Plus, X, Download, Calendar } from 'lucide-react';
 import { formatMoney } from './CajaView';
-import { isSameProf, getCanonicalProf } from './utils/profUtils';
+import { isSameProf, getCanonicalProf, isIgnoredProf } from './utils/profUtils';
 
 const saveAs = (blob, filename) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); };
 
@@ -76,22 +76,26 @@ export default function LiquidacionView({ history, currentUser, professionals })
     if (professionals && Array.isArray(professionals)) {
       professionals.forEach(p => {
         const name = typeof p === 'string' ? p : p?.nombre;
-        if (name && name.trim()) {
+        if (name && name.trim() && !isIgnoredProf(name)) {
           const canonical = getCanonicalProf(name, professionals);
-          const key = canonical.toLowerCase();
-          if (!profMap.has(key)) {
-            profMap.set(key, canonical);
+          if (canonical && !isIgnoredProf(canonical)) {
+            const key = canonical.toLowerCase();
+            if (!profMap.has(key)) {
+              profMap.set(key, canonical);
+            }
           }
         }
       });
     }
     allEntries.forEach(h => {
       [h.prof_1, h.prof_2, h.prof_3, h.anestesista].forEach(name => {
-        if (name && typeof name === 'string' && name.trim()) {
+        if (name && typeof name === 'string' && name.trim() && !isIgnoredProf(name)) {
           const canonical = getCanonicalProf(name, professionals);
-          const key = canonical.toLowerCase();
-          if (!profMap.has(key)) {
-            profMap.set(key, canonical);
+          if (canonical && !isIgnoredProf(canonical)) {
+            const key = canonical.toLowerCase();
+            if (!profMap.has(key)) {
+              profMap.set(key, canonical);
+            }
           }
         }
       });

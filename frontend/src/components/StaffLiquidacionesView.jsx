@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Briefcase, Award, Printer, Download, FileSpreadsheet } from 'lucide-react';
 import { formatMoney } from '../CajaView';
 import apiService from '../services/apiService';
-import { getCanonicalProf, getShortProfHeader } from '../utils/profUtils';
+import { getCanonicalProf, getShortProfHeader, isIgnoredProf } from '../utils/profUtils';
 
 const saveAs = (blob, filename) => {
   const url = URL.createObjectURL(blob);
@@ -61,8 +61,9 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
     const getDisplayName = (name) => getCanonicalProf(name, professionals);
 
     const processEntry = (date, name, amt, cur, isTransfer) => {
-      if (!name || isNaN(Number(amt)) || Number(amt) <= 0 || isTransfer) return;
+      if (!name || isNaN(Number(amt)) || Number(amt) <= 0 || isTransfer || isIgnoredProf(name)) return;
       const displayProf = getDisplayName(name);
+      if (!displayProf || isIgnoredProf(displayProf)) return;
       activeProfs.add(displayProf);
       dates.add(date);
       if (!matrix[date]) matrix[date] = {};
@@ -92,13 +93,13 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
       }
     });
 
-    const filteredDeds = (deductions || []).filter(d => d.date >= startDateStr && d.date <= endDateStr);
+    const filteredDeds = (deductions || []).filter(d => d.date >= startDateStr && d.date <= endDateStr && !isIgnoredProf(d.profesional));
     filteredDeds.forEach(d => {
       const date = d.date;
       const prof = getDisplayName(d.profesional);
       const amt = Math.abs(Number(d.amount || 0));
       const cur = d.currency || 'ARS';
-      if (!prof || !amt) return;
+      if (!prof || !amt || isIgnoredProf(prof)) return;
       if (!matrix[date]) matrix[date] = {};
       if (!matrix[date][prof]) matrix[date][prof] = { ARS: 0, USD: 0 };
       dates.add(date);
@@ -111,7 +112,11 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
       return { dates: [], profs: [], matrix: {}, totals: {} };
     }
 
-    const sortedProfs = Array.from(activeProfs).sort((a, b) => a.localeCompare(b));
+    const sortedProfs = Array.from(activeProfs).sort((a, b) => {
+      const nameA = shortProfName(a);
+      const nameB = shortProfName(b);
+      return nameA.localeCompare(nameB);
+    });
     const sortedDates = Array.from(dates).sort();
     
     const totals = {};

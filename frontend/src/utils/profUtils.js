@@ -1,7 +1,18 @@
-﻿/**
+﻿import { shortDoctorName } from './doctorName';
+
+/**
  * Utility functions for professional name normalization, fuzzy matching,
  * canonical name resolution and short header formatting.
  */
+
+export const isIgnoredProf = (name) => {
+  if (!name || typeof name !== 'string') return true;
+  const clean = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (!clean) return true;
+  if (clean.includes('tutora') || clean.includes('tutoras')) return true;
+  if (clean === 'ninguno' || clean === 'no aplica' || clean === 'sin profesional' || clean === 'varios') return true;
+  return false;
+};
 
 export const cleanProfText = (name) => {
   if (!name || typeof name !== 'string') return '';
@@ -30,12 +41,15 @@ export const getProfTokens = (name) => {
 /**
  * Checks if two professional name strings refer to the same person.
  * Examples:
- * - "Dra. Venier" and "Dra. Florencia Venier" -> true
- * - "Dra Zalazar" and "Dra. Romina Zalazar" -> true
+ * - "Dra. Venier" and "Dra. Venier Jesica" -> true
+ * - "Dra Zalazar" and "Dra. Zalazar Romina" -> true
+ * - "Dr. Navarro" and "Dr. Navarro José" -> true
  * - "Dr. Paredes" and "Dr. Sergio Paredes" -> true
  */
 export const isSameProf = (nameA, nameB) => {
   if (!nameA || !nameB) return false;
+  if (isIgnoredProf(nameA) || isIgnoredProf(nameB)) return false;
+
   const rawA = cleanProfText(nameA).toLowerCase();
   const rawB = cleanProfText(nameB).toLowerCase();
   if (rawA === rawB) return true;
@@ -50,7 +64,7 @@ export const isSameProf = (nameA, nameB) => {
     return true;
   }
 
-  // Subset match (e.g. ['venier'] is in ['florencia', 'venier'])
+  // Subset match (e.g. ['venier'] is in ['venier', 'jesica'])
   const setA = new Set(tokensA);
   const setB = new Set(tokensB);
 
@@ -62,8 +76,8 @@ export const isSameProf = (nameA, nameB) => {
   }
 
   // Check if they share the main surname when one is a single-word name
-  const lastA = tokensA[tokensA.length - 1];
-  const lastB = tokensB[tokensB.length - 1];
+  const lastA = tokensA[0]; // in COAT format, first significant word is often surname
+  const lastB = tokensB[0];
   if (lastA && lastB && lastA === lastB && (tokensA.length === 1 || tokensB.length === 1)) {
     return true;
   }
@@ -75,7 +89,7 @@ export const isSameProf = (nameA, nameB) => {
  * Resolves a raw name to its canonical version based on the registered professionals list.
  */
 export const getCanonicalProf = (rawName, registeredProfs = []) => {
-  if (!rawName) return '';
+  if (!rawName || isIgnoredProf(rawName)) return '';
   const clean = rawName.replace(/\s*\(\s*Liq\.?\s*Manual\s*\)/gi, '').trim();
   if (registeredProfs && Array.isArray(registeredProfs)) {
     const found = registeredProfs.find(p => {
@@ -90,38 +104,15 @@ export const getCanonicalProf = (rawName, registeredProfs = []) => {
 };
 
 /**
- * Generates a clean short header for column headers (e.g. "DRA. VENIER", "DR. PAREDES").
+ * Generates a clean short header for column headers (e.g. "DRA. VENIER", "DR. NAVARRO", "DR. PAREDES").
  */
 export const getShortProfHeader = (fullName) => {
-  if (!fullName) return '';
-  const rawClean = fullName.replace(/\s*\(\s*Liq\.?\s*Manual\s*\)/gi, '').trim();
-  const rawParts = rawClean.split(/\s+/).filter(Boolean);
-  if (rawParts.length === 0) return '';
-
-  const prefixMap = {
-    'dr': 'DR.',
-    'dr.': 'DR.',
-    'dra': 'DRA.',
-    'dra.': 'DRA.',
-    'lic': 'LIC.',
-    'lic.': 'LIC.',
-    'anestesista': 'ANEST.'
-  };
-
-  const firstLower = rawParts[0].toLowerCase().replace(/\.$/, '');
-  const prefix = prefixMap[rawParts[0].toLowerCase()] || (firstLower === 'dr' ? 'DR.' : firstLower === 'dra' ? 'DRA.' : firstLower === 'lic' ? 'LIC.' : null);
-
-  if (prefix) {
-    if (rawParts.length === 2) {
-      return `${prefix} ${rawParts[1]}`.toUpperCase();
-    }
-    // For full names like "Dra. Florencia Venier", surname is the last part
-    const surname = rawParts[rawParts.length - 1];
-    return `${prefix} ${surname}`.toUpperCase();
+  if (!fullName || isIgnoredProf(fullName)) return '';
+  const clean = fullName.replace(/\s*\(\s*Liq\.?\s*Manual\s*\)/gi, '').trim();
+  
+  const shortName = shortDoctorName(clean);
+  if (shortName) {
+    return shortName.toUpperCase();
   }
-
-  if (rawParts.length >= 2) {
-    return `${rawParts[0]} ${rawParts[1]}`.toUpperCase();
-  }
-  return rawParts[0].toUpperCase();
+  return clean.toUpperCase();
 };
