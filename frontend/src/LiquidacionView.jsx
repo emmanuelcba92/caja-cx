@@ -17,11 +17,21 @@ export default function LiquidacionView({ history, currentUser, professionals })
   const today = new Date().toISOString().split('T')[0];
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(today);
   const [selectedMonth, setSelectedMonth] = useState(String(currentMonth).padStart(2, '0'));
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
-  const [dateMode, setDateMode] = useState('range'); // 'range' or 'month'
+  const [dateMode, setDateMode] = useState('day'); // 'day' or 'month'
+
+  const { startDate, endDate } = useMemo(() => {
+    if (dateMode === 'month') {
+      const monthStart = `${selectedYear}-${selectedMonth}-01`;
+      const lastDay = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).getDate();
+      const monthEnd = `${selectedYear}-${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+      return { startDate: monthStart, endDate: monthEnd };
+    }
+    return { startDate: selectedDate, endDate: selectedDate };
+  }, [dateMode, selectedDate, selectedMonth, selectedYear]);
+
   const [selectedProf, setSelectedProf] = useState('');
   const [selectedModel, setSelectedModel] = useState('1');
   const [deductions, setDeductions] = useState(() => loadJSON(DED_KEY, []));
@@ -512,28 +522,26 @@ export default function LiquidacionView({ history, currentUser, professionals })
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs font-bold text-slate-500 uppercase">Modo:</label>
-            <select className="px-2 py-1 rounded-lg border border-slate-300 text-sm outline-none" value={dateMode} onChange={e => setDateMode(e.target.value)}>
-              <option value="range">Rango fechas</option>
-              <option value="month">Mes / Año</option>
+            <select className="px-2 py-1 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 bg-white outline-none" value={dateMode} onChange={e => setDateMode(e.target.value)}>
+              <option value="day">Por Día</option>
+              <option value="month">Por Mes</option>
             </select>
           </div>
           {dateMode === 'month' ? (
             <div className="flex items-center gap-2">
               <label className="text-xs font-bold text-slate-500 uppercase">Mes:</label>
-              <select className="px-2 py-1 rounded-lg border border-slate-300 text-sm outline-none" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+              <select className="px-2 py-1 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 bg-white outline-none" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
                 {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={String(m).padStart(2,'0')}>{String(m).padStart(2,'0')}</option>)}
               </select>
               <label className="text-xs font-bold text-slate-500 uppercase">Año:</label>
-              <select className="px-2 py-1 rounded-lg border border-slate-300 text-sm outline-none" value={selectedYear} onChange={e => setSelectedYear(e.target.value)}>
+              <select className="px-2 py-1 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 bg-white outline-none" value={selectedYear} onChange={e => setSelectedYear(e.target.value)}>
                 {[2024,2025,2026,2027,2028].map(y => <option key={y} value={String(y)}>{y}</option>)}
               </select>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Desde:</label>
-              <input type="date" className="px-2 py-1 rounded-lg border border-slate-300 text-sm outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
-              <label className="text-xs font-bold text-slate-500 uppercase">Hasta:</label>
-              <input type="date" className="px-2 py-1 rounded-lg border border-slate-300 text-sm outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+              <label className="text-xs font-bold text-slate-500 uppercase">Día:</label>
+              <input type="date" className="px-2 py-1 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 bg-white outline-none" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
             </div>
           )}
 
