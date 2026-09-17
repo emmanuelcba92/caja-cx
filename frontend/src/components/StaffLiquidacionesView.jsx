@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Briefcase, Award, Printer, Download, FileSpreadsheet } from 'lucide-react';
 import { formatMoney } from '../CajaView';
 import apiService from '../services/apiService';
+import { getCanonicalProf, getShortProfHeader } from '../utils/profUtils';
 
 const saveAs = (blob, filename) => {
   const url = URL.createObjectURL(blob);
@@ -42,19 +43,7 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
     } catch {}
   }, []);
 
-  const normProf = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
-  const cleanName = (name) => name?.replace(/\s*\(\s*Liq\.?\s*Manual\s*\)/gi, '').trim() || '';
-
-  const shortProfName = (fullName) => {
-    if (!fullName) return '';
-    const clean = cleanName(fullName);
-    const parts = clean.trim().split(/\s+/);
-    const prefixes = ['dr', 'dra', 'lic', 'dr.', 'dra.', 'lic.', 'anestesista'];
-    if (parts.length >= 2 && prefixes.includes(parts[0].toLowerCase())) {
-      return `${parts[0]} ${parts[1]}`.toUpperCase();
-    }
-    return parts.slice(0, 2).join(' ').toUpperCase();
-  };
+  const shortProfName = (fullName) => getShortProfHeader(fullName);
 
   const matrixData = useMemo(() => {
     const monthStr = String(selectedMonth).padStart(2, '0');
@@ -69,16 +58,7 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
     const activeProfs = new Set();
     const dates = new Set();
 
-    const getDisplayName = (name) => {
-      if (!name) return '';
-      const clean = cleanName(name);
-      const key = normProf(clean);
-      if (professionals && Array.isArray(professionals)) {
-        const found = professionals.find(p => normProf(typeof p === 'string' ? p : p?.nombre) === key);
-        if (found) return typeof found === 'string' ? found : found.nombre;
-      }
-      return clean;
-    };
+    const getDisplayName = (name) => getCanonicalProf(name, professionals);
 
     const processEntry = (date, name, amt, cur, isTransfer) => {
       if (!name || isNaN(Number(amt)) || Number(amt) <= 0 || isTransfer) return;

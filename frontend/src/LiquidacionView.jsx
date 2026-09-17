@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { FileText, Printer, Trash2, MinusCircle, Plus, X, Download, Calendar } from 'lucide-react';
 import { formatMoney } from './CajaView';
+import { isSameProf, getCanonicalProf } from './utils/profUtils';
 
 const saveAs = (blob, filename) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); };
 
@@ -35,16 +36,13 @@ export default function LiquidacionView({ history, currentUser, professionals })
   useEffect(() => { saveJSON(DED_KEY, deductions); }, [deductions]);
   useEffect(() => { saveJSON(MANUAL_KEY, manualLiqs); }, [manualLiqs]);
 
-  const normProf = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
-
   const isModel2Prof = (profName) => {
     if (!profName) return false;
-    const pKey = normProf(profName);
     if (professionals && Array.isArray(professionals)) {
       const found = professionals.find(p => {
         if (!p) return false;
-        const pNom = normProf(typeof p === 'string' ? p : p?.nombre);
-        return pNom === pKey || (pNom && (pKey.includes(pNom) || pNom.includes(pKey)));
+        const pNom = typeof p === 'string' ? p : p?.nombre;
+        return isSameProf(pNom, profName);
       });
       if (found && typeof found === 'object') {
         const esp = ((found.especialidad || '') + ' ' + (found.categoria || '')).toLowerCase();
@@ -53,8 +51,9 @@ export default function LiquidacionView({ history, currentUser, professionals })
         }
       }
     }
+    const clean = profName.toLowerCase();
     if (/^(lic|anest|fono|estet)/i.test(profName.trim())) return true;
-    if (pKey.includes('anest') || pKey.includes('fono') || pKey.includes('estet') || pKey.includes('estét') || pKey.includes('lic.')) return true;
+    if (clean.includes('anest') || clean.includes('fono') || clean.includes('estet') || clean.includes('estét') || clean.includes('lic.')) return true;
     return false;
   };
 
@@ -78,9 +77,10 @@ export default function LiquidacionView({ history, currentUser, professionals })
       professionals.forEach(p => {
         const name = typeof p === 'string' ? p : p?.nombre;
         if (name && name.trim()) {
-          const key = normProf(name);
-          if (key && !profMap.has(key)) {
-            profMap.set(key, name.trim());
+          const canonical = getCanonicalProf(name, professionals);
+          const key = canonical.toLowerCase();
+          if (!profMap.has(key)) {
+            profMap.set(key, canonical);
           }
         }
       });
@@ -88,9 +88,10 @@ export default function LiquidacionView({ history, currentUser, professionals })
     allEntries.forEach(h => {
       [h.prof_1, h.prof_2, h.prof_3, h.anestesista].forEach(name => {
         if (name && typeof name === 'string' && name.trim()) {
-          const key = normProf(name);
-          if (key && !profMap.has(key)) {
-            profMap.set(key, name.trim());
+          const canonical = getCanonicalProf(name, professionals);
+          const key = canonical.toLowerCase();
+          if (!profMap.has(key)) {
+            profMap.set(key, canonical);
           }
         }
       });
@@ -118,22 +119,23 @@ export default function LiquidacionView({ history, currentUser, professionals })
 
   const profsWithData = useMemo(() => {
     return availableProfs.filter(prof => {
-      const pKey = normProf(prof);
       return dateEntries.some(h => {
-        return normProf(h.prof_1) === pKey ||
-               normProf(h.prof_2) === pKey ||
-               normProf(h.prof_3) === pKey ||
-               normProf(h.anestesista) === pKey;
+        return isSameProf(h.prof_1, prof) ||
+               isSameProf(h.prof_2, prof) ||
+               isSameProf(h.prof_3, prof) ||
+               isSameProf(h.anestesista, prof);
       });
     });
   }, [availableProfs, dateEntries]);
 
   const filtered = useMemo(() => {
     if (!selectedProf) return [];
-    const p = normProf(selectedProf);
     return allEntries.filter(h => {
       if (h.fecha < startDate || h.fecha > endDate) return false;
-      return normProf(h.prof_1) === p || normProf(h.prof_2) === p || normProf(h.prof_3) === p || normProf(h.anestesista) === p;
+      return isSameProf(h.prof_1, selectedProf) ||
+             isSameProf(h.prof_2, selectedProf) ||
+             isSameProf(h.prof_3, selectedProf) ||
+             isSameProf(h.anestesista, selectedProf);
     });
   }, [allEntries, selectedProf, startDate, endDate]);
 
@@ -145,23 +147,21 @@ export default function LiquidacionView({ history, currentUser, professionals })
   }, [history, manualForm.date]);
 
   const profDeductions = useMemo(() => {
-    const p = normProf(selectedProf);
-    return deductions.filter(d => normProf(d.profesional) === p && d.date >= startDate && d.date <= endDate)
+    return deductions.filter(d => isSameProf(d.profesional, selectedProf) && d.date >= startDate && d.date <= endDate)
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [deductions, selectedProf, startDate, endDate]);
 
   const liquidationData = useMemo(() => {
     let totalPesos = 0, totalDolares = 0;
-    const p = normProf(selectedProf);
     const rows = filtered.map(h => {
       let liqAmount = 0, liqCurrency = 'ARS';
       let cobroPesos = parseFloat(h.pesos) || 0;
       let cobroDolares = parseFloat(h.dolares) || 0;
 
-      if (normProf(h.prof_1) === p) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
-      else if (normProf(h.prof_2) === p) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
-      else if (normProf(h.prof_3) === p) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
-      else if (normProf(h.anestesista) === p) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
+      if (isSameProf(h.prof_1, selectedProf)) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
+      else if (isSameProf(h.prof_2, selectedProf)) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
+      else if (isSameProf(h.prof_3, selectedProf)) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
+      else if (isSameProf(h.anestesista, selectedProf)) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
 
       const isTransfer = h.isTransfer || false;
       const isManual = h.isManualLiquidation || h.paciente?.toLowerCase().includes('(liq. manual)');
@@ -350,22 +350,21 @@ export default function LiquidacionView({ history, currentUser, professionals })
   };
 
   const calcProfLiq = (entries, profName) => {
-    const p = normProf(profName);
     let totalPesos = 0, totalDolares = 0;
     const rows = entries.map(h => {
       let liqAmount = 0, liqCurrency = 'ARS';
       const cobroPesos = parseFloat(h.pesos) || 0;
       const cobroDolares = parseFloat(h.dolares) || 0;
-      if (normProf(h.prof_1) === p) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
-      else if (normProf(h.prof_2) === p) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
-      else if (normProf(h.prof_3) === p) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
-      else if (normProf(h.anestesista) === p) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
+      if (isSameProf(h.prof_1, profName)) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
+      else if (isSameProf(h.prof_2, profName)) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
+      else if (isSameProf(h.prof_3, profName)) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
+      else if (isSameProf(h.anestesista, profName)) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
       const isTransfer = h.isTransfer || false;
       const isManual = h.isManualLiquidation || h.paciente?.toLowerCase().includes('(liq. manual)');
       if (!isTransfer) { if (liqCurrency === 'USD') totalDolares += liqAmount; else totalPesos += liqAmount; }
       return { ...h, liqAmount, liqCurrency, cobroPesos, cobroDolares, isTransfer, isManual, displayName: isManual ? cleanName(h.paciente) : h.paciente };
     }).filter(r => r.liqAmount > 0 || r.isManual);
-    const profDeds = deductions.filter(d => normProf(d.profesional) === p && d.date >= startDate && d.date <= endDate);
+    const profDeds = deductions.filter(d => isSameProf(d.profesional, profName) && d.date >= startDate && d.date <= endDate);
     const dedPesos = profDeds.filter(d => d.currency !== 'USD').reduce((a, d) => a + Math.abs(d.amount || 0), 0);
     const dedUSD = profDeds.filter(d => d.currency === 'USD').reduce((a, d) => a + Math.abs(d.amount || 0), 0);
     return { rows, totalPesos: totalPesos - dedPesos, totalDolares: totalDolares - dedUSD, deductions: profDeds };
