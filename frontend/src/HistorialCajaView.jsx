@@ -6,6 +6,8 @@ import { saveAs } from 'file-saver';
 import { SEED_DAILY_COMMENTS } from './data/seedData';
 import apiService from './services/apiService';
 
+export const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
 export const exportCajaDayToExcel = async (selectedDate, dateEntries, dailyComment = '') => {
   if (!dateEntries || dateEntries.length === 0) {
     alert("No hay datos para exportar en esta fecha");
