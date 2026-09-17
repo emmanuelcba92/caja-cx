@@ -35,6 +35,25 @@ export default function LiquidacionView({ history, currentUser, professionals })
   useEffect(() => { saveJSON(DED_KEY, deductions); }, [deductions]);
   useEffect(() => { saveJSON(MANUAL_KEY, manualLiqs); }, [manualLiqs]);
 
+  const normProf = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
+
+  const isModel2Prof = (profName) => {
+    if (!profName) return false;
+    const pKey = normProf(profName);
+    if (professionals && Array.isArray(professionals)) {
+      const found = professionals.find(p => normProf(typeof p === 'string' ? p : p?.nombre) === pKey);
+      if (found && typeof found === 'object') {
+        const esp = (found.especialidad || '').toLowerCase();
+        if (esp.includes('anest') || esp.includes('fono') || esp.includes('estet') || esp.includes('estét')) {
+          return true;
+        }
+      }
+    }
+    if (/^(lic|anest|fono|estet)/i.test(profName.trim())) return true;
+    if (pKey.includes('anestesista') || pKey.includes('fonoaudiol') || pKey.includes('estetica') || pKey.includes('estética')) return true;
+    return false;
+  };
+
   useEffect(() => {
     if (showManualModal && selectedProf) {
       setManualForm(prev => ({ ...prev, profs: [{ prof: selectedProf, amount: '' }] }));
@@ -42,19 +61,10 @@ export default function LiquidacionView({ history, currentUser, professionals })
   }, [showManualModal, selectedProf]);
 
   useEffect(() => {
-    if (selectedProf && professionals?.length) {
-      const profData = professionals.find(p => 
-        selectedProf.includes(p.nombre) || p.nombre === selectedProf
-      );
-      if (profData?.especialidad === 'Anestesista' || profData?.especialidad === 'Fonoaudióloga' || /^lic\.?\s/i.test(selectedProf.trim())) {
-        setSelectedModel('2');
-      } else {
-        setSelectedModel('1');
-      }
+    if (selectedProf) {
+      setSelectedModel(isModel2Prof(selectedProf) ? '2' : '1');
     }
   }, [selectedProf, professionals]);
-
-  const normProf = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
 
   const allEntries = useMemo(() => [...history, ...manualLiqs], [history, manualLiqs]);
 
@@ -190,6 +200,11 @@ export default function LiquidacionView({ history, currentUser, professionals })
     setDeductions(prev => prev.filter(d => d.id !== id));
   };
 
+  const removeManualLiquidation = (id) => {
+    if (!window.confirm('¿Eliminar esta liquidación manual?')) return;
+    setManualLiqs(prev => prev.filter(m => m.id !== id));
+  };
+
   const addManualProfRow = () => setManualForm(prev => ({ ...prev, profs: [...prev.profs, { prof: '', amount: '' }] }));
   const removeManualProfRow = (idx) => { if (manualForm.profs.length <= 1) return; setManualForm(prev => ({ ...prev, profs: prev.profs.filter((_, i) => i !== idx) })); };
   const updateManualProfRow = (idx, field, val) => setManualForm(prev => { const p = [...prev.profs]; p[idx] = { ...p[idx], [field]: val }; return { ...prev, profs: p }; });
@@ -223,6 +238,7 @@ export default function LiquidacionView({ history, currentUser, professionals })
   };
 
   const handlePrintDetail = () => {
+    const isM2 = selectedModel === '2';
     const rows = liquidationData.rows.map(r => {
       const isT = r.isTransfer;
       const isM = r.isManual;
@@ -233,13 +249,14 @@ export default function LiquidacionView({ history, currentUser, professionals })
           <div style="font-weight:700">${r.displayName || '-'}</div>
           <div style="font-size:9px;color:#666">${r.dni || ''} ${r.dni && r.obra_social ? ' - ' : ''} ${r.obra_social || ''}${isT ? ' <span style="color:#d97706;font-weight:700">TRANSFERENCIA</span>' : ''}${isM ? ' <span style="color:#059669;font-weight:700">MANUAL</span>' : ''}</div>
         </td>
-        <td style="text-align:right">${r.cobroPesos > 0 ? '$ ' + formatMoney(r.cobroPesos) : '$0,00'}</td>
-        <td style="text-align:right">${r.cobroDolares > 0 ? 'USD ' + formatMoney(r.cobroDolares) : 'USD 0,00'}</td>
+        ${!isM2 ? `<td style="text-align:right">${r.cobroPesos > 0 ? '$ ' + formatMoney(r.cobroPesos) : '$0,00'}</td>
+        <td style="text-align:right">${r.cobroDolares > 0 ? 'USD ' + formatMoney(r.cobroDolares) : 'USD 0,00'}</td>` : ''}
         <td style="text-align:right;font-weight:700;${isT ? 'color:#d97706;text-decoration:line-through' : isM ? 'color:#059669' : ''}">${r.liqCurrency === 'USD' ? 'USD ' + formatMoney(r.liqAmount) : '$ ' + formatMoney(r.liqAmount)}</td>
       </tr>`;
     }).join('');
 
-    const dedRows = profDeductions.map(d => `<tr style="background:#fef2f2"><td>${formatDate(d.date)}</td><td style="font-style:italic;color:#991b1b">${d.desc}</td><td colspan="2"></td><td style="text-align:right;font-weight:700;color:#dc2626">-${d.currency === 'USD' ? 'USD ' : '$ '}${formatMoney(d.amount)}</td></tr>`).join('');
+    const dedRows = profDeductions.map(d => `<tr style="background:#fef2f2"><td>${formatDate(d.date)}</td><td style="font-style:italic;color:#991b1b">${d.desc}</td>${!isM2 ? '<td colspan="2"></td>' : ''}<td style="text-align:right;font-weight:700;color:#dc2626">-${d.currency === 'USD' ? 'USD ' : '$ '}${formatMoney(d.amount)}</td></tr>`).join('');
+    const colSpanTotal = isM2 ? 2 : 4;
 
     const printWin = window.open('', '_blank', 'height=800,width=800');
     if (!printWin) return;
@@ -268,9 +285,9 @@ export default function LiquidacionView({ history, currentUser, professionals })
         <div style="text-align:right"><h1>Liquidación: ${selectedProf}</h1><p>${formatDate(startDate)} - ${formatDate(endDate)}</p></div>
       </div>
       <table>
-        <thead><tr><th>Fecha</th><th>Paciente</th><th>Cobro $</th><th>Cobro USD</th><th style="text-align:right">Liquidación</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Paciente</th>${!isM2 ? '<th>Cobro $</th><th>Cobro USD</th>' : ''}<th style="text-align:right">Liquidación</th></tr></thead>
         <tbody>${rows}${dedRows}</tbody>
-        <tfoot><tr class="total-row"><td colspan="4" style="text-align:right;border-color:#fff">TOTAL FINAL</td><td style="text-align:right;border-color:#fff;font-size:12pt">${finalPesos > 0 || finalDolares === 0 ? '$ ' + formatMoney(finalPesos > 0 ? finalPesos : 0) : ''}${finalDolares > 0 ? (finalPesos > 0 ? '<br>' : '') + 'USD ' + formatMoney(finalDolares) : ''}</td></tr></tfoot>
+        <tfoot><tr class="total-row"><td colspan="${colSpanTotal}" style="text-align:right;border-color:#fff">TOTAL FINAL</td><td style="text-align:right;border-color:#fff;font-size:12pt">${finalPesos > 0 || finalDolares === 0 ? '$ ' + formatMoney(finalPesos > 0 ? finalPesos : 0) : ''}${finalDolares > 0 ? (finalPesos > 0 ? '<br>' : '') + 'USD ' + formatMoney(finalDolares) : ''}</td></tr></tfoot>
       </table>
     </div></body></html>`);
     printWin.document.close();
@@ -351,6 +368,7 @@ export default function LiquidacionView({ history, currentUser, professionals })
   };
 
   const buildDetailHTML = (profName, data) => {
+    const isM2 = isModel2Prof(profName);
     const rows = data.rows.map(r => {
       const isT = r.isTransfer;
       const isM = r.isManual;
@@ -358,16 +376,17 @@ export default function LiquidacionView({ history, currentUser, professionals })
       return `<tr${bgColor ? ` style="background:${bgColor}"` : ''}>
         <td>${r.fecha ? r.fecha.split('-').reverse().join('/') : '-'}</td>
         <td><div style="font-weight:700">${r.displayName || '-'}</div><div style="font-size:9px;color:#666">${r.dni || ''} ${r.dni && r.obra_social ? ' - ' : ''} ${r.obra_social || ''}${isT ? ' <span style="color:#d97706;font-weight:700">TRANSFERENCIA</span>' : ''}${isM ? ' <span style="color:#059669;font-weight:700">MANUAL</span>' : ''}</div></td>
-        <td style="text-align:right">${r.cobroPesos > 0 ? '$ ' + formatMoney(r.cobroPesos) : '$0,00'}</td>
-        <td style="text-align:right">${r.cobroDolares > 0 ? 'USD ' + formatMoney(r.cobroDolares) : 'USD 0,00'}</td>
+        ${!isM2 ? `<td style="text-align:right">${r.cobroPesos > 0 ? '$ ' + formatMoney(r.cobroPesos) : '$0,00'}</td>
+        <td style="text-align:right">${r.cobroDolares > 0 ? 'USD ' + formatMoney(r.cobroDolares) : 'USD 0,00'}</td>` : ''}
         <td style="text-align:right;font-weight:700;${isT ? 'color:#d97706;text-decoration:line-through' : isM ? 'color:#059669' : ''}">${r.liqCurrency === 'USD' ? 'USD ' + formatMoney(r.liqAmount) : '$ ' + formatMoney(r.liqAmount)}</td>
       </tr>`;
     }).join('');
-    const dedRows = data.deductions.map(d => `<tr style="background:#fef2f2"><td>${formatDate(d.date)}</td><td style="font-style:italic;color:#991b1b">${d.desc}</td><td colspan="2"></td><td style="text-align:right;font-weight:700;color:#dc2626">-${d.currency === 'USD' ? 'USD ' : '$ '}${formatMoney(d.amount)}</td></tr>`).join('');
+    const dedRows = data.deductions.map(d => `<tr style="background:#fef2f2"><td>${formatDate(d.date)}</td><td style="font-style:italic;color:#991b1b">${d.desc}</td>${!isM2 ? '<td colspan="2"></td>' : ''}<td style="text-align:right;font-weight:700;color:#dc2626">-${d.currency === 'USD' ? 'USD ' : '$ '}${formatMoney(d.amount)}</td></tr>`).join('');
+    const colSpanTotal = isM2 ? 2 : 4;
     return `<div class="page"><div class="header"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'"><div style="text-align:right"><h1>Liquidación: ${profName}</h1><p>${formatDate(startDate)} - ${formatDate(endDate)}</p></div></div>
-      <table><thead><tr><th>Fecha</th><th>Paciente</th><th>Cobro $</th><th>Cobro USD</th><th style="text-align:right">Liquidación</th></tr></thead>
+      <table><thead><tr><th>Fecha</th><th>Paciente</th>${!isM2 ? '<th>Cobro $</th><th>Cobro USD</th>' : ''}<th style="text-align:right">Liquidación</th></tr></thead>
       <tbody>${rows}${dedRows}</tbody>
-      <tfoot><tr class="total-row"><td colspan="4" style="text-align:right;border-color:#fff">TOTAL FINAL</td><td style="text-align:right;border-color:#fff;font-size:12pt">${data.totalPesos > 0 || data.totalDolares === 0 ? '$ ' + formatMoney(data.totalPesos > 0 ? data.totalPesos : 0) : ''}${data.totalDolares > 0 ? (data.totalPesos > 0 ? '<br>' : '') + 'USD ' + formatMoney(data.totalDolares) : ''}</td></tr></tfoot></table></div>`;
+      <tfoot><tr class="total-row"><td colspan="${colSpanTotal}" style="text-align:right;border-color:#fff">TOTAL FINAL</td><td style="text-align:right;border-color:#fff;font-size:12pt">${data.totalPesos > 0 || data.totalDolares === 0 ? '$ ' + formatMoney(data.totalPesos > 0 ? data.totalPesos : 0) : ''}${data.totalDolares > 0 ? (data.totalPesos > 0 ? '<br>' : '') + 'USD ' + formatMoney(data.totalDolares) : ''}</td></tr></tfoot></table></div>`;
   };
 
   const buildReceiptHTML = (profName, data) => {
@@ -429,25 +448,48 @@ export default function LiquidacionView({ history, currentUser, professionals })
   };
 
   const handleExportExcel = async () => {
-    if (!selectedProf || liquidationData.rows.length === 0) return alert("No hay datos para exportar");
+    if (!selectedProf || (liquidationData.rows.length === 0 && profDeductions.length === 0)) return alert("No hay datos para exportar");
     try {
+      const isM2 = selectedModel === '2';
       const ExcelJS = (await import('exceljs')).default;
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('Liquidación', { pageSetup: { orientation: 'landscape', fitToPage: true } });
       const headerStyle = { font: { bold: true, size: 10 }, alignment: { horizontal: 'center' }, border: { bottom: { style: 'thin' } } };
-      ws.getCell('A1').value = `Liquidación - ${selectedProf}`;
+      ws.getCell('A1').value = `Liquidación - ${selectedProf} ${isM2 ? '(Modelo 2 - Sin cobro paciente)' : '(Modelo 1)'}`;
       ws.getCell('A1').font = { bold: true, size: 14 };
       ws.getCell('A2').value = `Período: ${startDate} al ${endDate}`;
-      ws.getRow(4).values = ['Fecha', 'Paciente', 'Cobro ARS', 'Cobro USD', 'Liquidación'];
+      if (isM2) {
+        ws.getRow(4).values = ['Fecha', 'Paciente', 'Liquidación'];
+        ws.columns = [{ width: 14 }, { width: 32 }, { width: 20 }];
+      } else {
+        ws.getRow(4).values = ['Fecha', 'Paciente', 'Cobro ARS', 'Cobro USD', 'Liquidación'];
+        ws.columns = [{ width: 14 }, { width: 26 }, { width: 14 }, { width: 14 }, { width: 18 }];
+      }
       ws.getRow(4).eachCell(c => { c.font = headerStyle.font; c.alignment = headerStyle.alignment; c.border = headerStyle.border; });
       let ri = 5;
       liquidationData.rows.forEach(row => {
-        ws.getRow(ri).values = [row.fecha, row.paciente, row.cobroPesos, row.cobroDolares, `${row.liqCurrency === 'USD' ? 'USD' : '$'}${formatMoney(row.liqAmount)}`];
+        if (isM2) {
+          ws.getRow(ri).values = [row.fecha, row.displayName || row.paciente, `${row.liqCurrency === 'USD' ? 'USD ' : '$ '}${formatMoney(row.liqAmount)}`];
+        } else {
+          ws.getRow(ri).values = [row.fecha, row.displayName || row.paciente, row.cobroPesos, row.cobroDolares, `${row.liqCurrency === 'USD' ? 'USD ' : '$ '}${formatMoney(row.liqAmount)}`];
+        }
         ri++;
       });
-      ws.getRow(ri).values = ['', 'TOTAL', '', '', `${'$'}${formatMoney(liquidationData.totalPesos)} / USD ${formatMoney(liquidationData.totalDolares)}`];
+      profDeductions.forEach(d => {
+        if (isM2) {
+          ws.getRow(ri).values = [d.date, `Deducción: ${d.desc}`, `-${d.currency === 'USD' ? 'USD ' : '$ '}${formatMoney(d.amount)}`];
+        } else {
+          ws.getRow(ri).values = [d.date, `Deducción: ${d.desc}`, '', '', `-${d.currency === 'USD' ? 'USD ' : '$ '}${formatMoney(d.amount)}`];
+        }
+        ws.getRow(ri).eachCell(c => { c.font = { italic: true, color: { argb: 'FF991B1B' } }; });
+        ri++;
+      });
+      if (isM2) {
+        ws.getRow(ri).values = ['', 'TOTAL FINAL', `${'$ '}${formatMoney(finalPesos > 0 ? finalPesos : 0)} / USD ${formatMoney(finalDolares > 0 ? finalDolares : 0)}`];
+      } else {
+        ws.getRow(ri).values = ['', 'TOTAL FINAL', '', '', `${'$ '}${formatMoney(finalPesos > 0 ? finalPesos : 0)} / USD ${formatMoney(finalDolares > 0 ? finalDolares : 0)}`];
+      }
       ws.getRow(ri).eachCell(c => { c.font = { bold: true }; });
-      ws.columns = [{ width: 14 }, { width: 24 }, { width: 14 }, { width: 14 }, { width: 18 }];
       const buf = await wb.xlsx.writeBuffer();
       saveAs(new Blob([buf]), `LIQUIDACION_${selectedProf}_${startDate}_${endDate}.xlsx`);
     } catch(e) { alert("Error al exportar: " + e.message); }
@@ -510,34 +552,66 @@ export default function LiquidacionView({ history, currentUser, professionals })
         </div>
 
         {/* Action Buttons Toolbar */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200 flex-wrap">
-          {dateEntries.length > 0 && (
-            <>
-              <button onClick={() => handlePrintAll('detail')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-all shadow-sm">
-                <Printer size={14} /> Imprimir Todas ({profsWithData.length})
-              </button>
-              <button onClick={() => handlePrintAll('receipt')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600 transition-all shadow-sm">
-                <FileText size={14} /> Recibos Todos ({profsWithData.length})
-              </button>
-            </>
-          )}
+        <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-slate-200 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {dateEntries.length > 0 && (
+              <>
+                <button onClick={() => handlePrintAll('detail')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-all shadow-sm">
+                  <Printer size={14} /> Imprimir Todas ({profsWithData.length})
+                </button>
+                <button onClick={() => handlePrintAll('receipt')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600 transition-all shadow-sm">
+                  <FileText size={14} /> Recibos Todos ({profsWithData.length})
+                </button>
+              </>
+            )}
 
-          {selectedProf && liquidationData.rows.length > 0 && (
-            <>
-              <div className="h-5 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div>
-              <button onClick={handlePrintDetail} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-sm">
-                <Printer size={14} /> Imprimir Detalle
+            {selectedProf && (liquidationData.rows.length > 0 || profDeductions.length > 0) && (
+              <>
+                <div className="h-5 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div>
+                <button onClick={handlePrintDetail} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-sm">
+                  <Printer size={14} /> Imprimir Detalle
+                </button>
+                <button onClick={handlePrintReceipt} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-all shadow-sm">
+                  <FileText size={14} /> Imprimir Recibo
+                </button>
+                <button onClick={handleExportExcel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all shadow-sm">
+                  <Download size={14} /> Exportar Excel
+                </button>
+              </>
+            )}
+
+            <button onClick={() => setShowManualModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 transition-all shadow-sm">
+              <Plus size={14} /> Cargar Liq. Manual
+            </button>
+          </div>
+
+          {/* Model 1 vs Model 2 Selector */}
+          {selectedProf && (
+            <div className="flex items-center gap-1 bg-slate-200/80 p-1 rounded-xl">
+              <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Tipo Liq:</span>
+              <button
+                onClick={() => setSelectedModel('1')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  selectedModel === '1'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Muestra cuánto abonó el paciente en ARS/USD y la liquidación del profesional"
+              >
+                Modelo 1 (Con Cobro Paciente)
               </button>
-              <button onClick={handlePrintReceipt} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-all shadow-sm">
-                <FileText size={14} /> Imprimir Recibo
+              <button
+                onClick={() => setSelectedModel('2')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  selectedModel === '2'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Sin cobro paciente: solo muestra honorarios (Estética, Anestesia, Fonoaudiología)"
+              >
+                Modelo 2 (Solo Honorarios)
               </button>
-              <button onClick={handleExportExcel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all shadow-sm">
-                <Download size={14} /> Exportar Excel
-              </button>
-              <button onClick={() => setShowManualModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 transition-all shadow-sm">
-                <Plus size={14} /> Agregar Manual
-              </button>
-            </>
+            </div>
           )}
         </div>
 
@@ -575,110 +649,142 @@ export default function LiquidacionView({ history, currentUser, professionals })
       <div className="p-6 space-y-6">
         {selectedProf ? (
           <>
-            {liquidationData.rows.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 text-sm">No se encontraron registros para {selectedProf} en el período seleccionado.</div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
-                    <p className="text-[10px] font-bold text-emerald-600 uppercase">Total Liquidación ARS</p>
-                    <p className="text-2xl font-bold text-emerald-700">$ {formatMoney(liquidationData.totalPesos)}</p>
-                  </div>
-                  {liquidationData.totalDolares > 0 && (
-                    <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                      <p className="text-[10px] font-bold text-blue-600 uppercase">Total Liquidación USD</p>
-                      <p className="text-2xl font-bold text-blue-700">U$D {formatMoney(liquidationData.totalDolares)}</p>
-                    </div>
-                  )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                <p className="text-[10px] font-bold text-emerald-600 uppercase">Total Liquidación ARS</p>
+                <p className="text-2xl font-bold text-emerald-700">$ {formatMoney(liquidationData.totalPesos)}</p>
+              </div>
+              {liquidationData.totalDolares > 0 && (
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                  <p className="text-[10px] font-bold text-blue-600 uppercase">Total Liquidación USD</p>
+                  <p className="text-2xl font-bold text-blue-700">U$D {formatMoney(liquidationData.totalDolares)}</p>
                 </div>
+              )}
+            </div>
 
-                <div className="space-y-3">
-                  {liquidationData.rows.map(h => (
-                    <div key={h.key} className={`border rounded-xl p-4 hover:shadow-sm transition-all ${h.isTransfer ? 'bg-amber-50 border-amber-200' : h.isManual ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className="text-xs font-bold text-slate-400">{h.fecha ? h.fecha.split('-').reverse().join('/') : '-'}</span>
-                            <span className="text-xs text-slate-300">|</span>
-                            <span className="text-xs text-slate-500">{h.obra_social || '-'}</span>
-                            {h.isTransfer && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">TRANSFERENCIA</span>}
-                            {h.isManual && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">MANUAL</span>}
-                          </div>
-                          <p className="font-bold text-slate-800 text-sm">{h.displayName || '-'}</p>
-                          {h.dni && <p className="text-xs text-slate-500 mt-0.5">DNI: {h.dni}</p>}
+            {selectedModel === '2' && (
+              <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl px-4 py-2 flex items-center justify-between text-xs text-emerald-800">
+                <span className="font-semibold">Modelo 2 activo: Sin cobro al paciente (apropiado para Estética, Anestesia y Fonoaudiología).</span>
+                <span className="text-[11px] text-emerald-600">Solo muestra honorarios</span>
+              </div>
+            )}
+
+            {liquidationData.rows.length === 0 ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">
+                <p className="text-sm font-semibold text-slate-600">No hay cirugías automáticas en caja para {selectedProf} en este período.</p>
+                <p className="text-xs text-slate-400 mt-1">Podés cargar liquidaciones manuales divididas o agregar deducciones a continuación.</p>
+                <button onClick={() => setShowManualModal(true)} className="mt-3 px-4 py-2 bg-teal-600 text-white rounded-lg text-xs font-bold hover:bg-teal-700 transition-all inline-flex items-center gap-1.5 shadow-sm">
+                  <Plus size={14} /> Cargar Liquidación Manual
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {liquidationData.rows.map(h => (
+                  <div key={h.key} className={`border rounded-xl p-4 hover:shadow-sm transition-all ${h.isTransfer ? 'bg-amber-50 border-amber-200' : h.isManual ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="text-xs font-bold text-slate-400">{h.fecha ? h.fecha.split('-').reverse().join('/') : '-'}</span>
+                          <span className="text-xs text-slate-300">|</span>
+                          <span className="text-xs text-slate-500">{h.obra_social || '-'}</span>
+                          {h.isTransfer && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">TRANSFERENCIA</span>}
+                          {h.isManual && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">MANUAL</span>}
                         </div>
-                        <div className="text-right shrink-0">
-                          {h.cobroPesos > 0 && <p className="text-xs text-slate-600">$ {formatMoney(h.cobroPesos)}</p>}
-                          {h.cobroDolares > 0 && <p className="text-xs text-slate-600">USD {formatMoney(h.cobroDolares)}</p>}
+                        <p className="font-bold text-slate-800 text-sm">{h.displayName || '-'}</p>
+                        {h.dni && <p className="text-xs text-slate-500 mt-0.5">DNI: {h.dni}</p>}
+                      </div>
+                      <div className="text-right shrink-0 flex items-center gap-3">
+                        <div>
+                          {selectedModel === '1' && (
+                            <>
+                              {h.cobroPesos > 0 && <p className="text-xs text-slate-600">$ {formatMoney(h.cobroPesos)}</p>}
+                              {h.cobroDolares > 0 && <p className="text-xs text-slate-600">USD {formatMoney(h.cobroDolares)}</p>}
+                            </>
+                          )}
                           <p className={`text-sm font-bold mt-1 ${h.isTransfer ? 'text-amber-600 line-through' : h.isManual ? 'text-green-600' : 'text-indigo-600'}`}>
                             {h.liqCurrency === 'USD' ? 'U$D ' : '$ '}{formatMoney(h.liqAmount)}
                           </p>
                         </div>
+                        {h.isManual && (
+                          <button
+                            onClick={() => removeManualLiquidation(h.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Eliminar liquidación manual"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </div>
-                      {!h.isManual && h.isTransfer && (
-                        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-dashed border-slate-200">
-                          <span className="text-[10px] font-bold text-amber-500 uppercase">Transferencia (marcada en caja)</span>
-                        </div>
-                      )}
+                    </div>
+                    {!h.isManual && h.isTransfer && (
+                      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-dashed border-slate-200">
+                        <span className="text-[10px] font-bold text-amber-500 uppercase">Transferencia (marcada en caja)</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Deductions Section */}
+            {profDeductions.length > 0 && (
+              <div className="border-t border-slate-200 pt-4">
+                <p className="text-xs font-bold text-red-500 uppercase mb-3">Deducciones ({profDeductions.length})</p>
+                <div className="space-y-2">
+                  {profDeductions.map(d => (
+                    <div key={d.id} className="flex justify-between items-center bg-red-50 border border-red-100 rounded-xl p-3">
+                      <div>
+                        <span className="text-[10px] font-bold text-red-400">{formatDate(d.date)}</span>
+                        <p className="text-sm text-red-700 font-medium">{d.desc}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-red-600">-{d.currency === 'USD' ? 'U$D ' : '$ '}{formatMoney(d.amount)}</span>
+                        <button onClick={() => removeDeduction(d.id)} className="text-slate-400 hover:text-red-500 transition-colors" title="Eliminar deducción"><Trash2 size={14} /></button>
+                      </div>
                     </div>
                   ))}
                 </div>
-
-                {profDeductions.length > 0 && (
-                  <div className="border-t border-slate-200 pt-4">
-                    <p className="text-xs font-bold text-red-500 uppercase mb-3">Deducciones</p>
-                    <div className="space-y-2">
-                      {profDeductions.map(d => (
-                        <div key={d.id} className="flex justify-between items-center bg-red-50 border border-red-100 rounded-xl p-3">
-                          <div>
-                            <span className="text-[10px] font-bold text-red-400">{formatDate(d.date)}</span>
-                            <p className="text-sm text-red-700 font-medium">{d.desc}</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-bold text-red-600">-{d.currency === 'USD' ? 'U$D ' : '$ '}{formatMoney(d.amount)}</span>
-                            <button onClick={() => removeDeduction(d.id)} className="text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                  <p className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar deducción</p>
-                  <div className="flex flex-wrap gap-3 items-end">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Fecha</label>
-                      <input type="date" className="px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={newDed.date} onChange={e => setNewDed({ ...newDed, date: e.target.value })} />
-                    </div>
-                    <div className="flex-1 min-w-[200px]">
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Descripción</label>
-                      <input type="text" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ej: Honorarios Dra. Turiella" value={newDed.desc} onChange={e => setNewDed({ ...newDed, desc: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Moneda</label>
-                      <select className="px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={newDed.currency} onChange={e => setNewDed({ ...newDed, currency: e.target.value })}>
-                        <option value="ARS">$</option>
-                        <option value="USD">U$D</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Monto</label>
-                      <input type="number" className="w-32 px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0" value={newDed.amount} onChange={e => setNewDed({ ...newDed, amount: e.target.value })} />
-                    </div>
-                    <button onClick={addDeduction} className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-all flex items-center gap-1"><MinusCircle size={14} /> Agregar</button>
-                  </div>
-                </div>
-
-                <div className="bg-slate-900 rounded-xl p-4 text-white flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase">Total Final</span>
-                  <div className="text-right">
-                    {finalPesos > 0 || finalDolares === 0 ? <p className="text-xl font-black tabular-nums">$ {formatMoney(finalPesos > 0 ? finalPesos : 0)}</p> : null}
-                    {finalDolares > 0 ? <p className="text-xl font-black tabular-nums text-teal-400">U$D {formatMoney(finalDolares)}</p> : null}
-                  </div>
-                </div>
-              </>
+              </div>
             )}
+
+            {/* Add Deduction Form */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <p className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar deducción a {selectedProf}</p>
+              <div className="flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Fecha</label>
+                  <input type="date" className="px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={newDed.date} onChange={e => setNewDed({ ...newDed, date: e.target.value })} />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Descripción</label>
+                  <input type="text" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ej: Honorarios Dra. Turiella / Descuento insumos" value={newDed.desc} onChange={e => setNewDed({ ...newDed, desc: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Moneda</label>
+                  <select className="px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={newDed.currency} onChange={e => setNewDed({ ...newDed, currency: e.target.value })}>
+                    <option value="ARS">$</option>
+                    <option value="USD">U$D</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Monto</label>
+                  <input type="number" className="w-32 px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0" value={newDed.amount} onChange={e => setNewDed({ ...newDed, amount: e.target.value })} />
+                </div>
+                <button onClick={addDeduction} className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-all flex items-center gap-1 shadow-sm"><MinusCircle size={14} /> Agregar Deducción</button>
+              </div>
+            </div>
+
+            {/* Total Final Card */}
+            <div className="bg-slate-900 rounded-xl p-4 text-white flex items-center justify-between shadow-sm">
+              <div>
+                <span className="text-sm font-bold uppercase block">Total Final a Pagar</span>
+                <span className="text-xs text-slate-400">{selectedProf}</span>
+              </div>
+              <div className="text-right">
+                {finalPesos > 0 || finalDolares === 0 ? <p className="text-xl font-black tabular-nums">$ {formatMoney(finalPesos > 0 ? finalPesos : 0)}</p> : null}
+                {finalDolares > 0 ? <p className="text-xl font-black tabular-nums text-teal-400">U$D {formatMoney(finalDolares)}</p> : null}
+              </div>
+            </div>
           </>
         ) : (
           <div>
