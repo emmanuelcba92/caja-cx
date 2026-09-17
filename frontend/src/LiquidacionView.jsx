@@ -192,6 +192,18 @@ export default function LiquidacionView({ history, currentUser, professionals })
     setManualForm({ date: today, patient: '', totalPayment: '', currency: 'ARS', inReceipt: false, profs: [{ prof: selectedProf || '', amount: '' }] });
   };
 
+  const profsWithData = useMemo(() => {
+    return availableProfs.filter(prof => {
+      const pKey = normProf(prof);
+      return dateEntries.some(h => {
+        return normProf(h.prof_1) === pKey ||
+               normProf(h.prof_2) === pKey ||
+               normProf(h.prof_3) === pKey ||
+               normProf(h.anestesista) === pKey;
+      });
+    });
+  }, [availableProfs, dateEntries]);
+
   const handlePrintDetail = () => {
     const rows = liquidationData.rows.map(r => {
       const isT = r.isTransfer;
@@ -211,21 +223,26 @@ export default function LiquidacionView({ history, currentUser, professionals })
 
     const dedRows = profDeductions.map(d => `<tr style="background:#fef2f2"><td>${formatDate(d.date)}</td><td style="font-style:italic;color:#991b1b">${d.desc}</td><td colspan="2"></td><td style="text-align:right;font-weight:700;color:#dc2626">-${d.currency === 'USD' ? 'USD ' : '$ '}${formatMoney(d.amount)}</td></tr>`).join('');
 
-    const printWin = window.open('', '_blank', 'height=800,width=700');
+    const printWin = window.open('', '_blank', 'height=800,width=800');
     if (!printWin) return;
     printWin.document.write(`<!DOCTYPE html><html><head><title>Liquidación - ${selectedProf}</title><style>
-      body{font-family:Arial;padding:0;margin:0;font-size:11px;color:#000}
-      .page{padding:32px}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:2px solid #000;padding-bottom:12px}
-      .header img{height:50px}
-      .header h1{font-size:18px;margin:0;text-transform:uppercase}
-      .header p{font-size:14px;margin:4px 0 0;font-weight:700}
-      table{width:100%;border-collapse:collapse;margin-top:12px}
-      th,td{border:1px solid #000;padding:6px 8px;text-align:left;font-size:11px}
-      th{background:#f1f5f9;font-weight:700}
-      .text-right{text-align:right}
-      .total-row{background:#1e293b;color:#fff;font-weight:700}
-      @media print{@page{size:A4 portrait;margin:10mm}}
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #000; background: #fff; padding: 18px; }
+      .page { width: 100%; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+      .header img { height: 46px; }
+      .header h1 { font-size: 15pt; margin: 0; text-transform: uppercase; }
+      .header p { font-size: 11pt; margin: 3px 0 0; font-weight: 700; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { border: 1px solid #000; padding: 5px 7px; text-align: left; font-size: 9.5pt; }
+      th { background: #f1f5f9; font-weight: 700; }
+      .text-right { text-align: right; }
+      .total-row { background: #1e293b; color: #fff; font-weight: 700; }
+      @media print {
+        @page { size: A4 portrait; margin: 8mm; }
+        body { padding: 0; margin: 0; }
+        .page { padding: 8px 10px; page-break-inside: avoid; }
+      }
     </style></head><body>
     <div class="page">
       <div class="header">
@@ -235,7 +252,7 @@ export default function LiquidacionView({ history, currentUser, professionals })
       <table>
         <thead><tr><th>Fecha</th><th>Paciente</th><th>Cobro $</th><th>Cobro USD</th><th style="text-align:right">Liquidación</th></tr></thead>
         <tbody>${rows}${dedRows}</tbody>
-        <tfoot><tr class="total-row"><td colspan="4" style="text-align:right;border-color:#fff">TOTAL FINAL</td><td style="text-align:right;border-color:#fff;font-size:13px">${finalPesos > 0 || finalDolares === 0 ? '$ ' + formatMoney(finalPesos > 0 ? finalPesos : 0) : ''}${finalDolares > 0 ? (finalPesos > 0 ? '<br>' : '') + 'USD ' + formatMoney(finalDolares) : ''}</td></tr></tfoot>
+        <tfoot><tr class="total-row"><td colspan="4" style="text-align:right;border-color:#fff">TOTAL FINAL</td><td style="text-align:right;border-color:#fff;font-size:12pt">${finalPesos > 0 || finalDolares === 0 ? '$ ' + formatMoney(finalPesos > 0 ? finalPesos : 0) : ''}${finalDolares > 0 ? (finalPesos > 0 ? '<br>' : '') + 'USD ' + formatMoney(finalDolares) : ''}</td></tr></tfoot>
       </table>
     </div></body></html>`);
     printWin.document.close();
@@ -249,30 +266,35 @@ export default function LiquidacionView({ history, currentUser, professionals })
     const dedRefs = profDeductions.filter(d => d.desc).map(d => d.desc);
     const allRef = [...refNames, ...dedRefs].join(', ');
 
-    const printWin = window.open('', '_blank', 'height=800,width=900');
+    const printWin = window.open('', '_blank', 'height=800,width=800');
     if (!printWin) return;
     printWin.document.write(`<!DOCTYPE html><html><head><title>Recibo - ${selectedProf}</title><style>
-      body{font-family:Arial;padding:0;margin:0;font-size:13px;color:#000;background:#fff}
-      .page{padding:48px;max-width:750px;margin:0 auto}
-      .meta{display:grid;grid-template-columns:120px 1fr;gap:8px 12px;margin-bottom:40px;font-size:14px}
-      .meta dt{font-weight:700;color:#111}
-      .meta dd{margin:0;color:#333}
-      table{width:100%;border-collapse:collapse;margin-bottom:48px;border-top:1px solid #999}
-      th,td{padding:10px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:13px}
-      th{font-weight:700;color:#111}
-      .text-right{text-align:right}
-      .signature{margin-top:140px;display:flex;justify-content:flex-end}
-      .sig-line{width:260px;text-align:center;border-top:1px solid #111;padding-top:8px}
-      .sig-line p{font-weight:700;font-size:13px;margin:4px 0 0}
-      @media print{@page{size:A4;margin:15mm}}
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; background: #fff; padding: 24px; }
+      .page { max-width: 720px; margin: 0 auto; width: 100%; }
+      .meta { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; margin-bottom: 24px; font-size: 11pt; }
+      .meta dt { font-weight: 700; color: #111; }
+      .meta dd { margin: 0; color: #333; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 24px; border-top: 1px solid #999; }
+      th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #ddd; font-size: 10.5pt; }
+      th { font-weight: 700; color: #111; }
+      .text-right { text-align: right; }
+      .signature { margin-top: 50px; display: flex; justify-content: flex-end; }
+      .sig-line { width: 240px; text-align: center; border-top: 1px solid #111; padding-top: 6px; }
+      .sig-line p { font-weight: 700; font-size: 11pt; margin: 2px 0 0; }
+      @media print {
+        @page { size: A4 portrait; margin: 10mm; }
+        body { padding: 0; margin: 0; }
+        .page { padding: 12px 16px; page-break-inside: avoid; }
+      }
     </style></head><body>
     <div class="page">
-      <div style="text-align:center;margin-bottom:32px"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'" style="height:60px"></div>
+      <div style="text-align:center;margin-bottom:20px"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'" style="height:55px"></div>
       <dl class="meta">
         <dt>Fecha:</dt><dd>${startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} al ${formatDate(endDate)}`}</dd>
         <dt>Movimiento:</dt><dd>Egreso</dd>
         <dt>Concepto:</dt><dd>Honorarios por técnica en común de por cuenta y orden de ${selectedProf}</dd>
-        <dt>Referencia:</dt><dd style="font-size:12px">${allRef || '-'}</dd>
+        <dt>Referencia:</dt><dd style="font-size:10pt">${allRef || '-'}</dd>
       </dl>
       <table>
         <thead><tr><th>M. de Pago</th><th>Número</th><th>F. Cobro</th><th class="text-right">Importe</th></tr></thead>
@@ -345,7 +367,7 @@ export default function LiquidacionView({ history, currentUser, professionals })
     return `<div class="page"><div class="header"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'"><div style="text-align:right"><h1>Liquidación: ${profName}</h1><p>${formatDate(startDate)} - ${formatDate(endDate)}</p></div></div>
       <table><thead><tr><th>Fecha</th><th>Paciente</th><th>Cobro $</th><th>Cobro USD</th><th style="text-align:right">Liquidación</th></tr></thead>
       <tbody>${rows}${dedRows}</tbody>
-      <tfoot><tr class="total-row"><td colspan="4" style="text-align:right;border-color:#fff">TOTAL FINAL</td><td style="text-align:right;border-color:#fff;font-size:13px">${data.totalPesos > 0 || data.totalDolares === 0 ? '$ ' + formatMoney(data.totalPesos > 0 ? data.totalPesos : 0) : ''}${data.totalDolares > 0 ? (data.totalPesos > 0 ? '<br>' : '') + 'USD ' + formatMoney(data.totalDolares) : ''}</td></tr></tfoot></table></div>`;
+      <tfoot><tr class="total-row"><td colspan="4" style="text-align:right;border-color:#fff">TOTAL FINAL</td><td style="text-align:right;border-color:#fff;font-size:12pt">${data.totalPesos > 0 || data.totalDolares === 0 ? '$ ' + formatMoney(data.totalPesos > 0 ? data.totalPesos : 0) : ''}${data.totalDolares > 0 ? (data.totalPesos > 0 ? '<br>' : '') + 'USD ' + formatMoney(data.totalDolares) : ''}</td></tr></tfoot></table></div>`;
   };
 
   const buildReceiptHTML = (profName, data) => {
@@ -353,8 +375,8 @@ export default function LiquidacionView({ history, currentUser, professionals })
     const refNames = nonTransfer.map(r => r.displayName).filter(Boolean);
     const dedRefs = data.deductions.filter(d => d.desc).map(d => d.desc);
     const allRef = [...refNames, ...dedRefs].join(', ');
-    return `<div class="page"><div style="text-align:center;margin-bottom:32px"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'" style="height:60px"></div>
-      <dl class="meta"><dt>Fecha:</dt><dd>${startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} al ${formatDate(endDate)}`}</dd><dt>Movimiento:</dt><dd>Egreso</dd><dt>Concepto:</dt><dd>Honorarios por técnica en común de por cuenta y orden de ${profName}</dd><dt>Referencia:</dt><dd style="font-size:12px">${allRef || '-'}</dd></dl>
+    return `<div class="page"><div style="text-align:center;margin-bottom:20px"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'" style="height:55px"></div>
+      <dl class="meta"><dt>Fecha:</dt><dd>${startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} al ${formatDate(endDate)}`}</dd><dt>Movimiento:</dt><dd>Egreso</dd><dt>Concepto:</dt><dd>Honorarios por técnica en común de por cuenta y orden de ${profName}</dd><dt>Referencia:</dt><dd style="font-size:10pt">${allRef || '-'}</dd></dl>
       <table><thead><tr><th>M. de Pago</th><th>Número</th><th>F. Cobro</th><th class="text-right">Importe</th></tr></thead><tbody>
       ${data.totalPesos > 0 || data.totalDolares === 0 ? `<tr><td>Efectivo</td><td></td><td></td><td class="text-right" style="font-weight:700">$ ${formatMoney(data.totalPesos > 0 ? data.totalPesos : 0)}</td></tr>` : ''}
       ${data.totalDolares > 0 ? `<tr><td>Dólares</td><td></td><td></td><td class="text-right" style="font-weight:700">U$D ${formatMoney(data.totalDolares)}</td></tr>` : ''}
@@ -362,57 +384,44 @@ export default function LiquidacionView({ history, currentUser, professionals })
   };
 
   const handlePrintAll = (mode) => {
-    const seenKeys = new Set();
-    const profsToPrint = [];
-
-    availableProfs.forEach(prof => {
-      const pKey = normProf(prof);
-      if (!pKey || seenKeys.has(pKey)) return;
-
-      const hasEntries = dateEntries.some(h => {
-        return normProf(h.prof_1) === pKey ||
-               normProf(h.prof_2) === pKey ||
-               normProf(h.prof_3) === pKey ||
-               normProf(h.anestesista) === pKey;
-      });
-
-      if (hasEntries) {
-        seenKeys.add(pKey);
-        profsToPrint.push(prof);
-      }
-    });
-
-    if (profsToPrint.length === 0) {
+    if (profsWithData.length === 0) {
       alert("No hay liquidaciones con movimientos para imprimir en este período");
       return;
     }
 
     const printWin = window.open('', '_blank', 'height=800,width=900');
     if (!printWin) return;
-    const pages = profsToPrint.map(prof => {
+    const pages = profsWithData.map(prof => {
       const data = calcProfLiq(dateEntries, prof);
       return mode === 'receipt' ? buildReceiptHTML(prof, data) : buildDetailHTML(prof, data);
-    }).join('<div style="page-break-after:always"></div>');
+    }).join('');
 
     printWin.document.write(`<!DOCTYPE html><html><head><title>Liquidaciones - ${mode === 'receipt' ? 'Recibos' : 'Detalle'}</title><style>
-      body{font-family:Arial;padding:0;margin:0;font-size:11px;color:#000}
-      .page{padding:32px;page-break-after:always}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:2px solid #000;padding-bottom:12px}
-      .header img{height:50px}
-      .header h1{font-size:18px;margin:0;text-transform:uppercase}
-      .header p{font-size:14px;margin:4px 0 0;font-weight:700}
-      table{width:100%;border-collapse:collapse;margin-top:12px}
-      th,td{border:1px solid #000;padding:6px 8px;text-align:left;font-size:11px}
-      th{background:#f1f5f9;font-weight:700}
-      .text-right{text-align:right}
-      .total-row{background:#1e293b;color:#fff;font-weight:700}
-      .meta{display:grid;grid-template-columns:120px 1fr;gap:8px 12px;margin-bottom:40px;font-size:14px}
-      .meta dt{font-weight:700;color:#111}
-      .meta dd{margin:0;color:#333}
-      .signature{margin-top:140px;display:flex;justify-content:flex-end}
-      .sig-line{width:260px;text-align:center;border-top:1px solid #111;padding-top:8px}
-      .sig-line p{font-weight:700;font-size:13px;margin:4px 0 0}
-      @media print{@page{size:A4 portrait;margin:10mm}}
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #000; background: #fff; }
+      .page { padding: 18px 24px; }
+      .page:not(:last-child) { page-break-after: always; break-after: page; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 8px; }
+      .header img { height: 44px; }
+      .header h1 { font-size: 15pt; margin: 0; text-transform: uppercase; }
+      .header p { font-size: 11pt; margin: 3px 0 0; font-weight: 700; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 16px; }
+      th, td { border: 1px solid #000; padding: 5px 7px; text-align: left; font-size: 9.5pt; }
+      th { background: #f1f5f9; font-weight: 700; }
+      .text-right { text-align: right; }
+      .total-row { background: #1e293b; color: #fff; font-weight: 700; }
+      .meta { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; margin-bottom: 24px; font-size: 11pt; }
+      .meta dt { font-weight: 700; color: #111; }
+      .meta dd { margin: 0; color: #333; }
+      .signature { margin-top: 50px; display: flex; justify-content: flex-end; }
+      .sig-line { width: 240px; text-align: center; border-top: 1px solid #111; padding-top: 6px; }
+      .sig-line p { font-weight: 700; font-size: 11pt; margin: 2px 0 0; }
+      @media print {
+        @page { size: A4 portrait; margin: 8mm; }
+        body { padding: 0; margin: 0; }
+        .page { padding: 8px 12px; page-break-inside: avoid; }
+        .page:not(:last-child) { page-break-after: always; break-after: page; }
+      }
     </style></head><body>${pages}</body></html>`);
     printWin.document.close();
     printWin.onafterprint = () => { try { printWin.close(); } catch(e) {} };
@@ -478,24 +487,93 @@ export default function LiquidacionView({ history, currentUser, professionals })
               <input type="date" className="px-2 py-1 rounded-lg border border-slate-300 text-sm outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
           )}
+
+          {/* Professional Selector Dropdown */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-500 uppercase">Profesional:</label>
+            <select
+              className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm min-w-[200px]"
+              value={selectedProf}
+              onChange={e => setSelectedProf(e.target.value)}
+            >
+              <option value="">-- Todos / Resumen general --</option>
+              {availableProfs.map(p => {
+                const hasData = profsWithData.includes(p);
+                return (
+                  <option key={p} value={p}>
+                    {hasData ? `● ${p}` : p}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
         </div>
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200">
+
+        {/* Action Buttons Toolbar */}
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200 flex-wrap">
           {dateEntries.length > 0 && (
             <>
-              <button onClick={() => handlePrintAll('detail')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-all shadow-md"><Printer size={14} /> Imprimir Todas</button>
-              <button onClick={() => handlePrintAll('receipt')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600 transition-all shadow-md"><FileText size={14} /> Recibos Todos</button>
-              <button onClick={handleExportExcel} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-all shadow-md"><Download size={14} /> Exportar Excel</button>
+              <button onClick={() => handlePrintAll('detail')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-all shadow-sm">
+                <Printer size={14} /> Imprimir Todas ({profsWithData.length})
+              </button>
+              <button onClick={() => handlePrintAll('receipt')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600 transition-all shadow-sm">
+                <FileText size={14} /> Recibos Todos ({profsWithData.length})
+              </button>
             </>
           )}
+
           {selectedProf && liquidationData.rows.length > 0 && (
-            <button onClick={() => setShowManualModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 transition-all shadow-md">
-              <Plus size={14} /> Agregar
-            </button>
+            <>
+              <div className="h-5 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div>
+              <button onClick={handlePrintDetail} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-sm">
+                <Printer size={14} /> Imprimir Detalle
+              </button>
+              <button onClick={handlePrintReceipt} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-all shadow-sm">
+                <FileText size={14} /> Imprimir Recibo
+              </button>
+              <button onClick={handleExportExcel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all shadow-sm">
+                <Download size={14} /> Exportar Excel
+              </button>
+              <button onClick={() => setShowManualModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 transition-all shadow-sm">
+                <Plus size={14} /> Agregar Manual
+              </button>
+            </>
           )}
         </div>
+
+        {/* Quick Doctor Pills */}
+        {profsWithData.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap pt-2.5 mt-2.5 border-t border-slate-200">
+            <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">Con movimientos:</span>
+            <button
+              onClick={() => setSelectedProf('')}
+              className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+                !selectedProf
+                  ? 'bg-slate-800 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Ver Resumen ({profsWithData.length})
+            </button>
+            {profsWithData.map(p => (
+              <button
+                key={p}
+                onClick={() => setSelectedProf(selectedProf === p ? '' : p)}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  selectedProf === p
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-        {selectedProf && (
+      <div className="p-6 space-y-6">
+        {selectedProf ? (
           <>
             {liquidationData.rows.length === 0 ? (
               <div className="py-12 text-center text-slate-400 text-sm">No se encontraron registros para {selectedProf} en el período seleccionado.</div>
@@ -602,9 +680,51 @@ export default function LiquidacionView({ history, currentUser, professionals })
               </>
             )}
           </>
+        ) : (
+          <div>
+            <div className="mb-4 flex items-center justify-between">
+              <h4 className="font-bold text-slate-700 text-sm">Resumen de Liquidaciones ({profsWithData.length} profesionales con movimientos)</h4>
+            </div>
+            {profsWithData.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-sm">No se encontraron movimientos para el período seleccionado.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {profsWithData.map(prof => {
+                  const data = calcProfLiq(dateEntries, prof);
+                  return (
+                    <div key={prof} className="p-4 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-md transition-all flex flex-col justify-between">
+                      <div>
+                        <p className="font-bold text-slate-800 text-base mb-1">{prof}</p>
+                        <p className="text-xs text-slate-500 mb-3">{data.rows.length} {data.rows.length === 1 ? 'cirugía registrada' : 'cirugías registradas'}</p>
+                        <div className="space-y-1.5 bg-white p-2.5 rounded-lg border border-slate-100">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-500">Liquidación ARS:</span>
+                            <span className="font-bold text-emerald-700">$ {formatMoney(data.totalPesos)}</span>
+                          </div>
+                          {data.totalDolares > 0 && (
+                            <div className="flex justify-between text-xs">
+                              <span className="text-slate-500">Liquidación USD:</span>
+                              <span className="font-bold text-blue-600">U$D {formatMoney(data.totalDolares)}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-200 flex gap-2">
+                        <button
+                          onClick={() => setSelectedProf(prof)}
+                          className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all text-center shadow-sm"
+                        >
+                          Ver y Liquidar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
-
-        {!selectedProf && <div className="py-12 text-center text-slate-400 text-sm">Seleccioná un profesional para ver su liquidación.</div>}
+      </div>
 
       {showManualModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowManualModal(false)}>
