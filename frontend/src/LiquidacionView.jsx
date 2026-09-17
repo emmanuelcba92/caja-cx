@@ -54,26 +54,42 @@ export default function LiquidacionView({ history, currentUser, professionals })
     }
   }, [selectedProf, professionals]);
 
+  const normProf = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
+
   const allEntries = useMemo(() => [...history, ...manualLiqs], [history, manualLiqs]);
 
   const availableProfs = useMemo(() => {
-    const names = new Set();
+    const profMap = new Map();
+    if (professionals && Array.isArray(professionals)) {
+      professionals.forEach(p => {
+        const name = typeof p === 'string' ? p : p?.nombre;
+        if (name && name.trim()) {
+          const key = normProf(name);
+          if (key && !profMap.has(key)) {
+            profMap.set(key, name.trim());
+          }
+        }
+      });
+    }
     allEntries.forEach(h => {
-      if (h.prof_1) names.add(h.prof_1);
-      if (h.prof_2) names.add(h.prof_2);
-      if (h.prof_3) names.add(h.prof_3);
-      if (h.anestesista) names.add(h.anestesista);
+      [h.prof_1, h.prof_2, h.prof_3, h.anestesista].forEach(name => {
+        if (name && typeof name === 'string' && name.trim()) {
+          const key = normProf(name);
+          if (key && !profMap.has(key)) {
+            profMap.set(key, name.trim());
+          }
+        }
+      });
     });
-    return [...names].sort();
-  }, [allEntries]);
+    return Array.from(profMap.values()).sort((a, b) => a.localeCompare(b));
+  }, [allEntries, professionals]);
 
   const filtered = useMemo(() => {
     if (!selectedProf) return [];
+    const p = normProf(selectedProf);
     return allEntries.filter(h => {
       if (h.fecha < startDate || h.fecha > endDate) return false;
-      const norm = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
-      const p = norm(selectedProf);
-      return norm(h.prof_1) === p || norm(h.prof_2) === p || norm(h.prof_3) === p || norm(h.anestesista) === p;
+      return normProf(h.prof_1) === p || normProf(h.prof_2) === p || normProf(h.prof_3) === p || normProf(h.anestesista) === p;
     });
   }, [allEntries, selectedProf, startDate, endDate]);
 
@@ -85,23 +101,23 @@ export default function LiquidacionView({ history, currentUser, professionals })
   }, [history, manualForm.date]);
 
   const profDeductions = useMemo(() => {
-    return deductions.filter(d => d.profesional === selectedProf && d.date >= startDate && d.date <= endDate)
+    const p = normProf(selectedProf);
+    return deductions.filter(d => normProf(d.profesional) === p && d.date >= startDate && d.date <= endDate)
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [deductions, selectedProf, startDate, endDate]);
 
   const liquidationData = useMemo(() => {
     let totalPesos = 0, totalDolares = 0;
+    const p = normProf(selectedProf);
     const rows = filtered.map(h => {
       let liqAmount = 0, liqCurrency = 'ARS';
       let cobroPesos = parseFloat(h.pesos) || 0;
       let cobroDolares = parseFloat(h.dolares) || 0;
-      const norm = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
-      const p = norm(selectedProf);
 
-      if (norm(h.prof_1) === p) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
-      else if (norm(h.prof_2) === p) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
-      else if (norm(h.prof_3) === p) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
-      else if (norm(h.anestesista) === p) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
+      if (normProf(h.prof_1) === p) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
+      else if (normProf(h.prof_2) === p) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
+      else if (normProf(h.prof_3) === p) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
+      else if (normProf(h.anestesista) === p) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
 
       const isTransfer = h.isTransfer || false;
       const isManual = h.isManualLiquidation || h.paciente?.toLowerCase().includes('(liq. manual)');
@@ -112,7 +128,7 @@ export default function LiquidacionView({ history, currentUser, professionals })
       }
 
       return { ...h, liqAmount, liqCurrency, cobroPesos, cobroDolares, key: h.id, isTransfer, isManual, displayName: isManual ? cleanName(h.paciente) : h.paciente };
-    });
+    }).filter(r => r.liqAmount > 0 || r.isManual);
 
     rows.sort((a, b) => {
       if (a.isManual !== b.isManual) return a.isManual ? 1 : -1;
@@ -273,32 +289,40 @@ export default function LiquidacionView({ history, currentUser, professionals })
   };
 
   const dateEntries = useMemo(() => {
+    let list = [];
     if (dateMode === 'month') {
       const monthStart = `${selectedYear}-${selectedMonth}-01`;
       const monthEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).toISOString().split('T')[0];
-      return allEntries.filter(h => h.fecha >= monthStart && h.fecha <= monthEnd);
+      list = allEntries.filter(h => h.fecha >= monthStart && h.fecha <= monthEnd);
+    } else {
+      list = allEntries.filter(h => h.fecha >= startDate && h.fecha <= endDate);
     }
-    return allEntries.filter(h => h.fecha >= startDate && h.fecha <= endDate);
+    const seen = new Set();
+    return list.filter(h => {
+      const key = h.id || `${h.fecha}_${h.paciente}_${h.prof_1}_${h.pesos}_${h.dolares}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [allEntries, startDate, endDate, dateMode, selectedMonth, selectedYear]);
 
   const calcProfLiq = (entries, profName) => {
-    const norm = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
-    const p = norm(profName);
+    const p = normProf(profName);
     let totalPesos = 0, totalDolares = 0;
     const rows = entries.map(h => {
       let liqAmount = 0, liqCurrency = 'ARS';
       const cobroPesos = parseFloat(h.pesos) || 0;
       const cobroDolares = parseFloat(h.dolares) || 0;
-      if (norm(h.prof_1) === p) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
-      else if (norm(h.prof_2) === p) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
-      else if (norm(h.prof_3) === p) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
-      else if (norm(h.anestesista) === p) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
+      if (normProf(h.prof_1) === p) { liqAmount = parseFloat(h.liq_prof_1) || 0; liqCurrency = h.liq_prof_1_currency || 'ARS'; }
+      else if (normProf(h.prof_2) === p) { liqAmount = parseFloat(h.liq_prof_2) || 0; liqCurrency = h.liq_prof_2_currency || 'ARS'; }
+      else if (normProf(h.prof_3) === p) { liqAmount = parseFloat(h.liq_prof_3) || 0; liqCurrency = h.liq_prof_3_currency || 'ARS'; }
+      else if (normProf(h.anestesista) === p) { liqAmount = parseFloat(h.liq_anestesista) || 0; liqCurrency = h.liq_anestesista_currency || 'ARS'; }
       const isTransfer = h.isTransfer || false;
       const isManual = h.isManualLiquidation || h.paciente?.toLowerCase().includes('(liq. manual)');
       if (!isTransfer) { if (liqCurrency === 'USD') totalDolares += liqAmount; else totalPesos += liqAmount; }
       return { ...h, liqAmount, liqCurrency, cobroPesos, cobroDolares, isTransfer, isManual, displayName: isManual ? cleanName(h.paciente) : h.paciente };
-    });
-    const profDeds = deductions.filter(d => d.profesional === profName && d.date >= startDate && d.date <= endDate);
+    }).filter(r => r.liqAmount > 0 || r.isManual);
+    const profDeds = deductions.filter(d => normProf(d.profesional) === p && d.date >= startDate && d.date <= endDate);
     const dedPesos = profDeds.filter(d => d.currency !== 'USD').reduce((a, d) => a + Math.abs(d.amount || 0), 0);
     const dedUSD = profDeds.filter(d => d.currency === 'USD').reduce((a, d) => a + Math.abs(d.amount || 0), 0);
     return { rows, totalPesos: totalPesos - dedPesos, totalDolares: totalDolares - dedUSD, deductions: profDeds };
@@ -338,12 +362,30 @@ export default function LiquidacionView({ history, currentUser, professionals })
   };
 
   const handlePrintAll = (mode) => {
-    const profsToPrint = availableProfs.filter(prof => dateEntries.some(h => {
-      const norm = (n) => n?.replace(/\./g, '').trim().toLowerCase() || '';
-      const p = norm(prof);
-      return norm(h.prof_1) === p || norm(h.prof_2) === p || norm(h.prof_3) === p || norm(h.anestesista) === p;
-    }));
-    if (profsToPrint.length === 0) return;
+    const seenKeys = new Set();
+    const profsToPrint = [];
+
+    availableProfs.forEach(prof => {
+      const pKey = normProf(prof);
+      if (!pKey || seenKeys.has(pKey)) return;
+
+      const hasEntries = dateEntries.some(h => {
+        return normProf(h.prof_1) === pKey ||
+               normProf(h.prof_2) === pKey ||
+               normProf(h.prof_3) === pKey ||
+               normProf(h.anestesista) === pKey;
+      });
+
+      if (hasEntries) {
+        seenKeys.add(pKey);
+        profsToPrint.push(prof);
+      }
+    });
+
+    if (profsToPrint.length === 0) {
+      alert("No hay liquidaciones con movimientos para imprimir en este período");
+      return;
+    }
 
     const printWin = window.open('', '_blank', 'height=800,width=900');
     if (!printWin) return;
@@ -354,7 +396,7 @@ export default function LiquidacionView({ history, currentUser, professionals })
 
     printWin.document.write(`<!DOCTYPE html><html><head><title>Liquidaciones - ${mode === 'receipt' ? 'Recibos' : 'Detalle'}</title><style>
       body{font-family:Arial;padding:0;margin:0;font-size:11px;color:#000}
-      .page{padding:32px}
+      .page{padding:32px;page-break-after:always}
       .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:2px solid #000;padding-bottom:12px}
       .header img{height:50px}
       .header h1{font-size:18px;margin:0;text-transform:uppercase}
