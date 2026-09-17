@@ -292,12 +292,6 @@ export const printCajaDay = (selectedDate, dateEntries, dailyComment = '', total
     .font-bold { font-weight: 700; }
     .text-orange { color: #c2410c; }
     .text-blue { color: #0369a1; }
-    
-    .totals-box { margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 9.5pt; }
-    .totals-grid { display: flex; gap: 20px; }
-    .total-item strong { color: #64748b; font-size: 7.5pt; text-transform: uppercase; display: block; }
-    .total-item span { font-weight: 800; font-size: 10.5pt; }
-    
     .obs-box { margin-top: 10px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; font-size: 8.5pt; color: #92400e; }
     
     @media print {
@@ -360,30 +354,6 @@ export const printCajaDay = (selectedDate, dateEntries, dailyComment = '', total
       <strong>Observaciones del día:</strong> ${dailyComment.trim()}
     </div>
   ` : ''}
-
-  <div class="totals-box">
-    <div class="totals-grid">
-      <div class="total-item">
-        <strong>Total Recaudado ARS</strong>
-        <span>$ ${formatMoney(calcTotals.pesos)}</span>
-      </div>
-      <div class="total-item">
-        <strong>Total Recaudado USD</strong>
-        <span>U$D ${formatMoney(calcTotals.dolares)}</span>
-      </div>
-      <div class="total-item">
-        <strong>Retención COAT ARS</strong>
-        <span class="text-orange">$ ${formatMoney(calcTotals.coat_pesos)}</span>
-      </div>
-      <div class="total-item">
-        <strong>Retención COAT USD</strong>
-        <span class="text-blue">U$D ${formatMoney(calcTotals.coat_dolares)}</span>
-      </div>
-    </div>
-    <div style="font-size: 7.5pt; color: #94a3b8; text-align: right;">
-      Emitido el ${new Date().toLocaleDateString('es-AR')} ${new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-    </div>
-  </div>
 </body>
 </html>`);
 
