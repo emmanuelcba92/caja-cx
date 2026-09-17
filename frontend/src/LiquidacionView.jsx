@@ -41,16 +41,20 @@ export default function LiquidacionView({ history, currentUser, professionals })
     if (!profName) return false;
     const pKey = normProf(profName);
     if (professionals && Array.isArray(professionals)) {
-      const found = professionals.find(p => normProf(typeof p === 'string' ? p : p?.nombre) === pKey);
+      const found = professionals.find(p => {
+        if (!p) return false;
+        const pNom = normProf(typeof p === 'string' ? p : p?.nombre);
+        return pNom === pKey || (pNom && (pKey.includes(pNom) || pNom.includes(pKey)));
+      });
       if (found && typeof found === 'object') {
-        const esp = (found.especialidad || '').toLowerCase();
+        const esp = ((found.especialidad || '') + ' ' + (found.categoria || '')).toLowerCase();
         if (esp.includes('anest') || esp.includes('fono') || esp.includes('estet') || esp.includes('estét')) {
           return true;
         }
       }
     }
     if (/^(lic|anest|fono|estet)/i.test(profName.trim())) return true;
-    if (pKey.includes('anestesista') || pKey.includes('fonoaudiol') || pKey.includes('estetica') || pKey.includes('estética')) return true;
+    if (pKey.includes('anest') || pKey.includes('fono') || pKey.includes('estet') || pKey.includes('estét') || pKey.includes('lic.')) return true;
     return false;
   };
 
