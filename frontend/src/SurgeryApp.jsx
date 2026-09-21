@@ -45,7 +45,8 @@ import {
   ChevronDown,
   Check,
   MessageCircle,
-  MessageSquare
+  MessageSquare,
+  Pin
 } from 'lucide-react';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
@@ -1853,6 +1854,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
               residente: orden.residente || '',
               modifiedBy: orden.modifiedBy || orden.updatedBy || '',
               modifiedAt: orden.modifiedAt || orden.updatedAt || '',
+              pinned: !!orden.pinned || !!orden.isPinned || !!orden.fijado,
             };
           });
           setSurgeries(mappedSurgeries);
@@ -2494,6 +2496,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         fechaCreacion: new Date().toLocaleDateString(),
         horaInicio: assignedHoraInicio,
         horaFin: assignedHoraFin,
+        pinned: false,
       };
       setSurgeries([newSurgery, ...surgeries]);
       addAuditLog('CREAR', `Solicitud creada para: ${newSurgery.paciente} (${isEgomez ? 'Auditada' : 'Pendiente'})`, currentUser.nombre);
@@ -2745,6 +2748,27 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
       apiService.updateDocument('ordenes_internacion', id, updatePayload)
         .catch(err => console.error("Error al sincronizar estado con Firestore:", err));
+    }
+  };
+
+  const handleTogglePinSurgery = async (id) => {
+    const surgery = surgeries.find(s => s.id === id);
+    if (!surgery) return;
+    const newPinned = !surgery.pinned;
+
+    setSurgeries(prev => prev.map(s => s.id === id ? { ...s, pinned: newPinned } : s));
+
+    addAuditLog('PIN', `${newPinned ? 'Fijó' : 'Desfijó'} el pedido de: ${surgery.paciente || 'N/A'}`, currentUser?.nombre || 'Usuario');
+
+    if (typeof id === 'string' && !id.startsWith('local_')) {
+      try {
+        await apiService.updateDocument('ordenes_internacion', id, {
+          pinned: newPinned,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error("Error al actualizar fijado en Firestore:", err);
+      }
     }
   };
 
@@ -3041,8 +3065,13 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       );
     }
 
-    // Ordenar por fecha descendente
-    return filtered.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    // Ordenar por fijados primero, luego por fecha descendente
+    return filtered.sort((a, b) => {
+      const pinA = a.pinned ? 1 : 0;
+      const pinB = b.pinned ? 1 : 0;
+      if (pinA !== pinB) return pinB - pinA;
+      return (b.fecha || '').localeCompare(a.fecha || '');
+    });
   };
 
 
@@ -4469,11 +4498,17 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {getFilteredSurgeries().slice(0, visibleCount).map(s => (
-                        <tr key={s.id} className="group hover:bg-slate-50/80 transition-all">
+                        <tr key={s.id} className={`group hover:bg-slate-50/80 transition-all ${s.pinned ? 'bg-amber-50/30' : ''}`}>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
                               <div className="flex items-center gap-1.5">
                                 <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{s.paciente}</div>
+                                {s.pinned && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-xs shrink-0" title="Pedido fijado">
+                                    <Pin size={10} className="fill-amber-500 text-amber-700" />
+                                    Fijado
+                                  </span>
+                                )}
                                 {(s.tipoProcedimiento === 'ESTUDIO' || s.estudioBajoAnestesia) && (
                                   <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200">
                                     ESTUDIO
@@ -4665,6 +4700,20 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                 </>
                               )}
 
+                              {/* FIJAR / DESFIJAR */}
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePinSurgery(s.id)}
+                                className={`p-1.5 rounded-md transition-all border ${
+                                  s.pinned
+                                    ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200 shadow-xs'
+                                    : 'bg-slate-100 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border-slate-200'
+                                }`}
+                                title={s.pinned ? 'Desfijar pedido' : 'Fijar pedido al inicio'}
+                              >
+                                <Pin size={15} className={s.pinned ? 'fill-amber-500 text-amber-700' : ''} />
+                              </button>
+
                               {/* EDITAR (Unificado: Abre el formulario completo) */}
                               {(canEditSurgery(s) || isAdmin || canManageStatus) && (
                                 <button 
@@ -4748,12 +4797,18 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 {/* VISTA TARJETAS */}
                 <div className={`p-3 space-y-3 ${viewMode !== 'cards' ? 'hidden' : ''}`}>
                   {getFilteredSurgeries().slice(0, visibleCount).map(s => (
-                    <div key={s.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+                    <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 space-y-3 transition-all ${s.pinned ? 'border-amber-300 ring-1 ring-amber-300/50 bg-gradient-to-r from-amber-50/30 via-white to-white' : 'border-slate-200'}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <p className="font-bold text-slate-800 text-sm truncate">{s.paciente}</p>
+                              {s.pinned && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-xs shrink-0" title="Pedido fijado">
+                                  <Pin size={10} className="fill-amber-500 text-amber-700" />
+                                  Fijado
+                                </span>
+                              )}
                               {(s.tipoProcedimiento === 'ESTUDIO' || s.estudioBajoAnestesia) && (
                                 <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200 shrink-0">
                                   ESTUDIO
@@ -4906,6 +4961,20 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                             <Package size={15} />
                           </button>
                         )}
+
+                        {/* FIJAR / DESFIJAR */}
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePinSurgery(s.id)}
+                          className={`p-1.5 rounded-md transition-all border active:scale-95 ${
+                            s.pinned
+                              ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200 shadow-xs'
+                              : 'bg-slate-100 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border-slate-200'
+                          }`}
+                          title={s.pinned ? 'Desfijar pedido' : 'Fijar pedido al inicio'}
+                        >
+                          <Pin size={15} className={s.pinned ? 'fill-amber-500 text-amber-700' : ''} />
+                        </button>
 
                         {/* EDITAR (Unificado) */}
                         {(canEditSurgery(s) || isAdmin || canManageStatus) && (
