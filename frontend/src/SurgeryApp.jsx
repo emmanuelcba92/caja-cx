@@ -1855,6 +1855,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
               modifiedBy: orden.modifiedBy || orden.updatedBy || '',
               modifiedAt: orden.modifiedAt || orden.updatedAt || '',
               pinned: !!orden.pinned || !!orden.isPinned || !!orden.fijado,
+              horaIngreso: orden.horaIngreso || orden.horarioIngreso || '',
+              ordenIngreso: orden.ordenIngreso || orden.orden || '',
             };
           });
           setSurgeries(mappedSurgeries);
@@ -2070,6 +2072,20 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     }
   };
 
+  const handleUpdateSurgeryAdmission = async (surgeryId, admissionData) => {
+    setSurgeries(prev => prev.map(s => s.id === surgeryId ? { ...s, ...admissionData } : s));
+    if (typeof surgeryId === 'string' && !surgeryId.startsWith('local_')) {
+      try {
+        await apiService.updateDocument('ordenes_internacion', String(surgeryId), {
+          ...admissionData,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Error updating surgery admission:', err);
+      }
+    }
+  };
+
   const resetForm = (tipo = 'CIRUGIA') => {
     setIsEditing(false);
     setEditingId(null);
@@ -2109,6 +2125,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       habitacion: '',
       horaInicio: '',
       horaFin: '',
+      horaIngreso: '',
+      ordenIngreso: '',
       adjuntos: [],
     });
     setShowCreateModal(false);
@@ -2448,6 +2466,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         fechaCirugia: formData.fecha,
           horaCirugia: formData.horaInicio,
           horaFin: computedHoraFin,
+          horaIngreso: formData.horaIngreso || '',
+          ordenIngreso: formData.ordenIngreso || '',
           duracion: dur,
           diagnostico: formData.justificacion,
           tipoAnestesia: formData.anestesia,
@@ -2496,6 +2516,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         fechaCreacion: new Date().toLocaleDateString(),
         horaInicio: assignedHoraInicio,
         horaFin: assignedHoraFin,
+        horaIngreso: formData.horaIngreso || '',
+        ordenIngreso: formData.ordenIngreso || '',
         pinned: false,
       };
       setSurgeries([newSurgery, ...surgeries]);
@@ -2544,6 +2566,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         fechaCirugia: formData.fecha,
         horaCirugia: assignedHoraInicio,
         horaFin: assignedHoraFin,
+        horaIngreso: formData.horaIngreso || '',
+        ordenIngreso: formData.ordenIngreso || '',
         duracion: dur,
         diagnostico: formData.justificacion,
         tipoAnestesia: formData.anestesia,
@@ -2666,6 +2690,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       habitacion: s.habitacion || '',
       horaInicio: hInicio,
       horaFin: hFin,
+      horaIngreso: s.horaIngreso || s.horarioIngreso || '',
+      ordenIngreso: s.ordenIngreso || s.orden || '',
       adjuntos: Array.isArray(s.adjuntos) ? s.adjuntos : (s.adjuntoUrl ? [s.adjuntoUrl] : []),
     });
   };
@@ -2677,6 +2703,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       conveniosEstudios: s.conveniosEstudios ? { ...s.conveniosEstudios } : {},
       fechaSolicitud: s.fechaSolicitud || (s.fechaCreacion ? s.fechaCreacion.slice(0, 10) : s.fecha) || new Date().toISOString().slice(0, 10),
       residente: s.residente || (currentUser?.rol === ROLES.RESIDENTE ? currentUser.nombre : ''),
+      horaIngreso: s.horaIngreso || s.horarioIngreso || '',
+      ordenIngreso: s.ordenIngreso || s.orden || '',
       adjuntos: Array.isArray(s.adjuntos) ? s.adjuntos : (s.adjuntoUrl ? [s.adjuntoUrl] : [])
     });
     const cod = s.codigos || '';
@@ -2836,6 +2864,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       duracion: dur, 
       horaFin: hFin, 
       residente: effectiveResidente,
+      horaIngreso: data.horaIngreso || '',
+      ordenIngreso: data.ordenIngreso || '',
       modifiedBy: modifiedUserName,
       modifiedAt: nowIso
     };
@@ -2881,6 +2911,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         fechaCirugia: fullData.fecha,
         horaCirugia: fullData.horaInicio,
         horaFin: fullData.horaFin,
+        horaIngreso: fullData.horaIngreso || '',
+        ordenIngreso: fullData.ordenIngreso || '',
         duracion: fullData.duracion,
         diagnostico: fullData.justificacion,
         tipoAnestesia: fullData.anestesia,
@@ -3935,6 +3967,49 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                             <p className="text-[10px] text-slate-400 mt-1">Determina el turno de la siguiente cirugía</p>
                           </div>
                         </div>
+
+                        {/* Horario de Ingreso y Orden para WhatsApp */}
+                        <div className="p-3 bg-gradient-to-r from-amber-50/80 to-indigo-50/50 border border-amber-200/80 rounded-xl space-y-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <Clock size={15} className="text-amber-600 shrink-0" />
+                              <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Horario de Ingreso del Paciente (Para WhatsApp)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="07:10"
+                                  className="w-20 px-2 py-1 text-xs font-black text-amber-900 bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-center shadow-xs"
+                                  value={formData.horaIngreso || ''}
+                                  onChange={e => setFormData(prev => ({ ...prev, horaIngreso: e.target.value }))}
+                                />
+                                <span className="text-xs font-bold text-slate-500">hs</span>
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Orden (ej: 1° turno)"
+                                className="w-28 px-2 py-1 text-xs font-bold text-indigo-900 bg-white border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none shadow-xs"
+                                value={formData.ordenIngreso || ''}
+                                onChange={e => setFormData(prev => ({ ...prev, ordenIngreso: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="text-[10px] font-bold text-slate-500 mr-1">Rápido:</span>
+                            {['07:10', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'].map(t => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, horaIngreso: t }))}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${formData.horaIngreso === t ? 'bg-amber-500 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-amber-50'}`}
+                              >
+                                {t} hs
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Obra Social</label>
@@ -4581,10 +4656,22 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                             )}
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex items-center gap-2 text-slate-600 text-sm">
-                              <Clock size={14} className="text-slate-400" />
-                              {s.fecha}
+                            <div className="flex items-center gap-1.5 text-slate-800 text-xs font-bold">
+                              <CalendarIcon size={13} className="text-slate-400 shrink-0" />
+                              <span>{s.fecha}</span>
                             </div>
+                            {s.horaInicio && (
+                              <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                Cx: {s.horaInicio} hs
+                              </div>
+                            )}
+                            {s.horaIngreso && (
+                              <div className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200" title="Horario de ingreso del paciente">
+                                <Clock size={10} className="text-amber-600 shrink-0" />
+                                <span>Ingreso: {s.horaIngreso} hs</span>
+                                {s.ordenIngreso && <span className="text-indigo-600 font-bold ml-0.5">({s.ordenIngreso})</span>}
+                              </div>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
@@ -4873,9 +4960,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                           </span>
                         )}
                         <div className="flex items-center gap-1">
-                          <Clock size={12} className="text-slate-400" />
-                          {s.fecha}
+                          <CalendarIcon size={12} className="text-slate-400" />
+                          <span>{s.fecha} {s.horaInicio ? `(${s.horaInicio} hs)` : ''}</span>
                         </div>
+                        {s.horaIngreso && (
+                          <div className="flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-black" title="Horario de ingreso del paciente">
+                            <Clock size={11} className="text-amber-600 shrink-0" />
+                            <span>Ingreso: {s.horaIngreso} hs</span>
+                            {s.ordenIngreso && <span className="text-indigo-600 font-bold ml-0.5">({s.ordenIngreso})</span>}
+                          </div>
+                        )}
                         <div className="flex items-center gap-1 text-slate-400 text-[10px]">
                           <span>Por:</span> {s.creador}
                         </div>
@@ -5545,6 +5639,49 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     <option value="4:00 hs">4 horas (4:00 hs)</option>
                   </select>
                 </div>
+
+                {/* Horario de Ingreso y Orden para WhatsApp */}
+                <div className="md:col-span-2 p-3 bg-gradient-to-r from-amber-50/80 to-indigo-50/50 border border-amber-200/80 rounded-xl space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Clock size={15} className="text-amber-600 shrink-0" />
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Horario de Ingreso del Paciente (Para WhatsApp)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          placeholder="07:10"
+                          className="w-20 px-2 py-1 text-xs font-black text-amber-900 bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-center shadow-xs"
+                          value={editModalData.horaIngreso || ''}
+                          onChange={e => setEditModalData(prev => ({ ...prev, horaIngreso: e.target.value }))}
+                        />
+                        <span className="text-xs font-bold text-slate-500">hs</span>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Orden (ej: 1° turno)"
+                        className="w-28 px-2 py-1 text-xs font-bold text-indigo-900 bg-white border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none shadow-xs"
+                        value={editModalData.ordenIngreso || ''}
+                        onChange={e => setEditModalData(prev => ({ ...prev, ordenIngreso: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-[10px] font-bold text-slate-500 mr-1">Rápido:</span>
+                    {['07:10', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'].map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setEditModalData(prev => ({ ...prev, horaIngreso: t }))}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${editModalData.horaIngreso === t ? 'bg-amber-500 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-amber-50'}`}
+                      >
+                        {t} hs
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Psicoprofilaxis</label>
                   <select className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
@@ -6277,10 +6414,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       {/* MODAL WHATSAPP */}
       {whatsAppModalSurgery && (
         <WhatsAppModal
-          surgery={whatsAppModalSurgery}
+          surgery={surgeries.find(s => s.id === whatsAppModalSurgery.id) || whatsAppModalSurgery}
           currentUser={currentUser}
           onClose={() => setWhatsAppModalSurgery(null)}
           onUpdatePhone={handleUpdateSurgeryPhone}
+          onUpdateAdmission={handleUpdateSurgeryAdmission}
         />
       )}
 

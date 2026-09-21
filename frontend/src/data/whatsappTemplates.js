@@ -1,4 +1,4 @@
-﻿import { formatDoctorDisplayName, shortDoctorName } from '../utils/doctorName';
+import { formatDoctorDisplayName, shortDoctorName } from '../utils/doctorName';
 
 export const DEFAULT_WA_TEMPLATES = [
   {
@@ -17,13 +17,13 @@ export const DEFAULT_WA_TEMPLATES = [
     id: 'confirmacion_turno',
     titulo: 'Confirmación de Turno Quirúrgico',
     categoria: 'Turnos',
-    mensaje: 'Estimado/a {paciente}, nos comunicamos de Clínica COAT para confirmar su turno de cirugía con el/la Dr/a {profesional} programado para el día {fecha} a las {hora} hs. Por favor responda este mensaje para confirmar su asistencia. ¡Muchas gracias!'
+    mensaje: 'Estimado/a {paciente}, nos comunicamos de Clínica COAT para confirmar su turno de cirugía con el/la Dr/a {profesional} programado para el día {fecha}.\n\n⏰ Horario de ingreso a la clínica: {horaIngreso} hs.\n\nPor favor responda este mensaje para confirmar su asistencia. ¡Muchas gracias!'
   },
   {
     id: 'indicaciones_ayuno',
     titulo: 'Indicaciones de Ayuno y Preparación',
     categoria: 'Indicaciones',
-    mensaje: 'Estimado/a {paciente}, le recordamos las indicaciones para su procedimiento ({procedimiento}) del día {fecha} con {profesional}:\n\n- Ayuno total de 8 horas previas (no ingerir sólidos ni líquidos, ni agua).\n- Concurrir con DNI, carnet de {obraSocial} y estudios prequirúrgicos completos.\n- Asistir con un acompañante adulto.\n\nAnte cualquier consulta quedamos a su disposición. Clínica COAT.'
+    mensaje: 'Estimado/a {paciente}, le recordamos las indicaciones para su procedimiento ({procedimiento}) del día {fecha} con {profesional}:\n\n⏰ Horario de ingreso: {horaIngreso} hs.\n- Ayuno total de 8 horas previas al horario de ingreso (no ingerir sólidos ni líquidos, ni agua).\n- Concurrir con DNI, carnet de {obraSocial} y estudios prequirúrgicos completos.\n- Asistir con un acompañante adulto.\n\nAnte cualquier consulta quedamos a su disposición. Clínica COAT.'
   },
   {
     id: 'autorizacion_aprobada',
@@ -35,13 +35,13 @@ export const DEFAULT_WA_TEMPLATES = [
     id: 'recordatorio_previo',
     titulo: 'Recordatorio Previo de Cirugía',
     categoria: 'Recordatorios',
-    mensaje: 'Hola {paciente}, le recordamos su turno quirúrgico con el/la Dr/a {profesional} el día {fecha} a las {hora} hs en COAT. Recuerde presentarse 30 minutos antes en recepción con DNI y carnet de {obraSocial}.'
+    mensaje: 'Hola {paciente}, le recordamos su turno quirúrgico con el/la Dr/a {profesional} el día {fecha}.\n\n⏰ Horario de presentación / ingreso: {horaIngreso} hs en COAT.\n\nRecuerde presentarse puntual con DNI y carnet de {obraSocial}.'
   },
   {
     id: 'reprogramacion',
     titulo: 'Reprogramación de Turno',
     categoria: 'Turnos',
-    mensaje: 'Estimado/a {paciente}, nos comunicamos de Clínica COAT para informarle que su turno con {profesional} ha sido reprogramado para el día {fecha} a las {hora} hs. Por favor responda este mensaje para confirmar su recepción. Disculpe las molestias.'
+    mensaje: 'Estimado/a {paciente}, nos comunicamos de Clínica COAT para informarle que su turno con {profesional} ha sido reprogramado para el día {fecha}.\n\n⏰ Nuevo horario de ingreso: {horaIngreso} hs.\n\nPor favor responda este mensaje para confirmar su recepción. Disculpe las molestias.'
   }
 ];
 
@@ -50,7 +50,10 @@ export const WA_TEMPLATE_VARIABLES = [
   { tag: '{paciente}', desc: 'Nombre del paciente en mayúsculas' },
   { tag: '{profesional}', desc: 'Profesional (ej: Dra Venier)' },
   { tag: '{fecha}', desc: 'Fecha de cirugía (ej: 1/10)' },
-  { tag: '{hora}', desc: 'Hora del turno' },
+  { tag: '{horaIngreso}', desc: 'Horario de ingreso del paciente (ej: 07:10)' },
+  { tag: '{horarioIngreso}', desc: 'Horario de ingreso del paciente (ej: 07:10)' },
+  { tag: '{orden}', desc: 'Orden / Turno (ej: 1° turno)' },
+  { tag: '{hora}', desc: 'Hora del turno / cirugía / ingreso' },
   { tag: '{obraSocial}', desc: 'Obra Social o Particular' },
   { tag: '{procedimiento}', desc: 'Cirugía o estudio programado' },
   { tag: '{dni}', desc: 'DNI del paciente' },
@@ -93,7 +96,7 @@ export const formatWhatsAppNumber = (rawPhone) => {
   return digits;
 };
 
-export const interpolateTemplate = (templateText, surgery = {}, currentUser = null) => {
+export const interpolateTemplate = (templateText, surgery = {}, currentUser = null, extraOverrides = {}) => {
   if (!templateText) return '';
   
   // Format date like 1/10 (or DD/MM if preferred)
@@ -107,7 +110,9 @@ export const interpolateTemplate = (templateText, surgery = {}, currentUser = nu
     }
   }
 
-  const hora = surgery.horaInicio || surgery.hora || '08:00';
+  const horaIngreso = extraOverrides.horaIngreso || surgery.horaIngreso || surgery.horarioIngreso || extraOverrides.hora || surgery.horaInicio || surgery.hora || '07:10';
+  const orden = extraOverrides.ordenIngreso || extraOverrides.orden || surgery.ordenIngreso || surgery.orden || '';
+  const hora = extraOverrides.hora || horaIngreso || surgery.horaInicio || surgery.hora || '08:00';
   const paciente = (surgery.paciente || surgery.nombre || 'Paciente').toUpperCase();
   const dni = surgery.dni || '';
   
@@ -128,6 +133,9 @@ export const interpolateTemplate = (templateText, surgery = {}, currentUser = nu
     .replace(/\{dni\}/gi, dni)
     .replace(/\{profesional\}/gi, profesional)
     .replace(/\{fecha\}/gi, formattedDate)
+    .replace(/\{horaIngreso\}/gi, horaIngreso)
+    .replace(/\{horarioIngreso\}/gi, horaIngreso)
+    .replace(/\{orden\}/gi, orden)
     .replace(/\{hora\}/gi, hora)
     .replace(/\{obraSocial\}/gi, obraSocial)
     .replace(/\{procedimiento\}/gi, procedimiento)
