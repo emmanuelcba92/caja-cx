@@ -3308,11 +3308,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
             {canCreate && (showCreateModal || isEditing) && createPortal(
               <div 
                 className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-                onClick={handleCloseCreateModal}
               >
                 <div 
                   className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200"
-                  onClick={e => e.stopPropagation()}
                 >
                   <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-2.5">
