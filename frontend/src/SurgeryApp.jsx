@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { useAuth } from './context/AuthContext';
 import { 
   User, 
+  UserCheck,
+  Activity,
   ShieldCheck, 
   ClipboardList, 
   PlusCircle, 
@@ -2262,30 +2264,56 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
    setShowCreateModal(false);
  };
 
- const getNextAvailableTime = (date, excludeId = null) => {
-   if (!date) return '08:00';
-   const daySurgeries = (surgeries || []).filter(s => 
-     s.fecha === date && 
-     s.id !== excludeId && 
-     s.estado !== 'CANCELADA' && 
-     s.estado !== 'RECHAZADA'
-   );
-   if (daySurgeries.length === 0) {
-     return '08:00';
-   }
-   let latestEndMin = 8 * 60; // 08:00
-   for (const s of daySurgeries) {
-     const startMin = timeToMinutes(s.horaInicio || '08:00');
-     const durMin = parseDurationToMinutes(s.duracion || '1:00 hs');
-     const endMin = s.horaFin ? timeToMinutes(s.horaFin) : (startMin + durMin);
-     if (endMin > latestEndMin) {
-       latestEndMin = endMin;
-     }
-   }
-   const h = Math.floor(latestEndMin / 60) % 24;
-   const m = latestEndMin % 60;
-   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
- };
+  const getNextAvailableTime = (date, excludeId = null) => {
+    if (!date) return '08:00';
+    const daySurgeries = (surgeries || []).filter(s => 
+      s.fecha === date && 
+      s.id !== excludeId && 
+      s.estado !== 'CANCELADA' && 
+      s.estado !== 'RECHAZADA'
+    );
+    if (daySurgeries.length === 0) {
+      return '08:00';
+    }
+    let latestEndMin = 8 * 60; // 08:00
+    for (const s of daySurgeries) {
+      const startMin = timeToMinutes(s.horaInicio || '08:00');
+      const durMin = parseDurationToMinutes(s.duracion || '1:00 hs');
+      const endMin = s.horaFin ? timeToMinutes(s.horaFin) : (startMin + durMin);
+      if (endMin > latestEndMin) {
+        latestEndMin = endMin;
+      }
+    }
+    const h = Math.floor(latestEndMin / 60) % 24;
+    const m = latestEndMin % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  const getNextAvailableCancelTime = (date, excludeId = null) => {
+    if (!date) return '16:00';
+    const dayCanceled = (surgeries || []).filter(s => 
+      s.fecha === date && 
+      s.id !== excludeId && 
+      (s.estado === 'CANCELADA' || s.suspendida)
+    );
+    if (dayCanceled.length === 0) {
+      return '16:00';
+    }
+    let latestEndMin = 16 * 60; // 16:00
+    for (const s of dayCanceled) {
+      const startMin = timeToMinutes(s.horaInicio || '16:00');
+      if (startMin >= 16 * 60) {
+        const durMin = parseDurationToMinutes(s.duracion || '0:30 hs');
+        const endMin = s.horaFin ? timeToMinutes(s.horaFin) : (startMin + durMin);
+        if (endMin > latestEndMin) {
+          latestEndMin = endMin;
+        }
+      }
+    }
+    const h = Math.floor(latestEndMin / 60) % 24;
+    const m = latestEndMin % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
 
   // Búsqueda automática de paciente por DNI
   const handleDniSearchAndFill = (inputDni, isEdit = false) => {
@@ -2537,13 +2565,19 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     if (isEditing) {
       const dur = formData.duracion || '1:00 hs';
       const durMin = parseDurationToMinutes(dur);
-      const computedHoraFin = formData.horaFin || (formData.horaInicio ? addMinutesToTime(formData.horaInicio, durMin) : '');
       const existingSurgery = surgeries.find(s => s.id === editingId);
+      let finalHoraInicio = formData.horaInicio;
+      let computedHoraFin = formData.horaFin || (formData.horaInicio ? addMinutesToTime(formData.horaInicio, durMin) : '');
+      if (formData.estado === 'CANCELADA' && existingSurgery?.estado !== 'CANCELADA') {
+        finalHoraInicio = getNextAvailableCancelTime(formData.fecha, editingId);
+        computedHoraFin = addMinutesToTime(finalHoraInicio, durMin);
+      }
       const effectiveResidente = formData.residente || (currentUser?.rol === ROLES.RESIDENTE ? currentUser.nombre : (existingSurgery?.residente || ''));
       const updatedItem = {
         ...formData,
         residente: effectiveResidente,
         duracion: dur,
+        horaInicio: finalHoraInicio,
         horaFin: computedHoraFin,
         estado: isEgomez && (!formData.estado || formData.estado === 'SOLICITADA') ? 'CODIFICADA' : (formData.estado || 'CODIFICADA'),
         codigosAuditados: isEgomez ? (formData.codigos || '') : (formData.codigosAuditados || formData.codigos || '')
@@ -2581,8 +2615,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
           edad: formData.edad,
           telefono: formData.contactoFamiliar,
           fechaSolicitud: formData.fechaSolicitud || new Date().toISOString().slice(0, 10),
-        fechaCirugia: formData.fecha,
-          horaCirugia: formData.horaInicio,
+          fechaCirugia: formData.fecha,
+          horaCirugia: finalHoraInicio,
           horaFin: computedHoraFin,
           horaIngreso: formData.horaIngreso || '',
           ordenIngreso: formData.ordenIngreso || '',
@@ -2850,6 +2884,15 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     const isAutorizada = newStatus === 'AUTORIZADA';
     const isCancelada = newStatus === 'CANCELADA';
 
+    let newHoraInicio = surgery?.horaInicio;
+    let newHoraFin = surgery?.horaFin;
+
+    if (isCancelada) {
+      newHoraInicio = getNextAvailableCancelTime(surgery?.fecha, id);
+      const durMin = parseDurationToMinutes(surgery?.duracion || '0:30 hs');
+      newHoraFin = addMinutesToTime(newHoraInicio, durMin);
+    }
+
     setSurgeries(surgeries.map(s => {
       if (s.id !== id) return s;
       const updated = { 
@@ -2857,7 +2900,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         estado: newStatus,
         enviada: isEnviada || (isAutorizada ? true : s.enviada),
         autorizada: isAutorizada,
-        suspendida: isCancelada
+        suspendida: isCancelada,
+        ...(isCancelada ? { horaInicio: newHoraInicio, horaFin: newHoraFin } : {})
       };
       if (newStatus === 'RECHAZADA' && motivo) updated.motivoRechazo = motivo;
       if (newStatus === 'CANCELADA' && motivo) updated.motivoCancelacion = motivo;
@@ -2887,6 +2931,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         updatePayload.status = 'auditada';
       } else if (newStatus === 'CANCELADA') {
         updatePayload.suspendida = true;
+        updatePayload.horaCirugia = newHoraInicio;
+        updatePayload.horaFin = newHoraFin;
         if (motivo) updatePayload.motivoCancelacion = motivo;
       } else if (newStatus === 'RECHAZADA') {
         if (motivo) updatePayload.motivoRechazo = motivo;
@@ -2940,8 +2986,14 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const handleSaveEditModal = (data) => {
     const dur = data.duracion || '1:00 hs';
     const durMin = parseDurationToMinutes(dur);
-    const hFin = data.horaFin || (data.horaInicio ? addMinutesToTime(data.horaInicio, durMin) : '');
     const existingSurgery = surgeries.find(s => s.id === data.id);
+    let finalHoraInicio = data.horaInicio;
+    let hFin = data.horaFin || (data.horaInicio ? addMinutesToTime(data.horaInicio, durMin) : '');
+    
+    if (data.estado === 'CANCELADA' && existingSurgery?.estado !== 'CANCELADA') {
+      finalHoraInicio = getNextAvailableCancelTime(data.fecha, data.id);
+      hFin = addMinutesToTime(finalHoraInicio, durMin);
+    }
     const effectiveResidente = data.residente || (currentUser?.rol === ROLES.RESIDENTE ? currentUser.nombre : (existingSurgery?.residente || ''));
     
     // Convertir editCodeInputs a string codigos
@@ -2980,6 +3032,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       codigos: finalCodigos,
       codigosAuditados: finalCodigos,
       duracion: dur, 
+      horaInicio: finalHoraInicio,
       horaFin: hFin, 
       residente: effectiveResidente,
       horaIngreso: data.horaIngreso || '',
@@ -3812,244 +3865,265 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                   )}
                   
                   <form onSubmit={handleCreateSurgery} className="flex flex-col flex-1 overflow-hidden">
-                    <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
-                      {/* SECCIÓN: PROFESIONAL */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-indigo-100 pb-1">
-                        <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest">
-                          {userRole === ROLES.RESIDENTE || formData.residente ? 'Profesional a Cargo (Firma y Sello)' : 'Datos del Profesional'}
-                        </h4>
-                        {(userRole === ROLES.RESIDENTE || formData.residente) && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
-                            Residente: {formData.residente || currentUser?.nombre}
-                          </span>
-                        )}
-                      </div>
-
-                      {(userRole === ROLES.RESIDENTE || formData.residente) && (
-                        <div className="p-3 bg-teal-50/70 border border-teal-200 rounded-xl text-xs text-teal-800 flex items-start gap-2">
-                          <User size={16} className="text-teal-600 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="font-bold">Carga de cirugía como Residente</p>
-                            <p className="text-[11px] text-teal-700">
-                              Seleccioná el <strong>médico a cargo</strong> con quien realizarás la intervención. La orden quirúrgica se emitirá con su firma, sello y matrícula.
-                            </p>
+                    <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
+                      
+                      {/* SECCIÓN 1: PROFESIONAL (Sólo si es residente o admin seleccionando) */}
+                      {(userRole === ROLES.RESIDENTE || formData.residente || isAdmin) && (
+                        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <div className="flex items-center gap-2">
+                              <User size={16} className="text-indigo-600" />
+                              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                                {userRole === ROLES.RESIDENTE || formData.residente ? 'Médico a Cargo (Firma y Sello)' : 'Profesional'}
+                              </h4>
+                            </div>
+                            {(userRole === ROLES.RESIDENTE || formData.residente) && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                                Residente: {formData.residente || currentUser?.nombre}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="sm:col-span-2">
+                              <ProfessionalSearchSelect
+                                professionals={professionals}
+                                selectedId={formData.professionalId}
+                                required={userRole === ROLES.RESIDENTE}
+                                placeholder={userRole === ROLES.RESIDENTE ? "Buscar médico a cargo por apellido (ej: Valeriani, Romani)..." : "Buscar profesional por apellido..."}
+                                onSelect={prof => {
+                                  if (!prof) {
+                                    setFormData({ ...formData, professionalId: null, nombreProfesional: '', emailProfesional: '' });
+                                    return;
+                                  }
+                                  const matchedUser = users.find(u => u.email && u.nombre?.toLowerCase() === prof.nombre?.toLowerCase());
+                                  setFormData({
+                                    ...formData,
+                                    professionalId: prof.id,
+                                    nombreProfesional: prof.nombre,
+                                    emailProfesional: prof.email || matchedUser?.email || formData.emailProfesional || ''
+                                  });
+                                }}
+                              />
+                            </div>
+                            {!formData.professionalId && (
+                              <>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Nombre y Apellido</label>
+                                  <input 
+                                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                                    placeholder="Dr/a. Nombre Apellido"
+                                    value={formData.nombreProfesional} onChange={e => setFormData({...formData, nombreProfesional: e.target.value})}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Email</label>
+                                  <input 
+                                    type="email" className="w-full px-3 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                                    placeholder="email@clinica.com"
+                                    value={formData.emailProfesional} onChange={e => setFormData({...formData, emailProfesional: e.target.value})}
+                                  />
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
 
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                            {userRole === ROLES.RESIDENTE || formData.residente ? 'Seleccionar Médico a Cargo *' : 'Seleccionar Profesional'}
-                          </label>
-                          <ProfessionalSearchSelect
-                            professionals={professionals}
-                            selectedId={formData.professionalId}
-                            required={userRole === ROLES.RESIDENTE}
-                            placeholder={userRole === ROLES.RESIDENTE ? "Buscar médico a cargo por apellido (ej: Valeriani, Romani)..." : "Buscar profesional por apellido..."}
-                            onSelect={prof => {
-                              if (!prof) {
-                                setFormData({
-                                  ...formData,
-                                  professionalId: null,
-                                  nombreProfesional: '',
-                                  emailProfesional: ''
-                                });
-                                return;
-                              }
-                              const matchedUser = users.find(u => 
-                                u.email && u.nombre?.toLowerCase() === prof.nombre?.toLowerCase()
-                              );
-                              setFormData({
-                                ...formData,
-                                professionalId: prof.id,
-                                nombreProfesional: prof.nombre,
-                                emailProfesional: prof.email || matchedUser?.email || formData.emailProfesional || ''
-                              });
-                            }}
-                          />
-                        </div>
-                        <div className="grid grid-cols-1 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email Profesional</label>
-                          <input 
-                            type="email" className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                            placeholder="email@clinica.com"
-                            value={formData.emailProfesional} onChange={e => setFormData({...formData, emailProfesional: e.target.value})}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre y Apellido</label>
-                          <input 
-                            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                            placeholder="Dr/a. Nombre Apellido"
-                            value={formData.nombreProfesional} onChange={e => setFormData({...formData, nombreProfesional: e.target.value})}
-                          />
-                        </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* SECCIÓN: PACIENTE */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-1">Datos del Paciente</h4>
-                      <div className="grid grid-cols-1 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre y Apellido</label>
-                          <input 
-                            required className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                            value={formData.paciente} onChange={e => setFormData({...formData, paciente: e.target.value})}
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Edad</label>
-                            <input 
-                              type="number" required className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                              value={formData.edad} onChange={e => setFormData({...formData, edad: e.target.value})}
-                            />
+                      {/* SECCIÓN 2: DATOS DEL PACIENTE Y COBERTURA */}
+                      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                          <div className="flex items-center gap-2">
+                            <UserCheck size={16} className="text-indigo-600" />
+                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Datos del Paciente</h4>
                           </div>
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="block text-xs font-bold text-slate-500 uppercase">DNI</label>
-                              {dniFoundMessage && (
-                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 animate-in fade-in">
-                                  {dniFoundMessage}
-                                </span>
-                              )}
-                            </div>
+                          {dniFoundMessage && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 animate-in fade-in">
+                              {dniFoundMessage}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                          <div className="sm:col-span-4">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">DNI *</label>
                             <input 
                               required 
                               placeholder="Ej: 36430598"
-                              className={`w-full px-3 py-2 rounded-lg border focus:ring-2 outline-none transition-all ${
-                                dniFoundMessage ? 'border-emerald-400 bg-emerald-50/20 focus:ring-emerald-500' : 'border-slate-300 focus:ring-indigo-500'
+                              className={`w-full px-3 py-2 rounded-lg border text-sm font-semibold outline-none transition-all ${
+                                dniFoundMessage ? 'border-emerald-400 bg-emerald-50/20 focus:ring-2 focus:ring-emerald-500' : 'border-slate-300 focus:ring-2 focus:ring-indigo-500'
                               }`}
                               value={formData.dni} 
                               onChange={e => handleDniSearchAndFill(e.target.value, false)}
                             />
-                            <p className="text-[10px] text-slate-400 mt-1">Busca y autocompleta automáticamente en la base de pacientes</p>
+                          </div>
+                          <div className="sm:col-span-8">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Nombre y Apellido *</label>
+                            <input 
+                              required 
+                              placeholder="Nombre completo del paciente"
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-semibold text-slate-800"
+                              value={formData.paciente} onChange={e => setFormData({...formData, paciente: e.target.value})}
+                            />
+                          </div>
+
+                          <div className="sm:col-span-3">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Edad *</label>
+                            <input 
+                              type="number" required 
+                              placeholder="Ej: 34"
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                              value={formData.edad} onChange={e => setFormData({...formData, edad: e.target.value})}
+                            />
+                          </div>
+                          <div className="sm:col-span-5">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Teléfono de Contacto *</label>
+                            <input 
+                              required 
+                              placeholder="Ej: 3515551234"
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                              value={formData.contactoFamiliar} onChange={e => setFormData({...formData, contactoFamiliar: e.target.value})}
+                            />
+                          </div>
+                          <div className="sm:col-span-4">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">¿Paciente de la Clínica?</label>
+                            <select 
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                              value={formData.esPacienteClinica} onChange={e => setFormData({...formData, esPacienteClinica: e.target.value})}
+                            >
+                              <option value="SI">SÍ</option>
+                              <option value="NO">NO</option>
+                            </select>
+                          </div>
+
+                          <div className="sm:col-span-5">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Obra Social *</label>
+                            <input list="os-list-create"
+                              required 
+                              placeholder="Seleccionar o escribir..."
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                              value={formData.obraSocial} onChange={e => setFormData({...formData, obraSocial: e.target.value})}
+                            />
+                            <datalist id="os-list-create">
+                              {obrasSociales.map(os => <option key={os} value={os} />)}
+                            </datalist>
+                          </div>
+                          <div className="sm:col-span-4">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+                              {formData.obraSocial?.toLowerCase() === 'particular' ? 'Honorarios Prof.' : 'Nº Afiliado'}
+                            </label>
+                            <input 
+                              placeholder={formData.obraSocial?.toLowerCase() === 'particular' ? 'Monto acordado...' : 'Ej: 123456789/00'}
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                              value={formData.nroAfiliado} onChange={e => setFormData({...formData, nroAfiliado: e.target.value})}
+                            />
+                          </div>
+                          <div className="sm:col-span-3">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Psicoprofilaxis</label>
+                            <select 
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                              value={formData.psicoprofilaxis} onChange={e => setFormData({...formData, psicoprofilaxis: e.target.value})}
+                            >
+                              <option value="SI">SÍ</option>
+                              <option value="NO">NO</option>
+                            </select>
                           </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contacto Familiar</label>
-                          <input 
-                            required className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                            value={formData.contactoFamiliar} onChange={e => setFormData({...formData, contactoFamiliar: e.target.value})}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">¿Es paciente de la clínica?</label>
-                          <select 
-                            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                            value={formData.esPacienteClinica} onChange={e => setFormData({...formData, esPacienteClinica: e.target.value})}
-                          >
-                            <option value="SI">SÍ</option>
-                            <option value="NO">NO</option>
-                          </select>
-                        </div>
                       </div>
-                    </div>
 
-                    {/* SECCIÓN: CIRUGÍA */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-indigo-100 pb-1">
-                        <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest">
-                          {formData.tipoProcedimiento === 'ESTUDIO' ? 'Detalles del Estudio bajo Anestesia' : 'Detalles de la Cirugía'}
-                        </h4>
-                        {userRole !== ROLES.SECRE_ESTUDIOS ? (
-                          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
-                            <button
-                              type="button"
-                              onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'CIRUGIA', estudioBajoAnestesia: false }))}
-                              className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento !== 'ESTUDIO' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                            >
-                              Cirugía
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'ESTUDIO', estudioBajoAnestesia: true }))}
-                              className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento === 'ESTUDIO' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                            >
+                      {/* SECCIÓN 3: FECHA Y HORARIO DE CIRUGÍA */}
+                      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                          <div className="flex items-center gap-2">
+                            <CalendarIcon size={16} className="text-indigo-600" />
+                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                              {formData.tipoProcedimiento === 'ESTUDIO' ? 'Programación de Estudio' : 'Programación de Cirugía'}
+                            </h4>
+                          </div>
+                          {userRole !== ROLES.SECRE_ESTUDIOS ? (
+                            <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'CIRUGIA', estudioBajoAnestesia: false }))}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento !== 'ESTUDIO' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                              >
+                                Cirugía
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'ESTUDIO', estudioBajoAnestesia: true }))}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento === 'ESTUDIO' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                              >
+                                Estudio bajo Anestesia
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-purple-600 text-white shadow-xs">
                               Estudio bajo Anestesia
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="px-3 py-1 text-xs font-bold rounded-md bg-purple-600 text-white shadow-sm">
-                            Estudio bajo Anestesia
-                          </span>
-                        )}
-                      </div>
-
-                      {formData.tipoProcedimiento === 'ESTUDIO' && (
-                        <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
-                          <p className="text-[11px] font-bold text-purple-800 uppercase tracking-wider">
-                            Seleccionar Estudio (clic para agregar o quitar):
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {ESTUDIOS_BAJO_ANESTESIA.map(est => {
-                              const isAdded = codeInputs.some(c => c.trim().toLowerCase() === est.name.toLowerCase() || c.trim() === est.code);
-                              return (
-                                <button
-                                  key={est.code}
-                                  type="button"
-                                  onClick={() => {
-                                    if (isAdded) {
-                                      const next = codeInputs.filter(c => c.trim().toLowerCase() !== est.name.toLowerCase() && c.trim() !== est.code);
-                                      setCodeInputs(next.length > 0 ? next : ['']);
-                                    } else {
-                                      const emptyIdx = codeInputs.findIndex(c => !c.trim());
-                                      if (emptyIdx !== -1) {
-                                        const next = [...codeInputs];
-                                        next[emptyIdx] = est.name;
-                                        setCodeInputs(next);
-                                      } else {
-                                        setCodeInputs([...codeInputs, est.name]);
-                                      }
-                                    }
-                                  }}
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border ${
-                                    isAdded 
-                                      ? 'bg-purple-600 text-white border-purple-600 shadow-sm' 
-                                      : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-100/70'
-                                  }`}
-                                >
-                                  {isAdded ? '✓ ' : '+ '} {est.name}
-                                </button>
-                              );
-                            })}
-                          </div>
+                            </span>
+                          )}
                         </div>
-                      )}
-                      <div className="grid grid-cols-1 gap-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha Solicitud</label>
-                            <div className="relative">
-                              <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                              <input 
-                                type="date" className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                                value={formData.fechaSolicitud || ''} onChange={e => setFormData(prev => ({ ...prev, fechaSolicitud: e.target.value }))}
-                              />
+
+                        {formData.tipoProcedimiento === 'ESTUDIO' && (
+                          <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
+                            <p className="text-[11px] font-bold text-purple-800 uppercase tracking-wider">
+                              Seleccionar Estudio (clic para agregar o quitar):
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {ESTUDIOS_BAJO_ANESTESIA.map(est => {
+                                const isAdded = codeInputs.some(c => c.trim().toLowerCase() === est.name.toLowerCase() || c.trim() === est.code);
+                                return (
+                                  <button
+                                    key={est.code}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isAdded) {
+                                        const next = codeInputs.filter(c => c.trim().toLowerCase() !== est.name.toLowerCase() && c.trim() !== est.code);
+                                        setCodeInputs(next.length > 0 ? next : ['']);
+                                      } else {
+                                        const emptyIdx = codeInputs.findIndex(c => !c.trim());
+                                        if (emptyIdx !== -1) {
+                                          const next = [...codeInputs];
+                                          next[emptyIdx] = est.name;
+                                          setCodeInputs(next);
+                                        } else {
+                                          setCodeInputs([...codeInputs, est.name]);
+                                        }
+                                      }
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border ${
+                                      isAdded 
+                                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs' 
+                                        : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-100/70'
+                                    }`}
+                                  >
+                                    {isAdded ? '✓ ' : '+ '} {est.name}
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                              {formData.tipoProcedimiento === 'ESTUDIO' ? 'Fecha Estudio' : 'Fecha Cirugía'}
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+                              {formData.tipoProcedimiento === 'ESTUDIO' ? 'Fecha Estudio *' : 'Fecha Cirugía *'}
                             </label>
                             <div className="relative">
                               <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                               <input 
-                                type="date" required className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                                type="date" required 
+                                className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-medium"
                                 value={formData.fecha} onChange={e => handleDateChange(e.target.value)}
                               />
                             </div>
                           </div>
+
                           <div>
                             <div className="flex justify-between items-center mb-1">
-                              <label className="block text-xs font-bold text-slate-500 uppercase">Hora Inicio</label>
+                              <label className="block text-[11px] font-bold text-slate-500 uppercase">Horario de Cirugía *</label>
                               {formData.horaFin && (
-                                <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">
                                   Hasta: {formData.horaFin} hs
                                 </span>
                               )}
@@ -4057,14 +4131,15 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                             <div className="relative">
                               <Clock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                               <input 
-                                type="time" className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                                type="time" required
+                                className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-semibold"
                                 value={formData.horaInicio} onChange={e => handleTimeChange(e.target.value)}
                               />
                             </div>
-                            <p className="text-[10px] text-slate-400 mt-1">Auto: 08:00 hs o al finalizar la anterior</p>
                           </div>
+
                           <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Duración Estimada</label>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Duración Estimada</label>
                             <select
                               className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm bg-white"
                               value={formData.duracion || '1:00 hs'}
@@ -4082,225 +4157,198 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                               <option value="3:30 hs">3h 30m (3:30 hs)</option>
                               <option value="4:00 hs">4 horas (4:00 hs)</option>
                             </select>
-                            <p className="text-[10px] text-slate-400 mt-1">Determina el turno de la siguiente cirugía</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* SECCIÓN 4: DIAGNÓSTICO Y CÓDIGOS */}
+                      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                          <div className="flex items-center gap-2">
+                            <Activity size={16} className="text-indigo-600" />
+                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Detalles Clínicos y Prácticas</h4>
                           </div>
                         </div>
 
-                        {/* Horario de Ingreso y Orden para WhatsApp */}
-                        <div className="p-3 bg-gradient-to-r from-amber-50/80 to-indigo-50/50 border border-amber-200/80 rounded-xl space-y-2">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5">
-                              <Clock size={15} className="text-amber-600 shrink-0" />
-                              <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Horario de Ingreso del Paciente (Para WhatsApp)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1">
-                                <input
-                                  type="text"
-                                  placeholder="07:10"
-                                  className="w-20 px-2 py-1 text-xs font-black text-amber-900 bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-center shadow-xs"
-                                  value={formData.horaIngreso || ''}
-                                  onChange={e => setFormData(prev => ({ ...prev, horaIngreso: e.target.value }))}
-                                />
-                                <span className="text-xs font-bold text-slate-500">hs</span>
-                              </div>
-                              <input
-                                type="text"
-                                placeholder="Orden (ej: 1° turno)"
-                                className="w-28 px-2 py-1 text-xs font-bold text-indigo-900 bg-white border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none shadow-xs"
-                                value={formData.ordenIngreso || ''}
-                                onChange={e => setFormData(prev => ({ ...prev, ordenIngreso: e.target.value }))}
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Diagnóstico / Justificación CX *</label>
+                            <textarea 
+                              required 
+                              placeholder="Describa el diagnóstico o justificación clínica..."
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all h-18 text-xs font-medium"
+                              value={formData.justificacion} onChange={e => setFormData({...formData, justificacion: e.target.value})}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+                              {formData.tipoProcedimiento === 'ESTUDIO' ? 'Estudios a Solicitar' : 'Códigos a Autorizar'}
+                            </label>
+                            <div className="space-y-2">
+                              {codeInputs.map((val, idx) => (
+                                 <div key={idx} className="flex items-start gap-2">
+                                   <span className="text-xs font-bold text-slate-400 w-16 shrink-0 mt-2">Código {idx + 1}</span>
+                                   <div className="flex-1 space-y-1">
+                                     <div className="relative">
+                                       <input
+                                         type="text"
+                                         className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-xs"
+                                         value={val}
+                                         placeholder="Escriba código o nombre..."
+                                         onChange={(e) => {
+                                           const newVal = e.target.value;
+                                           const newInputs = [...codeInputs];
+                                           newInputs[idx] = newVal;
+                                           setCodeInputs(newInputs);
+                                           const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
+                                           const matches = searchCodes(newVal, isSM, formData.tipoProcedimiento || 'CIRUGIA');
+                                           setCodeSuggestions({ ...codeSuggestions, [idx]: matches });
+                                           setActiveCodeField(idx);
+                                         }}
+                                         onKeyDown={(e) => {
+                                           if (e.key === 'Enter' && codeSuggestions[idx]?.length > 0 && activeCodeField === idx) {
+                                             e.preventDefault();
+                                             const s = codeSuggestions[idx][0];
+                                             const newInputs = [...codeInputs];
+                                             newInputs[idx] = s.code;
+                                             setCodeInputs(newInputs);
+                                             setCodeSuggestions({});
+                                           }
+                                         }}
+                                         onFocus={() => {
+                                           setActiveCodeField(idx);
+                                           if (val.trim().length >= 2) {
+                                             const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
+                                             const matches = searchCodes(val, isSM, formData.tipoProcedimiento || 'CIRUGIA');
+                                             setCodeSuggestions({ ...codeSuggestions, [idx]: matches });
+                                           }
+                                         }}
+                                         onBlur={() => setTimeout(() => { setCodeSuggestions({}); setActiveCodeField(null); }, 200)}
+                                       />
+                                       {codeSuggestions[idx]?.length > 0 && activeCodeField === idx && (
+                                         <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                           {codeSuggestions[idx].map((s, si) => (
+                                             <button
+                                               key={si}
+                                               type="button"
+                                               className="w-full text-left px-3 py-2 hover:bg-indigo-50 text-xs border-b border-slate-100 last:border-0"
+                                               onMouseDown={(e) => {
+                                                 e.preventDefault();
+                                                 const newInputs = [...codeInputs];
+                                                 newInputs[idx] = s.code;
+                                                 setCodeInputs(newInputs);
+                                                 setCodeSuggestions({});
+                                               }}
+                                             >
+                                                <div className="flex items-center gap-1 flex-wrap">
+                                                   {s.parentModule ? (
+                                                     <>
+                                                       <span className="font-bold text-indigo-700">{s.parentModule.code} {s.parentModule.name}</span>
+                                                       <span className="text-slate-400">-</span>
+                                                       <span className="font-bold text-slate-700">{s.code}</span>
+                                                       <span className="text-slate-600">{s.name}</span>
+                                                     </>
+                                                   ) : s.type === 'iosfa' && s.generalCode ? (
+                                                     <>
+                                                       <span className="font-bold text-emerald-700">{s.code}</span>
+                                                       <span className="text-slate-400">({s.generalCode})</span>
+                                                       <span className="text-slate-600">{s.name}</span>
+                                                       <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1 rounded font-bold">IOSFA</span>
+                                                     </>
+                                                   ) : (
+                                                     <>
+                                                       <span className="font-bold text-indigo-700">{s.code}</span>
+                                                       <span className="text-slate-600">{s.name}</span>
+                                                     </>
+                                                   )}
+                                                   {s.type === 'modulo' && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1 rounded font-bold">MÓDULO</span>}
+                                                 </div>
+                                             </button>
+                                           ))}
+                                         </div>
+                                       )}
+                                     </div>
+                                     {val.trim() && (
+                                       <div className="text-[10px] text-indigo-500 font-medium px-1 leading-tight">
+                                         {(() => {
+                                           const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
+                                           const isIOSFA = formData.obraSocial?.toUpperCase().includes('IOSFA');
+                                           const expanded = expandCodes(val.trim(), isSM, isIOSFA);
+                                           return expanded.length > 0 ? expanded[0] : `${val.trim()} — ${getCodeName(val.trim())}`;
+                                         })()}
+                                       </div>
+                                     )}
+                                   </div>
+                                   {idx >= 2 && (
+                                     <button
+                                       type="button"
+                                       onClick={() => {
+                                         const newInputs = codeInputs.filter((_, i) => i !== idx);
+                                         setCodeInputs(newInputs);
+                                       }}
+                                       className="text-red-400 hover:text-red-600 p-1"
+                                     >
+                                       <XCircle size={16} />
+                                     </button>
+                                   )}
+                                 </div>
+                              ))}
+                             <button
+                               type="button"
+                               onClick={() => setCodeInputs([...codeInputs, ''])}
+                               className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 mt-1"
+                             >
+                               <PlusCircle size={14} /> Agregar código
+                             </button>
+                           </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Tipo de Anestesia *</label>
+                              <input 
+                                required 
+                                placeholder="General, Local, Sedación..."
+                                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                                value={formData.anestesia} onChange={e => setFormData({...formData, anestesia: e.target.value})}
                               />
                             </div>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1">
-                            <span className="text-[10px] font-bold text-slate-500 mr-1">Rápido:</span>
-                            {['07:10', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'].map(t => (
-                              <button
-                                key={t}
-                                type="button"
-                                onClick={() => setFormData(prev => ({ ...prev, horaIngreso: t }))}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${formData.horaIngreso === t ? 'bg-amber-500 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-amber-50'}`}
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">¿Requiere Presupuesto?</label>
+                              <select 
+                                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white"
+                                value={formData.requierePresupuesto} onChange={e => setFormData({...formData, requierePresupuesto: e.target.value})}
                               >
-                                {t} hs
-                              </button>
-                            ))}
+                                <option value="NO">NO</option>
+                                <option value="SI">SÍ</option>
+                              </select>
+                            </div>
                           </div>
                         </div>
+                      </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Obra Social</label>
-                            <input list="os-list"
-                              required className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                              value={formData.obraSocial} onChange={e => setFormData({...formData, obraSocial: e.target.value})}
-                            />
-                            <datalist id="os-list">
-                              {obrasSociales.map(os => <option key={os} value={os} />)}
-                            </datalist>
+                      {/* SECCIÓN 5: MATERIALES, NOTAS Y ADJUNTOS */}
+                      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                          <div className="flex items-center gap-2">
+                            <FileText size={16} className="text-indigo-600" />
+                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Materiales y Notas</h4>
                           </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{formData.obraSocial?.toLowerCase() === 'particular' ? 'Honorarios Prof.' : 'Nº Afiliado'}</label>
-                            <input 
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                              value={formData.nroAfiliado} onChange={e => setFormData({...formData, nroAfiliado: e.target.value})}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">SALA</label>
-                            <input 
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm uppercase font-bold text-slate-800 placeholder:normal-case placeholder:font-normal"
-                              placeholder="Ej: SALA 1, Q1..."
-                              value={formData.habitacion || ''} onChange={e => setFormData({...formData, habitacion: e.target.value.toUpperCase()})}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">¿Informó sobre psicoprofilaxis?</label>
-                          <select 
-                            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                            value={formData.psicoprofilaxis} onChange={e => setFormData({...formData, psicoprofilaxis: e.target.value})}
-                          >
-                            <option value="SI">SÍ</option>
-                            <option value="NO">NO</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                            {formData.tipoProcedimiento === 'ESTUDIO' ? 'Estudios a Solicitar' : 'Códigos a Autorizar'}
-                          </label>
-                          <div className="space-y-2">
-                            {codeInputs.map((val, idx) => (
-                               <div key={idx} className="flex items-start gap-2">
-                                 <span className="text-xs font-bold text-slate-400 w-16 shrink-0 mt-2">Código {idx + 1}</span>
-                                 <div className="flex-1 space-y-1">
-                                   <div className="relative">
-                                     <input
-                                       type="text"
-                                       className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                                       value={val}
-                                       placeholder="Escriba código o nombre..."
-                                       onChange={(e) => {
-                                         const newVal = e.target.value;
-                                         const newInputs = [...codeInputs];
-                                         newInputs[idx] = newVal;
-                                         setCodeInputs(newInputs);
-                                         const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
-                                         const matches = searchCodes(newVal, isSM, formData.tipoProcedimiento || 'CIRUGIA');
-                                         setCodeSuggestions({ ...codeSuggestions, [idx]: matches });
-                                         setActiveCodeField(idx);
-                                       }}
-                                       onKeyDown={(e) => {
-                                         if (e.key === 'Enter' && codeSuggestions[idx]?.length > 0 && activeCodeField === idx) {
-                                           e.preventDefault();
-                                           const s = codeSuggestions[idx][0];
-                                           const newInputs = [...codeInputs];
-                                           newInputs[idx] = s.code;
-                                           setCodeInputs(newInputs);
-                                           setCodeSuggestions({});
-                                         }
-                                       }}
-                                       onFocus={() => {
-                                         setActiveCodeField(idx);
-                                         if (val.trim().length >= 2) {
-                                           const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
-                                           const matches = searchCodes(val, isSM, formData.tipoProcedimiento || 'CIRUGIA');
-                                           setCodeSuggestions({ ...codeSuggestions, [idx]: matches });
-                                         }
-                                       }}
-                                       onBlur={() => setTimeout(() => { setCodeSuggestions({}); setActiveCodeField(null); }, 200)}
-                                     />
-                                     {codeSuggestions[idx]?.length > 0 && activeCodeField === idx && (
-                                       <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                                         {codeSuggestions[idx].map((s, si) => (
-                                           <button
-                                             key={si}
-                                             type="button"
-                                             className="w-full text-left px-3 py-2 hover:bg-indigo-50 text-xs border-b border-slate-100 last:border-0"
-                                             onMouseDown={(e) => {
-                                               e.preventDefault();
-                                               const newInputs = [...codeInputs];
-                                               newInputs[idx] = s.code;
-                                               setCodeInputs(newInputs);
-                                               setCodeSuggestions({});
-                                             }}
-                                           >
-                                              <div className="flex items-center gap-1 flex-wrap">
-                                                 {s.parentModule ? (
-                                                   <>
-                                                     <span className="font-bold text-indigo-700">{s.parentModule.code} {s.parentModule.name}</span>
-                                                     <span className="text-slate-400">-</span>
-                                                     <span className="font-bold text-slate-700">{s.code}</span>
-                                                     <span className="text-slate-600">{s.name}</span>
-                                                   </>
-                                                 ) : s.type === 'iosfa' && s.generalCode ? (
-                                                   <>
-                                                     <span className="font-bold text-emerald-700">{s.code}</span>
-                                                     <span className="text-slate-400">({s.generalCode})</span>
-                                                     <span className="text-slate-600">{s.name}</span>
-                                                     <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1 rounded font-bold">IOSFA</span>
-                                                   </>
-                                                 ) : (
-                                                   <>
-                                                     <span className="font-bold text-indigo-700">{s.code}</span>
-                                                     <span className="text-slate-600">{s.name}</span>
-                                                   </>
-                                                 )}
-                                                 {s.type === 'modulo' && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1 rounded font-bold">MÓDULO</span>}
-                                               </div>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                    {val.trim() && (
-                                      <div className="text-[10px] text-indigo-500 font-medium px-1 leading-tight">
-                                        {(() => {
-                                          const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
-                                          const isIOSFA = formData.obraSocial?.toUpperCase().includes('IOSFA');
-                                          const expanded = expandCodes(val.trim(), isSM, isIOSFA);
-                                          return expanded.length > 0 ? expanded[0] : `${val.trim()} — ${getCodeName(val.trim())}`;
-                                        })()}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {idx >= 2 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const newInputs = codeInputs.filter((_, i) => i !== idx);
-                                        setCodeInputs(newInputs);
-                                      }}
-                                      className="text-red-400 hover:text-red-600 p-1"
-                                    >
-                                      <XCircle size={16} />
-                                    </button>
-                                  )}
-                                </div>
-                             ))}
-                            <button
-                              type="button"
-                              onClick={() => setCodeInputs([...codeInputs, ''])}
-                              className="flex items-center gap-1 text-xs font-bold text-indigo-500 hover:text-indigo-700 mt-1"
-                            >
-                              <PlusCircle size={14} /> Agregar código
-                            </button>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="flex items-center gap-2 cursor-pointer">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
                             <input
                               type="checkbox"
                               className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                               checked={formData.requiereMaterial === 'SI'}
                               onChange={e => setFormData({...formData, requiereMaterial: e.target.checked ? 'SI' : 'NO', materiales: e.target.checked ? formData.materiales : ''})}
                             />
-                            <span className="text-xs font-bold text-slate-500 uppercase">Requiere Material</span>
+                            <span className="text-xs font-bold text-slate-700">Requiere Material</span>
                           </label>
                         </div>
+
                         {formData.requiereMaterial === 'SI' && (
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Materiales a Solicitar OS</label>
+                          <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-xl space-y-2">
+                            <label className="block text-[11px] font-bold text-blue-900 uppercase">Materiales a Solicitar OS</label>
                             <div className="space-y-1.5 mb-2">
                               {PREDEFINED_MATERIALS.map(mat => {
                                 const qty = materialSelections[mat] || 0;
@@ -4317,65 +4365,41 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                         setFormData({...formData, materiales: lines.join('\n')});
                                       }}
                                       className={`w-7 h-7 rounded-lg border text-xs font-bold transition-all ${
-                                        qty === 0 ? 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300' :
-                                        qty === 1 ? 'bg-blue-50 border-blue-200 text-blue-600' :
-                                        'bg-blue-100 border-blue-300 text-blue-700'
+                                        qty === 0 ? 'bg-white border-slate-200 text-slate-400 hover:border-slate-300' :
+                                        qty === 1 ? 'bg-blue-600 border-blue-600 text-white' :
+                                        'bg-blue-700 border-blue-700 text-white'
                                       }`}
                                     >
                                       {qty === 0 ? '+' : qty}
                                     </button>
                                     <span className={`text-xs font-medium ${qty > 0 ? 'text-slate-800' : 'text-slate-400'}`}>{mat}</span>
                                     {qty > 0 && (
-                                      <span className="text-[10px] text-blue-500 font-medium">{formatMaterialLine(mat, qty)}</span>
+                                      <span className="text-[10px] text-blue-600 font-bold">{formatMaterialLine(mat, qty)}</span>
                                     )}
                                   </div>
                                 );
                               })}
                             </div>
                             <textarea 
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all h-16 text-xs"
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all h-16 text-xs bg-white"
                               value={formData.materiales} onChange={e => setFormData({...formData, materiales: e.target.value})}
                               placeholder="Agregar otro material no incluido..."
                             />
                           </div>
                         )}
+
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Justificación Pedido CX</label>
-                          <textarea 
-                            required className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all h-20"
-                            value={formData.justificacion} onChange={e => setFormData({...formData, justificacion: e.target.value})}
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Anestesia</label>
-                            <input 
-                              required className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                              value={formData.anestesia} onChange={e => setFormData({...formData, anestesia: e.target.value})}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">¿Requiere Presupuesto?</label>
-                            <select 
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                              value={formData.requierePresupuesto} onChange={e => setFormData({...formData, requierePresupuesto: e.target.value})}
-                            >
-                              <option value="NO">NO</option>
-                              <option value="SI">SÍ</option>
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notas del médico</label>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Notas del médico (comentarios internos / auditoría)</label>
                           <textarea
-                            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all h-20"
+                            placeholder="Comentarios adicionales para la secretaría o auditoría..."
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all h-16 text-xs"
                             value={formData.notasDoctor} onChange={e => setFormData({...formData, notasDoctor: e.target.value})}
                           />
                         </div>
 
                         {/* SECCIÓN: ADJUNTAR FOTO DE ORDEN / ESTUDIOS */}
                         <div className="pt-2 border-t border-slate-100">
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center justify-between">
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5 flex items-center justify-between">
                             <span className="flex items-center gap-1.5">
                               <Camera size={14} className="text-indigo-600" />
                               <span>Foto de Orden Médica / Carnet OS</span>
@@ -4383,7 +4407,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                             {uploadingFile && <span className="text-[10px] text-indigo-600 font-bold flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Subiendo...</span>}
                           </label>
                           <div className="space-y-2">
-                            <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-xl cursor-pointer bg-slate-50/50 hover:bg-indigo-50/30 transition-all">
+                            <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-xl cursor-pointer bg-slate-50 hover:bg-indigo-50/40 transition-all">
                               <Paperclip size={16} className="text-indigo-600" />
                               <span className="text-xs font-semibold text-slate-600">Adjuntar foto o archivo (cámara / galería)</span>
                               <input
@@ -4433,27 +4457,26 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                           </div>
                         </div>
                       </div>
+
                     </div>
 
-                  </div>
-
-                  {/* MODAL FOOTER */}
-                  <div className="bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleCloseCreateModal}
-                      className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-all"
-                    >
-                      Cancelar
-                    </button>
-                    <button 
-                      type="submit"
-                      className="px-5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-2 shadow-md bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200"
-                    >
-                      <CheckCircle2 size={16} /> {isEditing ? 'Actualizar Solicitud' : 'Guardar Solicitud'}
-                    </button>
-                  </div>
-                </form>
+                    {/* MODAL FOOTER */}
+                    <div className="bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleCloseCreateModal}
+                        className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-all"
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-2 shadow-md bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200"
+                      >
+                        <CheckCircle2 size={16} /> {isEditing ? 'Actualizar Solicitud' : 'Guardar Solicitud'}
+                      </button>
+                    </div>
+                  </form>
 
               </div>
             </div>,
