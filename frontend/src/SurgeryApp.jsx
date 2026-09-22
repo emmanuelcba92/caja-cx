@@ -1848,20 +1848,37 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         const profsFromDb = await apiService.getCollection('profesionales');
         if (profsFromDb && profsFromDb.length > 0) {
           const formattedProfs = profsFromDb.map(p => {
-            const cleanName = formatDoctorDisplayName(p.nombre || `${p.prefijo || ''} ${p.nombreOnly || ''} ${p.apellido || ''}`);
+            const isTutora = (p.nombre || '').toLowerCase().includes('tutora') || (p.apellido || '').toLowerCase().includes('tutora');
+            const cleanName = isTutora ? 'Tutoras' : formatDoctorDisplayName(p.nombre || `${p.prefijo || ''} ${p.nombreOnly || ''} ${p.apellido || ''}`);
             return {
               id: p.id,
               nombre: cleanName || p.nombre,
               rawNombre: p.nombre,
-              prefijo: p.prefijo || (cleanName.startsWith('Dra') ? 'Dra' : 'Dr'),
-              nombrePila: p.nombreOnly || '',
-              apellido: p.apellido || '',
-              especialidad: (p.categoria || p.especialidad) === 'ORL' ? 'Otorrinolaringología' : (p.categoria || p.especialidad || 'Otorrinolaringología'),
-              mp: p.mp || '',
+              prefijo: isTutora ? '' : (p.prefijo || (cleanName.startsWith('Dra') ? 'Dra' : 'Dr')),
+              nombrePila: isTutora ? '' : (p.nombreOnly || ''),
+              apellido: isTutora ? 'Tutoras' : (p.apellido || ''),
+              especialidad: isTutora ? 'Tutoras' : ((p.categoria || p.especialidad) === 'ORL' ? 'Otorrinolaringología' : (p.categoria || p.especialidad || 'Otorrinolaringología')),
+              mp: p.mp || (isTutora ? 'MP-TUTORAS' : ''),
               me: p.me || '',
               firma: p.firmaUrl || p.firma || ''
             };
           });
+          const hasTutoras = formattedProfs.some(p => (p.nombre || '').toLowerCase().includes('tutora'));
+          if (!hasTutoras) {
+            formattedProfs.push({
+              id: 'prof_tutoras',
+              nombre: 'Tutoras',
+              rawNombre: 'Tutoras',
+              prefijo: '',
+              nombrePila: '',
+              apellido: 'Tutoras',
+              email: 'tutoras@clinic.com',
+              especialidad: 'Tutoras',
+              mp: 'MP-TUTORAS',
+              me: '',
+              firma: ''
+            });
+          }
           setProfessionals(formattedProfs);
         }
 

@@ -41,9 +41,16 @@ export const normalizePrefix = (prefix) => {
  */
 export const formatDoctorDisplayName = (rawName, fallbackPrefix = 'Dr.') => {
   if (!rawName || typeof rawName !== 'string') return '';
+  const trimmed = rawName.trim();
+  if (!trimmed) return '';
+
+  const cleanCheck = trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (cleanCheck === 'tutoras' || cleanCheck.startsWith('tutora')) {
+    return 'Tutoras';
+  }
 
   // 1. Limpiar caracteres de puntuación como comas y espacios múltiples
-  let str = rawName.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  let str = trimmed.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
   if (!str) return '';
 
   // 2. Extraer prefijo y separar tokens restantes
@@ -144,6 +151,10 @@ export const formatDoctorDisplayName = (rawName, fallbackPrefix = 'Dr.') => {
  */
 export const shortDoctorName = (rawName) => {
   if (!rawName || typeof rawName !== 'string') return '';
+  const cleanCheck = rawName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (cleanCheck === 'tutoras' || cleanCheck.startsWith('tutora')) {
+    return 'Tutoras';
+  }
   const full = formatDoctorDisplayName(rawName);
   if (!full) return '';
 
@@ -170,6 +181,14 @@ export const shortDoctorName = (rawName) => {
  * para uso en formularios y vistas administrativas (prefijo, nombrePila, apellido)
  */
 export const parseDoctorNameParts = (rawName, existingPrefijo = '', existingNombreOnly = '', existingApellido = '') => {
+  if (rawName && rawName.toLowerCase().includes('tutora')) {
+    return {
+      prefijo: '',
+      nombrePila: '',
+      apellido: 'Tutoras'
+    };
+  }
+
   if (existingApellido && existingNombreOnly && existingNombreOnly !== rawName) {
     let cleanNombre = existingNombreOnly.trim();
     let cleanApellido = existingApellido.trim();

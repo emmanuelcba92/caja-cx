@@ -41,6 +41,7 @@ export const DEFAULT_PROFESIONALES = [
   'Dr. Pérez', 'Dr. Sánchez', 'Dra. González', 'Dra. Pérez', 'Dra. Díaz',
   'Dra. Romero', 'Dra. Molina', 'Dr. Torres',
   'Anestesista Dr. Romero', 'Anestesista Dra. Molina', 'Anestesista Dr. Torres',
+  'Tutoras'
 ];
 
 export const MoneyInput = ({ value, onChange, className, placeholder }) => {

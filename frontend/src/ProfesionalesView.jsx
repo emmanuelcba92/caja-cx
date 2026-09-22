@@ -17,13 +17,14 @@ import { formatDoctorDisplayName, parseDoctorNameParts } from './utils/doctorNam
 
 const PROFESSIONALS_KEY = 'professionals_proto';
 
-const PREFIJOS = ['Dr', 'Dra', 'Lic', 'Dr(a)'];
+const PREFIJOS = ['Dr', 'Dra', 'Lic', 'Dr(a)', '-'];
 
 const SPECIALTIES = [
   'Otorrinolaringología',
   'Anestesista',
   'Fonoaudióloga',
   'Estética',
+  'Tutoras',
   'Otro'
 ];
 
@@ -48,6 +49,9 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
   const [firmaFile, setFirmaFile] = useState(null);
 
   const formatFullName = (prefijo, nombrePila, apellido) => {
+    if (prefijo === '-' || !prefijo) {
+      return formatDoctorDisplayName(`${nombrePila || ''} ${apellido || ''}`);
+    }
     return formatDoctorDisplayName(`${prefijo || 'Dr.'} ${nombrePila || ''} ${apellido || ''}`);
   };
 
@@ -57,21 +61,37 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
         const fromDb = await apiService.getCollection('profesionales');
         if (fromDb && fromDb.length > 0) {
           const mapped = fromDb.map(p => {
+            const isTutora = (p.nombre || '').toLowerCase().includes('tutora') || (p.apellido || '').toLowerCase().includes('tutora');
             const parsed = parseDoctorNameParts(p.nombre, p.prefijo, p.nombreOnly, p.apellido);
-            const canonicalFullName = formatFullName(parsed.prefijo, parsed.nombrePila, parsed.apellido);
+            const canonicalFullName = isTutora ? 'Tutoras' : formatFullName(parsed.prefijo, parsed.nombrePila, parsed.apellido);
             return {
               id: p.id,
               nombre: canonicalFullName, // Nombre completo canónico para SurgeryApp
-              prefijo: parsed.prefijo,
-              nombrePila: parsed.nombrePila,
-              apellido: parsed.apellido,
-              email: p.email || '',
-              especialidad: (p.categoria || p.especialidad) === 'ORL' ? 'Otorrinolaringología' : (p.categoria || p.especialidad || 'Otorrinolaringología'),
-              mp: p.mp || '',
+              prefijo: isTutora ? '' : parsed.prefijo,
+              nombrePila: isTutora ? '' : parsed.nombrePila,
+              apellido: isTutora ? 'Tutoras' : parsed.apellido,
+              email: p.email || (isTutora ? 'tutoras@clinic.com' : ''),
+              especialidad: isTutora ? 'Tutoras' : ((p.categoria || p.especialidad) === 'ORL' ? 'Otorrinolaringología' : (p.categoria || p.especialidad || 'Otorrinolaringología')),
+              mp: p.mp || (isTutora ? 'MP-TUTORAS' : ''),
               me: p.me || '',
               firma: p.firmaUrl || p.firma || ''
             };
           });
+          const hasTutoras = mapped.some(p => (p.nombre || '').toLowerCase().includes('tutora'));
+          if (!hasTutoras) {
+            mapped.push({
+              id: 'prof_tutoras',
+              nombre: 'Tutoras',
+              prefijo: '',
+              nombrePila: '',
+              apellido: 'Tutoras',
+              email: 'tutoras@clinic.com',
+              especialidad: 'Tutoras',
+              mp: 'MP-TUTORAS',
+              me: '',
+              firma: ''
+            });
+          }
           setProfessionals(mapped);
         }
       } catch (e) {
@@ -95,27 +115,38 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
 
   const getFullName = (p) => {
     if (!p) return '';
+    if ((p.nombre || '').toLowerCase().includes('tutora') || (p.apellido || '').toLowerCase().includes('tutora')) return 'Tutoras';
     return formatDoctorDisplayName(p.nombre || `${p.prefijo || ''} ${p.nombrePila || ''} ${p.apellido || ''}`);
   };
 
   const handleOpenModal = (prof = null) => {
     if (prof) {
-      const parsed = parseDoctorNameParts(prof.nombre, prof.prefijo, prof.nombrePila || prof.nombreOnly, prof.apellido);
+      const isTutora = (prof.nombre || '').toLowerCase().includes('tutora') || (prof.apellido || '').toLowerCase().includes('tutora');
+      const parsed = parseDoctorNameParts(prof.nombre, prof.prefijo, prof.nombreOnly, prof.apellido);
       setFormData({
         ...prof,
-        prefijo: parsed.prefijo || 'Dr',
-        nombrePila: parsed.nombrePila,
-        apellido: parsed.apellido,
-        especialidad: prof.especialidad === 'ORL' ? 'Otorrinolaringología' : (prof.especialidad || 'Otorrinolaringología')
+        prefijo: isTutora ? '-' : (parsed.prefijo || 'Dr'),
+        nombrePila: isTutora ? '' : parsed.nombrePila,
+        apellido: isTutora ? 'Tutoras' : parsed.apellido,
+        especialidad: isTutora ? 'Tutoras' : (prof.especialidad === 'ORL' ? 'Otorrinolaringología' : (prof.especialidad || 'Otorrinolaringología'))
       });
       setIsEditing(true);
     } else {
-      setFormData({ id: null, prefijo: 'Dr', nombrePila: '', apellido: '', email: '', especialidad: 'Otorrinolaringología', mp: '', me: '', firma: '' });
+      setFormData({
+        id: null,
+        prefijo: 'Dr',
+        nombrePila: '',
+        apellido: '',
+        email: '',
+        especialidad: 'Otorrinolaringología',
+        mp: '',
+        me: '',
+        firma: ''
+      });
       setIsEditing(false);
     }
-    setFirmaFile(null);
-    setError('');
     setIsModalOpen(true);
+    setError('');
   };
 
   const handleCloseModal = () => {
@@ -134,22 +165,26 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.apellido.trim() || !formData.mp.trim()) {
+    const isTutora = formData.apellido.toLowerCase().includes('tutora') || formData.nombrePila.toLowerCase().includes('tutora') || formData.especialidad === 'Tutoras';
+    if (!isTutora && (!formData.apellido.trim() || !formData.mp.trim())) {
       setError('Apellido y Matrícula Profesional (MP) son obligatorios');
       return;
     }
 
-    const canonicalFullName = formatFullName(formData.prefijo, formData.nombrePila, formData.apellido);
+    const canonicalFullName = isTutora ? 'Tutoras' : formatFullName(formData.prefijo, formData.nombrePila, formData.apellido);
     const dataToSave = { 
       ...formData, 
       nombre: canonicalFullName,
-      nombrePila: formData.nombrePila.trim(),
-      apellido: formData.apellido.trim()
+      prefijo: isTutora ? '' : formData.prefijo,
+      nombrePila: isTutora ? '' : formData.nombrePila.trim(),
+      apellido: isTutora ? 'Tutoras' : formData.apellido.trim(),
+      especialidad: isTutora ? 'Tutoras' : formData.especialidad,
+      mp: isTutora ? (formData.mp || 'MP-TUTORAS') : formData.mp.trim()
     };
 
     if (isEditing) {
       setProfessionals(professionals.map(p => p.id === dataToSave.id ? { ...dataToSave } : p));
-      if (typeof dataToSave.id === 'string') {
+      if (typeof dataToSave.id === 'string' && !dataToSave.id.startsWith('local_')) {
         try {
           await apiService.updateDocument('profesionales', dataToSave.id, {
             nombre: canonicalFullName,
