@@ -117,8 +117,8 @@ function CalendarioView({
         <div className="flex items-center gap-1 font-bold truncate">
           <span className="whitespace-nowrap">{time}</span>
           {surgery.habitacion && (
-            <span className="flex items-center gap-0.5 bg-white/50 px-1 rounded text-[9px] font-bold">
-              <Home size={9} /> {surgery.habitacion}
+            <span className="flex items-center gap-0.5 bg-white/70 px-1.5 py-0.2 rounded text-[10px] font-extrabold uppercase tracking-wide border border-black/10">
+              <Home size={10} /> {surgery.habitacion.toUpperCase()}
             </span>
           )}
         </div>
@@ -224,7 +224,7 @@ function CalendarioView({
                     `DTEND:${end}`,
                     `SUMMARY:Cirugía: ${s.paciente || 'Paciente'} - COAT`,
                     `DESCRIPTION:Paciente: ${s.paciente}\\nDNI: ${s.dni || ''}\\nObra Social: ${s.obraSocial || ''}\\nCirujano: ${s.nombreProfesional || ''}\\nDiagnóstico: ${s.justificacion || ''}`,
-                    `LOCATION:${s.habitacion ? `COAT - ${s.habitacion}` : 'Clínica COAT'}`,
+                    `LOCATION:${s.habitacion ? `COAT - Sala ${s.habitacion.toUpperCase()}` : 'Clínica COAT'}`,
                     'STATUS:CONFIRMED',
                     'END:VEVENT'
                   ].join('\r\n');

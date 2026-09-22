@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Printer, Download, X, FileText } from 'lucide-react';
 import { expandCodes, ESTUDIOS_BAJO_ANESTESIA } from '../data/clinicalCodes';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
@@ -298,8 +298,8 @@ export default function PrintConsole({ surgery, onClose }) {
     <div className="max-w-[210mm] mx-auto bg-white flex flex-col items-center justify-start text-center overflow-hidden"
       style={{ height: '297mm', width: '210mm', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', position: 'relative', color: '#000', lineHeight: '1.2', paddingTop: '4.5cm' }}>
       {surgery.habitacion && (
-        <div style={{ position: 'absolute', top: '1cm', right: '2cm', fontSize: '18pt' }}>
-          {surgery.habitacion}
+        <div style={{ position: 'absolute', top: '1cm', right: '2cm', fontSize: '19pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+          {surgery.habitacion.toUpperCase()}
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>

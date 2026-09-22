@@ -169,6 +169,83 @@ export const timeToMinutes = (timeStr) => {
   return (isNaN(h) ? 8 : h) * 60 + (isNaN(m) ? 0 : m);
 };
 
+export const extractShortCodes = (surgery) => {
+  if (!surgery) return [];
+  const rawCodes = surgery.codigosAuditados || surgery.codigos || '';
+  let list = [];
+  if (Array.isArray(rawCodes)) {
+    list = rawCodes.map(c => (typeof c === 'object' ? (c.codigo || c.code || '') : String(c)));
+  } else if (typeof rawCodes === 'string' && rawCodes.trim()) {
+    list = rawCodes
+      .split(/[\n,;]+/)
+      .map(c => c.trim())
+      .filter(Boolean);
+  } else if (Array.isArray(surgery.codigosCirugia) && surgery.codigosCirugia.length > 0) {
+    list = surgery.codigosCirugia.map(c => (typeof c === 'object' ? (c.codigo || c.code || '') : String(c)));
+  }
+
+  return list.map(item => {
+    const trimmed = String(item).trim();
+    const match = trimmed.match(/^([A-Za-z0-9.]+)/);
+    return match ? match[1] : trimmed;
+  }).filter(Boolean);
+};
+
+const CardInlineField = ({ label, value, placeholder, isUppercase = false, isSala = false, onSave }) => {
+  const [localVal, setLocalVal] = useState(value || '');
+  const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    setLocalVal(value || '');
+  }, [value]);
+
+  const commitSave = (valToSave) => {
+    const finalVal = isUppercase ? String(valToSave || '').toUpperCase().trim() : String(valToSave || '').trim();
+    if (finalVal !== String(value || '').trim()) {
+      onSave(finalVal);
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 1800);
+    }
+  };
+
+  const handleBlur = () => {
+    commitSave(localVal);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.target.blur();
+    }
+  };
+
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all ${
+      isSala 
+        ? 'bg-amber-50/80 border-amber-300 text-amber-950 focus-within:ring-2 focus-within:ring-amber-400 focus-within:bg-white shadow-2xs' 
+        : 'bg-slate-50 border-slate-200 text-slate-700 focus-within:ring-2 focus-within:ring-indigo-300 focus-within:bg-white shadow-2xs'
+    }`}>
+      <span className={`font-black uppercase select-none shrink-0 ${isSala ? 'text-[11px] text-amber-800' : 'text-[10px] text-slate-500'}`}>
+        {label}:
+      </span>
+      <input
+        type="text"
+        value={localVal}
+        onChange={(e) => setLocalVal(isUppercase ? e.target.value.toUpperCase() : e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className={`bg-transparent outline-none border-none p-0 min-w-[70px] max-w-[130px] font-black ${
+          isSala 
+            ? 'text-[13px] text-amber-950 uppercase tracking-wide placeholder:text-amber-300 font-extrabold' 
+            : 'text-xs text-slate-800 placeholder:text-slate-400'
+        }`}
+        title={`Click para editar ${label}`}
+      />
+      {isSaved && <Check size={12} className="text-emerald-600 shrink-0 stroke-[3]" />}
+    </div>
+  );
+};
+
 const STATUS = {
   SOLICITADA: { label: 'Solicitada', color: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
   CODIFICADA: { label: 'Codificada', color: 'bg-blue-100 text-blue-700 border-blue-200', dot: 'bg-blue-500' },
@@ -2082,6 +2159,47 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         });
       } catch (err) {
         console.error('Error updating surgery admission:', err);
+      }
+    }
+  };
+
+  const handleUpdateSurgeryQuickField = async (surgeryId, updates) => {
+    const cleanUpdates = { ...updates };
+    if (cleanUpdates.habitacion !== undefined) {
+      cleanUpdates.habitacion = String(cleanUpdates.habitacion || '').trim().toUpperCase();
+    }
+    if (cleanUpdates.nroAfiliado !== undefined) {
+      cleanUpdates.nroAfiliado = String(cleanUpdates.nroAfiliado || '').trim();
+    }
+
+    setSurgeries(prev => prev.map(s => s.id === surgeryId ? { ...s, ...cleanUpdates } : s));
+
+    if (typeof surgeryId === 'string' && !surgeryId.startsWith('local_')) {
+      try {
+        const firestoreUpdates = {
+          updatedAt: new Date().toISOString()
+        };
+        if (cleanUpdates.nroAfiliado !== undefined) {
+          firestoreUpdates.numeroAfiliado = cleanUpdates.nroAfiliado;
+        }
+        if (cleanUpdates.habitacion !== undefined) {
+          firestoreUpdates.salaCirugia = cleanUpdates.habitacion;
+          firestoreUpdates.habitacion = cleanUpdates.habitacion;
+        }
+        await apiService.updateDocument('ordenes_internacion', String(surgeryId), firestoreUpdates);
+
+        const currentSurgery = surgeries.find(s => s.id === surgeryId);
+        if (currentSurgery?.dni && cleanUpdates.nroAfiliado !== undefined) {
+          const cleanDni = String(currentSurgery.dni).replace(/\D/g, '');
+          if (cleanDni) {
+            apiService.updateDocument('pacientes', cleanDni, {
+              numeroAfiliado: cleanUpdates.nroAfiliado,
+              lastUpdate: new Date().toISOString()
+            }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.error('Error updating surgery quick field:', err);
       }
     }
   };
@@ -4010,11 +4128,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Obra Social</label>
                             <input list="os-list"
-                              required className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                              required className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
                               value={formData.obraSocial} onChange={e => setFormData({...formData, obraSocial: e.target.value})}
                             />
                             <datalist id="os-list">
@@ -4024,8 +4142,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                           <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{formData.obraSocial?.toLowerCase() === 'particular' ? 'Honorarios Prof.' : 'Nº Afiliado'}</label>
                             <input 
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
                               value={formData.nroAfiliado} onChange={e => setFormData({...formData, nroAfiliado: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">SALA</label>
+                            <input 
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm uppercase font-bold text-slate-800 placeholder:normal-case placeholder:font-normal"
+                              placeholder="Ej: SALA 1, Q1..."
+                              value={formData.habitacion || ''} onChange={e => setFormData({...formData, habitacion: e.target.value.toUpperCase()})}
                             />
                           </div>
                         </div>
@@ -4573,9 +4699,19 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                       {getFilteredSurgeries().slice(0, visibleCount).map(s => (
                         <tr key={s.id} className={`group hover:bg-slate-50/80 transition-all ${s.pinned ? 'bg-amber-50/30' : ''}`}>
                           <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{s.paciente}</div>
+                                {s.dni && (
+                                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 font-mono">
+                                    DNI {s.dni}
+                                  </span>
+                                )}
+                                {s.nroAfiliado && (
+                                  <span className="text-[10px] font-semibold text-slate-600 bg-slate-50 px-1.5 py-0.2 rounded border border-slate-200">
+                                    AF: {s.nroAfiliado}
+                                  </span>
+                                )}
                                 {s.pinned && (
                                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-xs shrink-0" title="Pedido fijado">
                                     <Pin size={10} className="fill-amber-500 text-amber-700" />
@@ -4670,6 +4806,13 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                 <Clock size={10} className="text-amber-600 shrink-0" />
                                 <span>Ingreso: {s.horaIngreso} hs</span>
                                 {s.ordenIngreso && <span className="text-indigo-600 font-bold ml-0.5">({s.ordenIngreso})</span>}
+                              </div>
+                            )}
+                            {s.habitacion && (
+                              <div className="block mt-1">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-950 border border-amber-300" title="Sala">
+                                  SALA {s.habitacion.toUpperCase()}
+                                </span>
                               </div>
                             )}
                           </td>
@@ -4881,226 +5024,268 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
                 {/* VISTA TARJETAS */}
                 <div className={`p-3 space-y-3 ${viewMode !== 'cards' ? 'hidden' : ''}`}>
-                  {getFilteredSurgeries().slice(0, visibleCount).map(s => (
-                    <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 space-y-3 transition-all ${s.pinned ? 'border-amber-300 ring-1 ring-amber-300/50 bg-gradient-to-r from-amber-50/30 via-white to-white' : 'border-slate-200'}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <p className="font-bold text-slate-800 text-sm truncate">{s.paciente}</p>
-                              {s.pinned && (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-xs shrink-0" title="Pedido fijado">
-                                  <Pin size={10} className="fill-amber-500 text-amber-700" />
-                                  Fijado
-                                </span>
-                              )}
-                              {(s.tipoProcedimiento === 'ESTUDIO' || s.estudioBajoAnestesia) && (
-                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200 shrink-0">
-                                  ESTUDIO
-                                </span>
-                              )}
+                  {getFilteredSurgeries().slice(0, visibleCount).map(s => {
+                    const shortCodes = extractShortCodes(s);
+                    return (
+                      <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 space-y-3 transition-all ${s.pinned ? 'border-amber-300 ring-1 ring-amber-300/50 bg-gradient-to-r from-amber-50/30 via-white to-white' : 'border-slate-200'}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                <p className="font-bold text-slate-800 text-sm truncate">{s.paciente}</p>
+                                {s.dni && (
+                                  <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono shrink-0">
+                                    DNI {s.dni}
+                                  </span>
+                                )}
+                                {s.pinned && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-xs shrink-0" title="Pedido fijado">
+                                    <Pin size={10} className="fill-amber-500 text-amber-700" />
+                                    Fijado
+                                  </span>
+                                )}
+                                {(s.tipoProcedimiento === 'ESTUDIO' || s.estudioBajoAnestesia) && (
+                                  <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200 shrink-0">
+                                    ESTUDIO
+                                  </span>
+                                )}
+                              </div>
+                              {(() => {
+                                const alertInfo = getUrgencyAlert(s);
+                                return alertInfo ? (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold border ${alertInfo.color}`}>
+                                    <AlertTriangle size={10} />
+                                    {alertInfo.text}
+                                  </span>
+                                ) : null;
+                              })()}
                             </div>
-                            {(() => {
-                              const alertInfo = getUrgencyAlert(s);
-                              return alertInfo ? (
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold border ${alertInfo.color}`}>
-                                  <AlertTriangle size={10} />
-                                  {alertInfo.text}
+                            <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
+                              {userRole === ROLES.SECRE ? (s.requiereMaterial === 'SI' ? `Mat: ${s.materiales || 'Sin especificar'}` : 'No requiere material') : s.justificacion}
+                            </p>
+                            {s.adjuntos?.length > 0 && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-[10px] font-bold text-indigo-600 flex items-center gap-1">
+                                  <Camera size={11} /> {s.adjuntos.length} foto(s):
                                 </span>
-                              ) : null;
-                            })()}
+                                <div className="flex items-center gap-1.5 overflow-x-auto">
+                                  {s.adjuntos.map((imgUrl, i) => (
+                                    <img
+                                      key={i}
+                                      src={imgUrl}
+                                      alt="orden"
+                                      onClick={() => setPreviewImage(imgUrl)}
+                                      className="w-8 h-8 rounded-md object-cover border border-slate-200 cursor-pointer hover:scale-105 transition-transform"
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
-                            {userRole === ROLES.SECRE ? (s.requiereMaterial === 'SI' ? `Mat: ${s.materiales || 'Sin especificar'}` : 'No requiere material') : s.justificacion}
-                          </p>
-                          {s.adjuntos?.length > 0 && (
-                            <div className="flex items-center gap-2 mt-2">
-                              <span className="text-[10px] font-bold text-indigo-600 flex items-center gap-1">
-                                <Camera size={11} /> {s.adjuntos.length} foto(s):
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${STATUS[s.estado].color}`}>
+                              {STATUS[s.estado].label}
+                            </span>
+                            {s.reactivada && (
+                              <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase border border-amber-200 bg-amber-50 text-amber-600">
+                                Reactivada
                               </span>
-                              <div className="flex items-center gap-1.5 overflow-x-auto">
-                                {s.adjuntos.map((imgUrl, i) => (
-                                  <img
-                                    key={i}
-                                    src={imgUrl}
-                                    alt="orden"
-                                    onClick={() => setPreviewImage(imgUrl)}
-                                    className="w-8 h-8 rounded-md object-cover border border-slate-200 cursor-pointer hover:scale-105 transition-transform"
-                                  />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Fila con detalles, códigos y campos editables */}
+                        <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-500">
+                          <div className="flex items-center gap-1 font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                            <User size={12} className="text-indigo-500" />
+                            {s.nombreProfesional || 'Sin profesional'}
+                          </div>
+                          {s.residente && (
+                            <div className="flex items-center gap-1 font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-[10px]">
+                              <span>Res:</span> {s.residente}
+                            </div>
+                          )}
+                          {s.obraSocial && (
+                            <span className="font-semibold text-slate-600 uppercase bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                              {s.obraSocial}
+                            </span>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <CalendarIcon size={12} className="text-slate-400" />
+                            <span>{s.fecha} {s.horaInicio ? `(${s.horaInicio} hs)` : ''}</span>
+                          </div>
+                          {s.horaIngreso && (
+                            <div className="flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-black" title="Horario de ingreso del paciente">
+                              <Clock size={11} className="text-amber-600 shrink-0" />
+                              <span>Ingreso: {s.horaIngreso} hs</span>
+                              {s.ordenIngreso && <span className="text-indigo-600 font-bold ml-0.5">({s.ordenIngreso})</span>}
+                            </div>
+                          )}
+
+                          {/* Códigos solicitados (solo el código numérico/identificador ej: 031301, 030409) */}
+                          {shortCodes.length > 0 && (
+                            <div className="flex items-center gap-1 bg-indigo-50/70 border border-indigo-100 px-2 py-0.5 rounded-lg flex-wrap">
+                              <span className="text-[10px] font-bold text-indigo-900 uppercase">Códigos:</span>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {shortCodes.map((code, cIdx) => (
+                                  <span key={cIdx} className="px-1.5 py-0.2 rounded bg-white text-indigo-700 border border-indigo-200 font-mono text-[11px] font-extrabold shadow-2xs">
+                                    {code}
+                                  </span>
                                 ))}
                               </div>
                             </div>
                           )}
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${STATUS[s.estado].color}`}>
-                            {STATUS[s.estado].label}
-                          </span>
-                          {s.reactivada && (
-                            <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase border border-amber-200 bg-amber-50 text-amber-600">
-                              Reactivada
+
+                          {/* N° AF editable directamente desde la tarjeta */}
+                          <CardInlineField
+                            label="N° AF"
+                            value={s.nroAfiliado}
+                            placeholder="N° Afiliado"
+                            onSave={(val) => handleUpdateSurgeryQuickField(s.id, { nroAfiliado: val })}
+                          />
+
+                          {/* SALA editable directamente desde la tarjeta (en MAYÚSCULAS y +1pt tamaño) */}
+                          <CardInlineField
+                            label="SALA"
+                            value={s.habitacion}
+                            placeholder="SALA / Q1"
+                            isUppercase={true}
+                            isSala={true}
+                            onSave={(val) => handleUpdateSurgeryQuickField(s.id, { habitacion: val })}
+                          />
+
+                          <div className="flex items-center gap-1 text-slate-400 text-[10px]">
+                            <span>Por:</span> {s.creador}
+                          </div>
+                          {s.requiereMaterial === 'SI' && (
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${
+                              (s.aprobacionMaterial || 'PENDIENTE') === 'APROBADO' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                              (s.aprobacionMaterial || 'PENDIENTE') === 'NO REQUIERE' ? 'bg-slate-50 text-slate-500 border-slate-200' :
+                              'bg-amber-50 text-amber-600 border-amber-200'
+                            }`}>
+                              Mat: {s.aprobacionMaterial || 'PEND'}
                             </span>
                           )}
                         </div>
-                      </div>
 
-                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                        <div className="flex items-center gap-1 font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                          <User size={12} className="text-indigo-500" />
-                          {s.nombreProfesional || 'Sin profesional'}
-                        </div>
-                        {s.residente && (
-                          <div className="flex items-center gap-1 font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-[10px]">
-                            <span>Res:</span> {s.residente}
-                          </div>
+                        {s.notasDoctor && (
+                          <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5 border border-amber-100">
+                            <span className="font-medium">Nota Dr:</span> {s.notasDoctor}
+                          </p>
                         )}
-                        {s.obraSocial && (
-                          <span className="font-semibold text-slate-600 uppercase bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-                            {s.obraSocial}
-                          </span>
+                        {s.notasDirectora && (
+                          <p className="text-[11px] text-indigo-600 bg-indigo-50 rounded-lg px-3 py-1.5 border border-indigo-100">
+                            <span className="font-medium">Dir:</span> {s.notasDirectora}
+                          </p>
                         )}
-                        <div className="flex items-center gap-1">
-                          <CalendarIcon size={12} className="text-slate-400" />
-                          <span>{s.fecha} {s.horaInicio ? `(${s.horaInicio} hs)` : ''}</span>
-                        </div>
-                        {s.horaIngreso && (
-                          <div className="flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-black" title="Horario de ingreso del paciente">
-                            <Clock size={11} className="text-amber-600 shrink-0" />
-                            <span>Ingreso: {s.horaIngreso} hs</span>
-                            {s.ordenIngreso && <span className="text-indigo-600 font-bold ml-0.5">({s.ordenIngreso})</span>}
-                          </div>
+                        {s.motivoRechazo && (
+                          <p className="text-[11px] text-rose-600 bg-rose-50 rounded-lg px-3 py-1.5 border border-rose-100">
+                            <span className="font-medium">Rechazo:</span> {s.motivoRechazo}
+                          </p>
                         )}
-                        <div className="flex items-center gap-1 text-slate-400 text-[10px]">
-                          <span>Por:</span> {s.creador}
-                        </div>
-                        {s.requiereMaterial === 'SI' && (
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${
-                            (s.aprobacionMaterial || 'PENDIENTE') === 'APROBADO' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                            (s.aprobacionMaterial || 'PENDIENTE') === 'NO REQUIERE' ? 'bg-slate-50 text-slate-500 border-slate-200' :
-                            'bg-amber-50 text-amber-600 border-amber-200'
-                          }`}>
-                            Mat: {s.aprobacionMaterial || 'PEND'}
-                          </span>
+                        {s.motivoCancelacion && (
+                          <p className="text-[11px] text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
+                            <span className="font-medium">Cancelación:</span> {s.motivoCancelacion}
+                          </p>
                         )}
-                      </div>
 
-                      {s.notasDoctor && (
-                        <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5 border border-amber-100">
-                          <span className="font-medium">Nota Dr:</span> {s.notasDoctor}
-                        </p>
-                      )}
-                      {s.notasDirectora && (
-                        <p className="text-[11px] text-indigo-600 bg-indigo-50 rounded-lg px-3 py-1.5 border border-indigo-100">
-                          <span className="font-medium">Dir:</span> {s.notasDirectora}
-                        </p>
-                      )}
-                      {s.motivoRechazo && (
-                        <p className="text-[11px] text-rose-600 bg-rose-50 rounded-lg px-3 py-1.5 border border-rose-100">
-                          <span className="font-medium">Rechazo:</span> {s.motivoRechazo}
-                        </p>
-                      )}
-                      {s.motivoCancelacion && (
-                        <p className="text-[11px] text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
-                          <span className="font-medium">Cancelación:</span> {s.motivoCancelacion}
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
-                        {canAudit && s.estado === 'SOLICITADA' && (
-                          <button onClick={() => { setSelectedSurgery(s); setAuditCodes(''); }}
-                            className="px-2.5 py-1 rounded-md bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all active:scale-95 shadow-sm">
-                            Codificar
-                          </button>
-                        )}
-                        {canManageStatus && s.estado === 'CODIFICADA' && (
-                          <button onClick={() => updateStatus(s.id, 'ENVIADA')}
-                            className="px-2.5 py-1 rounded-md bg-purple-50 text-purple-600 text-[11px] font-bold hover:bg-purple-100 border border-purple-200 transition-all active:scale-95">
-                            Enviado
-                          </button>
-                        )}
-                        {(canManageStatus && (s.estado === 'CODIFICADA' || s.estado === 'ENVIADA')) && (
-                          <>
-                            <button onClick={() => updateStatus(s.id, 'AUTORIZADA')} title="Autorizado"
-                              className="px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1">
-                              <CheckCircle2 size={13} />
-                              <span>Autorizado</span>
+                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
+                          {canAudit && s.estado === 'SOLICITADA' && (
+                            <button onClick={() => { setSelectedSurgery(s); setAuditCodes(''); }}
+                              className="px-2.5 py-1 rounded-md bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all active:scale-95 shadow-sm">
+                              Codificar
                             </button>
-                            <button onClick={() => setRejectModal(s)} title="Rechazado"
-                              className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1">
-                              <XCircle size={13} />
-                              <span>Rechazado</span>
+                          )}
+                          {canManageStatus && s.estado === 'CODIFICADA' && (
+                            <button onClick={() => updateStatus(s.id, 'ENVIADA')}
+                              className="px-2.5 py-1 rounded-md bg-purple-50 text-purple-600 text-[11px] font-bold hover:bg-purple-100 border border-purple-200 transition-all active:scale-95">
+                              Enviado
                             </button>
-                            <button onClick={() => setCancelModal(s)} title="Cancelado"
-                              className="px-2.5 py-1 rounded-md bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200 text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1">
-                              <XCircle size={13} />
-                              <span>Cancelado</span>
+                          )}
+                          {(canManageStatus && (s.estado === 'CODIFICADA' || s.estado === 'ENVIADA')) && (
+                            <>
+                              <button onClick={() => updateStatus(s.id, 'AUTORIZADA')} title="Autorizado"
+                                className="px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1">
+                                <CheckCircle2 size={13} />
+                                <span>Autorizado</span>
+                              </button>
+                              <button onClick={() => setRejectModal(s)} title="Rechazado"
+                                className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1">
+                                <XCircle size={13} />
+                                <span>Rechazado</span>
+                              </button>
+                              <button onClick={() => setCancelModal(s)} title="Cancelado"
+                                className="px-2.5 py-1 rounded-md bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200 text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1">
+                                <XCircle size={13} />
+                                <span>Cancelado</span>
+                              </button>
+                            </>
+                          )}
+                          {canManageStatus && (s.estado === 'RECHAZADA' || s.estado === 'CANCELADA') && (
+                            <button onClick={() => updateStatus(s.id, 'ENVIADA')}
+                              className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-600 text-[11px] font-bold hover:bg-amber-100 border border-amber-200 transition-all active:scale-95">
+                              Reactivar
                             </button>
-                          </>
-                        )}
-                        {canManageStatus && (s.estado === 'RECHAZADA' || s.estado === 'CANCELADA') && (
-                          <button onClick={() => updateStatus(s.id, 'ENVIADA')}
-                            className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-600 text-[11px] font-bold hover:bg-amber-100 border border-amber-200 transition-all active:scale-95">
-                            Reactivar
-                          </button>
-                        )}
-                        {canManageStatus && s.requiereMaterial === 'SI' && (
-                          <button onClick={() => toggleMaterialApproval(s.id)} title={`Material: ${s.aprobacionMaterial || 'PENDIENTE'}`}
-                            className={`p-1.5 rounded-md border transition-all active:scale-95 ${
-                              (s.aprobacionMaterial || 'PENDIENTE') === 'APROBADO' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100' :
-                              (s.aprobacionMaterial || 'PENDIENTE') === 'NO REQUIERE' ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200' :
-                              'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'
-                            }`}>
-                            <Package size={15} />
-                          </button>
-                        )}
+                          )}
+                          {canManageStatus && s.requiereMaterial === 'SI' && (
+                            <button onClick={() => toggleMaterialApproval(s.id)} title={`Material: ${s.aprobacionMaterial || 'PENDIENTE'}`}
+                              className={`p-1.5 rounded-md border transition-all active:scale-95 ${
+                                (s.aprobacionMaterial || 'PENDIENTE') === 'APROBADO' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100' :
+                                (s.aprobacionMaterial || 'PENDIENTE') === 'NO REQUIERE' ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200' :
+                                'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'
+                              }`}>
+                              <Package size={15} />
+                            </button>
+                          )}
 
-                        {/* FIJAR / DESFIJAR */}
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePinSurgery(s.id)}
-                          className={`p-1.5 rounded-md transition-all border active:scale-95 ${
-                            s.pinned
-                              ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200 shadow-xs'
-                              : 'bg-slate-100 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border-slate-200'
-                          }`}
-                          title={s.pinned ? 'Desfijar pedido' : 'Fijar pedido al inicio'}
-                        >
-                          <Pin size={15} className={s.pinned ? 'fill-amber-500 text-amber-700' : ''} />
-                        </button>
-
-                        {/* EDITAR (Unificado) */}
-                        {(canEditSurgery(s) || isAdmin || canManageStatus) && (
-                          <button onClick={() => openEditModal(s)} title="Editar cirugía completa"
-                            className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1">
-                            <Pencil size={13} />
-                            <span>Editar</span>
+                          {/* FIJAR / DESFIJAR */}
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePinSurgery(s.id)}
+                            className={`p-1.5 rounded-md transition-all border active:scale-95 ${
+                              s.pinned
+                                ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200 shadow-xs'
+                                : 'bg-slate-100 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border-slate-200'
+                            }`}
+                            title={s.pinned ? 'Desfijar pedido' : 'Fijar pedido al inicio'}
+                          >
+                            <Pin size={15} className={s.pinned ? 'fill-amber-500 text-amber-700' : ''} />
                           </button>
-                        )}
 
-                        {/* WHATSAPP */}
-                        <button onClick={() => setWhatsAppModalSurgery(s)} title="Enviar WhatsApp al paciente"
-                          className="p-1.5 rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 border border-emerald-200 transition-all active:scale-95">
-                          <MessageCircle size={15} />
-                        </button>
+                          {/* EDITAR (Unificado) */}
+                          {(canEditSurgery(s) || isAdmin || canManageStatus) && (
+                            <button onClick={() => openEditModal(s)} title="Editar cirugía completa"
+                              className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1">
+                              <Pencil size={13} />
+                              <span>Editar</span>
+                            </button>
+                          )}
 
-                        {/* IMPRIMIR */}
-                        {(canEditSurgery(s) || isAdmin || canManageStatus) && (
-                          <button onClick={() => handlePrint(s)} title="Imprimir"
-                            className="p-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 transition-all active:scale-95">
-                            <Printer size={15} />
+                          {/* WHATSAPP */}
+                          <button onClick={() => setWhatsAppModalSurgery(s)} title="Enviar WhatsApp al paciente"
+                            className="p-1.5 rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 border border-emerald-200 transition-all active:scale-95">
+                            <MessageCircle size={15} />
                           </button>
-                        )}
 
-                        {/* ELIMINAR */}
-                        {(canEditSurgery(s) || isAdmin) && (
-                          <button onClick={() => handleDelete(s.id)} title="Eliminar"
-                            className="p-1.5 rounded-md bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-700 border border-rose-200 transition-all active:scale-95">
-                            <Trash2 size={15} />
-                          </button>
-                        )}
+                          {/* IMPRIMIR */}
+                          {(canEditSurgery(s) || isAdmin || canManageStatus) && (
+                            <button onClick={() => handlePrint(s)} title="Imprimir"
+                              className="p-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 transition-all active:scale-95">
+                              <Printer size={15} />
+                            </button>
+                          )}
+
+                          {/* ELIMINAR */}
+                          {(canEditSurgery(s) || isAdmin) && (
+                            <button onClick={() => handleDelete(s.id)} title="Eliminar"
+                              className="p-1.5 rounded-md bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-700 border border-rose-200 transition-all active:scale-95">
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {getFilteredSurgeries().length === 0 && (
                     <div className="py-16 text-center text-slate-400">
                       <div className="inline-flex p-4 bg-slate-50 rounded-full mb-3">
@@ -5509,10 +5694,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Habitación</label>
-                  <input className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">SALA</label>
+                  <input className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm uppercase font-extrabold text-slate-800"
+                    placeholder="Ej: SALA 1, Q1..."
                     value={editModalData.habitacion || ''}
-                    onChange={e => setEditModalData({...editModalData, habitacion: e.target.value})}
+                    onChange={e => setEditModalData({...editModalData, habitacion: e.target.value.toUpperCase()})}
                     disabled={!(userRole === ROLES.DIRECTORA || userRole === ROLES.SECRE || userRole === ROLES.ADMIN)}
                   />
                 </div>

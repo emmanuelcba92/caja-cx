@@ -82,7 +82,7 @@ export default function QuirofanoReportModal({ date, surgeries, onClose }) {
                   <thead>
                     <tr className="bg-slate-100 text-slate-700 font-extrabold uppercase border-b border-slate-300 text-[10px] tracking-wider">
                       <th className="p-2.5 border-r border-slate-300 w-16 text-center">Hora</th>
-                      <th className="p-2.5 border-r border-slate-300 w-20 text-center">Hab/Sala</th>
+                      <th className="p-2.5 border-r border-slate-300 w-20 text-center">Sala</th>
                       <th className="p-2.5 border-r border-slate-300">Paciente & DNI</th>
                       <th className="p-2.5 border-r border-slate-300">Cirujano / Profesional</th>
                       <th className="p-2.5 border-r border-slate-300">Práctica / Diagnóstico</th>
@@ -96,8 +96,8 @@ export default function QuirofanoReportModal({ date, surgeries, onClose }) {
                         <td className="p-2.5 border-r border-slate-200 text-center font-bold text-slate-800">
                           {s.horaInicio || '08:00'} hs
                         </td>
-                        <td className="p-2.5 border-r border-slate-200 text-center font-semibold text-indigo-700">
-                          {s.habitacion || 'Q-1'}
+                        <td className="p-2.5 border-r border-slate-200 text-center font-black uppercase text-indigo-900 text-[11px]">
+                          {s.habitacion ? s.habitacion.toUpperCase() : 'SALA 1'}
                         </td>
                         <td className="p-2.5 border-r border-slate-200">
                           <p className="font-bold text-slate-900">{s.paciente}</p>

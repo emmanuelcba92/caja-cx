@@ -36,7 +36,7 @@ export const generateGoogleCalendarUrl = (surgery) => {
     `\n---\nAgendado desde Sistema COAT`
   );
 
-  const location = encodeURIComponent(surgery.habitacion ? `COAT - ${surgery.habitacion}` : 'Clínica COAT');
+  const location = encodeURIComponent(surgery.habitacion ? `COAT - Sala ${surgery.habitacion.toUpperCase()}` : 'Clínica COAT');
   const addEmail = surgery.emailProfesional ? `&add=${encodeURIComponent(surgery.emailProfesional)}` : '';
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}${addEmail}`;
@@ -52,7 +52,7 @@ export const generateICSFile = (surgery) => {
   const end = formatToICSDate(surgery.fecha, surgery.horaFin || '09:00');
   const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   const summary = `Cirugía: ${surgery.paciente || 'Paciente'} - COAT`;
-  const location = surgery.habitacion ? `COAT - ${surgery.habitacion}` : 'Clínica COAT';
+  const location = surgery.habitacion ? `COAT - Sala ${surgery.habitacion.toUpperCase()}` : 'Clínica COAT';
   
   const description = [
     `Paciente: ${surgery.paciente || ''}`,
