@@ -365,7 +365,15 @@ export default function LiquidacionView({ history, currentUser, professionals })
 
   const calcProfLiq = (entries, profName) => {
     let totalPesos = 0, totalDolares = 0;
-    const rows = entries.map(h => {
+    // Al generar todas las liquidaciones, usar solamente las operaciones de
+    // este profesional. Antes las entradas manuales de otros profesionales se
+    // conservaban como filas con importe cero y se repetían en cada detalle.
+    const rows = entries.filter(h => (
+      isSameProf(h.prof_1, profName) ||
+      isSameProf(h.prof_2, profName) ||
+      isSameProf(h.prof_3, profName) ||
+      isSameProf(h.anestesista, profName)
+    )).map(h => {
       let liqAmount = 0, liqCurrency = 'ARS';
       const cobroPesos = parseFloat(h.pesos) || 0;
       const cobroDolares = parseFloat(h.dolares) || 0;
