@@ -3,7 +3,7 @@ import { Save, Plus, Trash2, LayoutDashboard, Calendar, X, Edit2, Calculator, Hi
 import HistorialCajaView, { exportCajaDayToExcel, printCajaDay } from './HistorialCajaView';
 import LiquidacionView from './LiquidacionView';
 import StaffLiquidacionesView from './components/StaffLiquidacionesView';
-import { SEED_CAJA, SEED_DAILY_COMMENTS } from './data/seedData';
+import { SEED_CAJA } from './data/seedData';
 import ReciboLibreView from './components/ReciboLibreView';
 import apiService from './services/apiService';
 
@@ -200,6 +200,67 @@ function CajaForm({ currentUser, history, setHistory, professionals, surgeries =
   useEffect(() => { localStorage.setItem(REMINDERS_KEY, JSON.stringify(reminders)); }, [reminders]);
   useEffect(() => { localStorage.setItem('cajaDiariaEntries', JSON.stringify(entries)); }, [entries]);
 
+  // El comentario es un dato de la caja completa, no de una operación. Se guarda
+  // por fecha en Firestore para que esté disponible desde cualquier equipo.
+  useEffect(() => {
+    let isCurrent = true;
+    const commentDate = normalizeDate(date);
+
+    const loadDailyComment = async () => {
+      setDailyComment('');
+      if (!commentDate) return;
+      try {
+        const savedComment = await apiService.getDocument('caja_comentarios', commentDate);
+        if (!isCurrent) return;
+        if (savedComment) {
+          setDailyComment(savedComment.comentario || '');
+          return;
+        }
+      } catch (err) {
+        console.error('Error loading daily caja comment:', err);
+      }
+
+      // Compatibilidad con notas creadas antes de que se persistieran en Firestore.
+      try {
+        const legacyComments = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
+        if (isCurrent) setDailyComment(legacyComments[commentDate] || '');
+      } catch {
+        if (isCurrent) setDailyComment('');
+      }
+    };
+
+    loadDailyComment();
+    return () => { isCurrent = false; };
+  }, [date]);
+
+  const saveDailyComment = async () => {
+    const commentDate = normalizeDate(date);
+    if (!commentDate) return;
+    const comentario = dailyComment.trim();
+
+    try {
+      if (comentario) {
+        await apiService.setDocument('caja_comentarios', commentDate, {
+          fecha: commentDate,
+          comentario,
+          actualizadoPor: currentUser?.nombre || 'unknown'
+        });
+      } else {
+        await apiService.deleteDocument('caja_comentarios', commentDate);
+      }
+
+      // Conserva una copia local para que sigan visibles los datos offline/antiguos.
+      const localComments = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
+      if (comentario) localComments[commentDate] = comentario;
+      else delete localComments[commentDate];
+      localStorage.setItem('daily_comments_proto', JSON.stringify(localComments));
+      setShowDailyCommentModal(false);
+    } catch (err) {
+      console.error('Error saving daily caja comment:', err);
+      alert('No se pudo guardar el comentario del día. Intentá nuevamente.');
+    }
+  };
+
   const anestesistas = professionals.filter(p => p.especialidad === 'Anestesista').map(p => p.nombre);
   const orlProfs = professionals.filter(p => p.especialidad !== 'Anestesista').map(p => p.nombre);
 
@@ -369,12 +430,7 @@ function CajaForm({ currentUser, history, setHistory, professionals, surgeries =
     }
     setEntries([{ ...emptyEntry(), id: Date.now() }]);
     localStorage.removeItem('cajaDiariaEntries');
-    const commentData = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
-    if (dailyComment.trim()) { 
-      commentData[date] = dailyComment; 
-      localStorage.setItem('daily_comments_proto', JSON.stringify(commentData)); 
-    }
-    setDailyComment('');
+    await saveDailyComment();
     alert('Caja cerrada correctamente.');
   };
 
@@ -675,7 +731,7 @@ function CajaForm({ currentUser, history, setHistory, professionals, surgeries =
               placeholder="Observaciones del día..."
               value={dailyComment} onChange={e => setDailyComment(e.target.value)} autoFocus
             />
-            <button onClick={() => setShowDailyCommentModal(false)} className="mt-4 w-full py-3 bg-amber-500 text-white font-bold text-xs uppercase rounded-xl shadow-md hover:bg-amber-600">Guardar</button>
+            <button onClick={saveDailyComment} className="mt-4 w-full py-3 bg-amber-500 text-white font-bold text-xs uppercase rounded-xl shadow-md hover:bg-amber-600">Guardar</button>
           </div>
         </div>
       )}

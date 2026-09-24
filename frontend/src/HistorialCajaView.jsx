@@ -389,28 +389,81 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
   const orlProfs = professionals.filter(p => !['Anestesista', 'Fonoaudióloga'].includes(p.especialidad)).map(p => p.nombre);
 
   useEffect(() => {
-    const cleared = localStorage.getItem('data_cleared');
-    const saved = localStorage.getItem('daily_comments_proto');
-    if (!saved && !cleared) {
-      localStorage.setItem('daily_comments_proto', JSON.stringify(SEED_DAILY_COMMENTS));
+    // Las notas del día son excepcionales y nunca deben aparecer por defecto.
+    // Se eliminan solamente los textos de muestra que versiones anteriores
+    // pudieron haber dejado guardados en este navegador.
+    try {
+      const saved = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
+      let didRemoveDemoComment = false;
+      Object.entries(SEED_DAILY_COMMENTS).forEach(([date, demoComment]) => {
+        if (saved[date] === demoComment) {
+          delete saved[date];
+          didRemoveDemoComment = true;
+        }
+      });
+      if (didRemoveDemoComment) {
+        localStorage.setItem('daily_comments_proto', JSON.stringify(saved));
+      }
+    } catch {
+      // No se crea ningún comentario cuando el almacenamiento local no es válido.
     }
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem('daily_comments_proto');
-    if (saved) {
-      const all = JSON.parse(saved);
-      if (selectedDate && all[selectedDate]) setDailyComment(all[selectedDate]);
-      else setDailyComment('');
-    }
+    let isCurrent = true;
+    const commentDate = normalizeDate(selectedDate);
+
+    const loadDailyComment = async () => {
+      setDailyComment('');
+      if (!commentDate) return;
+      try {
+        const savedComment = await apiService.getDocument('caja_comentarios', commentDate);
+        if (!isCurrent) return;
+        if (savedComment) {
+          setDailyComment(savedComment.comentario || '');
+          return;
+        }
+      } catch (err) {
+        console.error('Error loading daily caja comment:', err);
+      }
+
+      try {
+        const legacyComments = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
+        if (isCurrent) setDailyComment(legacyComments[commentDate] || '');
+      } catch {
+        if (isCurrent) setDailyComment('');
+      }
+    };
+
+    loadDailyComment();
+    return () => { isCurrent = false; };
   }, [selectedDate]);
 
-  const saveDailyComment = () => {
-    const all = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
-    if (dailyComment.trim()) all[selectedDate] = dailyComment;
-    else delete all[selectedDate];
-    localStorage.setItem('daily_comments_proto', JSON.stringify(all));
-    setIsEditingComment(false);
+  const saveDailyComment = async () => {
+    const commentDate = normalizeDate(selectedDate);
+    if (!commentDate) return;
+    const comentario = dailyComment.trim();
+
+    try {
+      if (comentario) {
+        await apiService.setDocument('caja_comentarios', commentDate, {
+          fecha: commentDate,
+          comentario,
+          actualizadoPor: currentUser?.nombre || 'unknown'
+        });
+      } else {
+        await apiService.deleteDocument('caja_comentarios', commentDate);
+      }
+
+      const localComments = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
+      if (comentario) localComments[commentDate] = comentario;
+      else delete localComments[commentDate];
+      localStorage.setItem('daily_comments_proto', JSON.stringify(localComments));
+      setIsEditingComment(false);
+    } catch (err) {
+      console.error('Error saving daily caja comment:', err);
+      alert('No se pudo guardar el comentario del día. Intentá nuevamente.');
+    }
   };
 
   const getYears = () => [...new Set(history.map(h => normalizeDate(h.fecha)?.split('-')[0]).filter(Boolean))].sort().reverse();
@@ -480,6 +533,11 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
       }
     }
     setHistory(prev => prev.filter(h => normalizeDate(h.fecha) !== normalizeDate(selectedDate)));
+    try {
+      await apiService.deleteDocument('caja_comentarios', normalizeDate(selectedDate));
+    } catch (err) {
+      console.error('Error deleting daily caja comment:', err);
+    }
     setSelectedDate(null);
     setView('months');
   };
@@ -548,7 +606,19 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
 
     setIsExportingRange(true);
     try {
-      const comments = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
+      const comments = {};
+      try {
+        const savedComments = await apiService.getCollection('caja_comentarios');
+        savedComments.forEach(comment => {
+          if (comment.fecha) comments[normalizeDate(comment.fecha)] = comment.comentario || '';
+        });
+      } catch (err) {
+        console.error('Error loading comments for range export:', err);
+      }
+      const legacyComments = JSON.parse(localStorage.getItem('daily_comments_proto') || '{}');
+      availableDays.forEach(day => {
+        if (!comments[day] && legacyComments[day]) comments[day] = legacyComments[day];
+      });
       let exportedCount = 0;
       for (const ds of availableDays) {
         const data = history.filter(h => normalizeDate(h.fecha) === ds);
