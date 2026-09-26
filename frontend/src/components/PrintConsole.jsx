@@ -228,24 +228,25 @@ export default function PrintConsole({ surgery, onClose }) {
         compress: true,
       });
 
-      for (let i = 0; i < targets.length; i++) {
-        const pageEl = targets[i];
-        if (i > 0) {
+      const canvases = await Promise.all(
+        targets.map(pageEl =>
+          html2canvas(pageEl, {
+            scale: 1.8,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+          })
+        )
+      );
+
+      canvases.forEach((canvas, idx) => {
+        if (idx > 0) {
           pdf.addPage('a4', 'portrait');
         }
-
-        const canvas = await html2canvas(pageEl, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          windowWidth: 794,
-        });
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-      }
+      });
 
       const cleanPatient = (surgery.paciente || 'Cirugia')
         .normalize('NFD')
