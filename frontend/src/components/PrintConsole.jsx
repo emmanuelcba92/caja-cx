@@ -1,5 +1,8 @@
 import { useState, useRef } from 'react';
-import { Printer, Download, X, FileText } from 'lucide-react';
+import { Printer, Download, X, FileText, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { expandCodes, ESTUDIOS_BAJO_ANESTESIA } from '../data/clinicalCodes';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
 import { formatDoctorDisplayName, shortDoctorName } from '../utils/doctorName';
@@ -69,7 +72,7 @@ const getApplicableConsents = (surgery) => {
 const ProfessionalHeader = () => (
   <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '8px', marginBottom: '32px' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: '16px', height: '56px' }}>
-      <img src="/coat_logo.png" alt="COAT" style={{ height: '56px', width: 'auto', objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none'; }} />
+      <img src="/coat_logo.png" alt="COAT" crossOrigin="anonymous" style={{ height: '56px', width: 'auto', objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none'; }} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingRight: '64px' }}>
         <span style={{ fontSize: '12pt', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.05em', lineHeight: 1.2 }}>
           CENTRO OTOAUDIOLÓGICO DE ALTA TECNOLOGÍA
@@ -101,6 +104,7 @@ const SignatureBlock = ({ nombreProfesional, especialidad, mp, me, firmaUrl }) =
           <img 
             src={firmaUrl} 
             alt="Firma digital" 
+            crossOrigin="anonymous"
             style={{ maxHeight: '145px', maxWidth: '270px', objectFit: 'contain', marginBottom: '6px' }} 
           />
         ) : (
@@ -177,6 +181,7 @@ const buildStudyOrderLines = (surgery, codesLines) => {
 
 export default function PrintConsole({ surgery, onClose }) {
   const [activeTab, setActiveTab] = useState('internacion');
+  const [isDownloading, setIsDownloading] = useState(false);
   const printRef = useRef(null);
 
   if (!surgery) return null;
@@ -194,8 +199,71 @@ export default function PrintConsole({ surgery, onClose }) {
     window.print();
   };
 
-  const handleDownloadPDF = () => {
-    window.print();
+  const handleDownloadPDF = async () => {
+    if (isDownloading) return;
+
+    if (activeTab === 'generico') {
+      const link = document.createElement('a');
+      link.href = getConsentUrl(CONSENTIMIENTO_GENERICO);
+      link.download = 'Consentimiento_Generico.pdf';
+      link.target = '_blank';
+      link.click();
+      return;
+    }
+
+    if (!printRef.current) return;
+
+    try {
+      setIsDownloading(true);
+      const toastId = toast.loading('Generando PDF...');
+
+      const container = printRef.current;
+      const pageElements = container.querySelectorAll('[data-pdf-page="true"]');
+      const targets = pageElements.length > 0 ? Array.from(pageElements) : [container];
+
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
+
+      for (let i = 0; i < targets.length; i++) {
+        const pageEl = targets[i];
+        if (i > 0) {
+          pdf.addPage('a4', 'portrait');
+        }
+
+        const canvas = await html2canvas(pageEl, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          windowWidth: 794,
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      }
+
+      const cleanPatient = (surgery.paciente || 'Cirugia')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_\-\s]/g, '')
+        .trim()
+        .replace(/\s+/g, '_');
+
+      const fileName = `Orden_${cleanPatient}_${activeTab.toUpperCase()}.pdf`;
+      pdf.save(fileName);
+      toast.dismiss(toastId);
+      toast.success('PDF descargado correctamente');
+    } catch (err) {
+      console.error('Error generando PDF:', err);
+      toast.error('Error al generar el PDF');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const getConsentUrl = (fileOrUrl) => {
@@ -207,7 +275,7 @@ export default function PrintConsole({ surgery, onClose }) {
   };
 
   const renderInternacion = () => (
-    <div className="max-w-[210mm] mx-auto bg-white px-16 py-12 overflow-hidden" style={{ height: '297mm', width: '210mm', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif', position: 'relative' }}>
+    <div data-pdf-page="true" className="max-w-[210mm] mx-auto bg-white px-16 py-12 overflow-hidden" style={{ height: '297mm', width: '210mm', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif', position: 'relative' }}>
       <ProfessionalHeader />
       <p style={{ textAlign: 'right', marginBottom: '40px', fontSize: '11pt', color: '#000' }}>
         Córdoba, {formatLongDate(surgery.fechaSolicitud || (surgery.fechaCreacion ? surgery.fechaCreacion.slice(0, 10) : surgery.fecha))}
@@ -260,7 +328,7 @@ export default function PrintConsole({ surgery, onClose }) {
   );
 
   const renderMaterial = () => (
-    <div className="max-w-[210mm] mx-auto bg-white px-16 py-12 overflow-hidden" style={{ height: '297mm', width: '210mm', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif', position: 'relative' }}>
+    <div data-pdf-page="true" className="max-w-[210mm] mx-auto bg-white px-16 py-12 overflow-hidden" style={{ height: '297mm', width: '210mm', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif', position: 'relative' }}>
       <ProfessionalHeader />
       <p style={{ textAlign: 'right', marginBottom: '40px', fontSize: '11pt', color: '#000' }}>
         Córdoba, {formatLongDate(surgery.fechaSolicitud || (surgery.fechaCreacion ? surgery.fechaCreacion.slice(0, 10) : surgery.fecha))}
@@ -295,7 +363,7 @@ export default function PrintConsole({ surgery, onClose }) {
   );
 
   const renderCaratula = () => (
-    <div className="max-w-[210mm] mx-auto bg-white flex flex-col items-center justify-start text-center overflow-hidden"
+    <div data-pdf-page="true" className="max-w-[210mm] mx-auto bg-white flex flex-col items-center justify-start text-center overflow-hidden"
       style={{ height: '297mm', width: '210mm', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', position: 'relative', color: '#000', lineHeight: '1.2', paddingTop: '4.5cm' }}>
       {surgery.habitacion && (
         <div style={{ position: 'absolute', top: '1cm', right: '2cm', fontSize: '19pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
@@ -314,7 +382,7 @@ export default function PrintConsole({ surgery, onClose }) {
   );
 
   const renderGenerico = () => (
-    <div className="max-w-[210mm] mx-auto bg-white shadow-2xl flex flex-col items-center justify-center p-12 text-center" style={{ height: '297mm', width: '210mm' }}>
+    <div data-pdf-page="true" className="max-w-[210mm] mx-auto bg-white shadow-2xl flex flex-col items-center justify-center p-12 text-center" style={{ height: '297mm', width: '210mm' }}>
       <div className="p-10 border-2 border-dashed border-slate-200 rounded-3xl max-w-md w-full">
         <FileText size={48} className="mx-auto text-blue-500 mb-4" />
         <h3 className="text-slate-800 font-black uppercase tracking-wider text-base mb-2">Consentimiento Genérico</h3>
@@ -334,7 +402,7 @@ export default function PrintConsole({ surgery, onClose }) {
   const renderConsentimientos = () => {
     if (applicableConsents.length === 0) {
       return (
-        <div className="max-w-[210mm] mx-auto bg-white shadow-2xl flex items-center justify-center" style={{ height: '297mm', width: '210mm' }}>
+        <div data-pdf-page="true" className="max-w-[210mm] mx-auto bg-white shadow-2xl flex items-center justify-center" style={{ height: '297mm', width: '210mm' }}>
           <div className="text-center p-10 border-2 border-dashed border-slate-200 rounded-3xl">
             <FileText size={48} className="mx-auto text-slate-300 mb-4" />
             <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Sin consentimientos aplicables</p>
@@ -345,7 +413,7 @@ export default function PrintConsole({ surgery, onClose }) {
     }
 
     return (
-      <div className="max-w-[210mm] mx-auto bg-white shadow-2xl p-10" style={{ minHeight: '297mm', width: '210mm', boxSizing: 'border-box' }}>
+      <div data-pdf-page="true" className="max-w-[210mm] mx-auto bg-white shadow-2xl p-10" style={{ minHeight: '297mm', width: '210mm', boxSizing: 'border-box' }}>
         <h2 className="text-lg font-black uppercase tracking-wider mb-6 text-center">Consentimientos Aplicables</h2>
         <div className="space-y-4">
           {applicableConsents.map((consent, idx) => (
@@ -476,8 +544,20 @@ export default function PrintConsole({ surgery, onClose }) {
           ))}
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-4">
-          <button onClick={handleDownloadPDF} className="h-9 px-4 bg-slate-900 text-white rounded-lg font-black text-[10px] uppercase tracking-wider hover:bg-slate-800 transition-all flex items-center gap-2">
-            <Download size={14} /> PDF
+          <button 
+            onClick={handleDownloadPDF} 
+            disabled={isDownloading}
+            className={`h-9 px-4 bg-slate-900 text-white rounded-lg font-black text-[10px] uppercase tracking-wider hover:bg-slate-800 transition-all flex items-center gap-2 ${isDownloading ? 'opacity-70 cursor-not-allowed' : ''}`}
+          >
+            {isDownloading ? (
+              <>
+                <Loader2 size={14} className="animate-spin" /> Generando...
+              </>
+            ) : (
+              <>
+                <Download size={14} /> PDF
+              </>
+            )}
           </button>
           <button onClick={handlePrint} className="h-9 px-4 bg-teal-600 text-white rounded-lg font-black text-[10px] uppercase tracking-wider hover:bg-teal-700 transition-all flex items-center gap-2">
             <Printer size={14} /> Imprimir
