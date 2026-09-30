@@ -295,6 +295,7 @@ const DEFAULT_USERS = [
   { id: 2, nombre: 'Dra. García', rol: ROLES.DIRECTORA, professionalId: null },
   { id: 3, nombre: 'Lucía', rol: ROLES.SECRE, professionalId: null },
   { id: 4, nombre: 'Admin', rol: ROLES.ADMIN, professionalId: null },
+  { id: 5, nombre: 'Secretaria de Estudios', rol: ROLES.SECRE_ESTUDIOS, professionalId: null },
 ];
 
 const PREDEFINED_MATERIALS = [
@@ -684,6 +685,7 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
     if (r === ROLES.ADMIN) return 'admin';
     if (r === ROLES.DIRECTORA) return 'direccion_medica';
     if (r === ROLES.SECRE) return 'secre';
+    if (r === ROLES.SECRE_ESTUDIOS) return 'secre_estudios';
     if (r === ROLES.RESIDENTE) return 'residente';
     return 'medico';
   };
@@ -1048,6 +1050,7 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
                       u.rol === ROLES.ADMIN ? 'bg-rose-100 text-rose-600' :
                       u.rol === ROLES.DIRECTORA ? 'bg-indigo-100 text-indigo-600' :
                       u.rol === ROLES.SECRE ? 'bg-amber-100 text-amber-600' :
+                      u.rol === ROLES.SECRE_ESTUDIOS ? 'bg-purple-100 text-purple-700' :
                       u.rol === ROLES.RESIDENTE ? 'bg-teal-100 text-teal-700' :
                       'bg-emerald-100 text-emerald-600'
                     }`}>
@@ -1618,7 +1621,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   // Map Firebase Auth user to legacy format for SurgeryApp compatibility
   const [currentUser, setCurrentUser] = useState(() => {
     if (authUser) {
-      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
+      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', 'secre estudios': 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
       const rawName = authUser.displayName || getCleanUsername(authUser.email);
       return { id: authUser.uid, nombre: rawName, rol: roleMap[authRole] || 'Admin', email: authUser.email };
     }
@@ -1769,10 +1772,13 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
   useEffect(() => {
     if (authUser) {
-      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
+      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', 'secre estudios': 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
       const matchingUser = (users || []).find(u => u.email?.toLowerCase() === authUser.email?.toLowerCase());
       const displayName = matchingUser?.profesionalName || authUser.displayName || getCleanUsername(authUser.email);
-      setCurrentUser({ id: authUser.uid, nombre: displayName, rol: roleMap[authRole] || 'Admin', email: authUser.email });
+      const effectiveRol = (authRole === 'secre_estudios' || authRole === 'secre estudios') 
+        ? ROLES.SECRE_ESTUDIOS 
+        : (matchingUser?.rol === ROLES.SECRE_ESTUDIOS ? ROLES.SECRE_ESTUDIOS : (roleMap[authRole] || matchingUser?.rol || 'Admin'));
+      setCurrentUser({ id: authUser.uid, nombre: displayName, rol: effectiveRol, email: authUser.email });
     } else {
       setCurrentUser(null);
     }
@@ -1972,7 +1978,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         // 3. Usuarios de Firestore (authorized_emails / profiles)
         const usersFromDb = await apiService.getCollection('authorized_emails');
         if (usersFromDb && usersFromDb.length > 0) {
-          const roleMap = { admin: 'Admin', secre: 'Secre', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
+          const roleMap = { 
+            admin: 'Admin', 
+            secre: 'Secre', 
+            secre_estudios: 'Secre Estudios',
+            'secre estudios': 'Secre Estudios',
+            medico: 'Medico', 
+            direccion_medica: 'Directora', 
+            coat: 'Admin', 
+            residente: 'Residente' 
+          };
           const uniqueByEmail = new Map();
           usersFromDb.forEach(u => {
             const emailKey = (u.email || '').toLowerCase().trim();

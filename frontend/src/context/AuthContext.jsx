@@ -12,7 +12,7 @@ import {
   setPersistence,
   browserSessionPersistence
 } from 'firebase/auth';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, getDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { getRolePermissions, seedDefaultRoles } from '../services/roleService';
 
 const AuthContext = createContext();
@@ -197,15 +197,52 @@ export const AuthProvider = ({ children }) => {
           } else {
             // Buscar email en authorized_emails
             try {
+              let authRecord = null;
+
               const authQuery = query(
                 collection(db, "authorized_emails"),
                 where("email", "==", user.email)
               );
-              const authSnap = await getDocs(authQuery);
+              let authSnap = await getDocs(authQuery);
+
+              if (authSnap.empty && user.email) {
+                const lowerQuery = query(
+                  collection(db, "authorized_emails"),
+                  where("email", "==", user.email.toLowerCase().trim())
+                );
+                authSnap = await getDocs(lowerQuery);
+              }
 
               if (!authSnap.empty) {
-                const authRecord = authSnap.docs[0].data();
+                authRecord = authSnap.docs[0].data();
+              } else if (user.email) {
+                const docId = user.email.toLowerCase().trim().replace(/[.@]/g, '_');
+                const docSnap = await getDoc(doc(db, "authorized_emails", docId));
+                if (docSnap.exists()) {
+                  authRecord = docSnap.data();
+                }
+              }
+
+              if (authRecord) {
                 role = authRecord.role || 'user';
+
+                // Auto-corrección si el rol fue guardado erróneamente como 'medico' por el bug anterior
+                const isEstudiosKeyword = 
+                  (user.email && user.email.toLowerCase().includes('estudio')) || 
+                  (authRecord.username && authRecord.username.toLowerCase().includes('estudio')) ||
+                  (authRecord.profesionalName && authRecord.profesionalName.toLowerCase().includes('estudio'));
+
+                if ((role === 'medico' || role === 'user') && isEstudiosKeyword) {
+                  console.log("[Auth] Auto-corrigiendo rol a secre_estudios para:", user.email);
+                  role = 'secre_estudios';
+                  try {
+                    const docId = (authRecord.email || user.email).toLowerCase().trim().replace(/[.@]/g, '_');
+                    await setDoc(doc(db, "authorized_emails", docId), { role: 'secre_estudios' }, { merge: true });
+                  } catch (corrErr) {
+                    console.warn("[Auth] No se pudo persistir auto-corrección de rol:", corrErr);
+                  }
+                }
+
                 userPermissions = await getRolePermissions(role);
                 setIsAuthorized(true);
 
@@ -230,7 +267,7 @@ export const AuthProvider = ({ children }) => {
           await fetchSharedAccounts(user.email);
 
           // Sembrar roles si es admin
-          if (isSuperAdmin) {
+          if (isSuperAdmin || role === 'admin') {
             await seedDefaultRoles();
           }
 
