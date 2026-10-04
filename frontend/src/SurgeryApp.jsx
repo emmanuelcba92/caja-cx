@@ -78,6 +78,72 @@ import { saveAs } from 'file-saver';
 import apiService from './services/apiService';
 import { parseEmailToOrder } from './services/aiService';
 import { formatDoctorDisplayName, getCleanUsername, parseDoctorNameParts } from './utils/doctorName';
+import { formatCurrencyARS } from './utils/currency';
+
+const StudyPricingFields = ({ data, setData, codes = [] }) => {
+  const isParticular = data.obraSocial?.trim().toLowerCase() === 'particular';
+  if (data.tipoProcedimiento !== 'ESTUDIO' && !data.estudioBajoAnestesia) return null;
+
+  if (isParticular) {
+    return (
+      <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
+        <label className="block text-[11px] font-bold text-purple-900 uppercase">Valor total del estudio *</label>
+        <input
+          required
+          inputMode="decimal"
+          placeholder="Ej: 580000"
+          value={data.valorParticularEstudio || ''}
+          onChange={e => setData(prev => ({ ...prev, valorParticularEstudio: e.target.value, conveniosEstudios: {} }))}
+          className="w-full px-3 py-2 rounded-lg border border-purple-300 focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold"
+        />
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs font-bold text-purple-900 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!data.incluyeIva}
+              onChange={e => setData(prev => ({ ...prev, incluyeIva: e.target.checked }))}
+              className="w-4 h-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+            />
+            IVA
+          </label>
+          <span className="text-[11px] text-purple-700">En la orden: <strong>{formatCurrencyARS(data.valorParticularEstudio) || '$0,00.'}</strong></span>
+        </div>
+      </div>
+    );
+  }
+
+  const selected = codes.filter(Boolean).map(code => ({ key: getCodeName(code) || code, label: getCodeName(code) || code }));
+  const isDiseOnly = selected.length > 0 && selected.every(({ key }) => key.toUpperCase().includes('DISE'));
+  const items = [
+    ...selected,
+    ...(isDiseOnly ? [] : [
+      { key: 'INTERNACION_BREVE', label: 'Internación breve, uso de quirófano' },
+      { key: 'MEDICAMENTOS_DESCARTABLES', label: 'Medicamentos y descartables' },
+    ]),
+  ];
+
+  const update = (key, changes) => setData(prev => ({
+    ...prev,
+    conveniosEstudios: { ...(prev.conveniosEstudios || {}), [key]: { convenido: true, ...(prev.conveniosEstudios || {})[key], ...changes } },
+  }));
+
+  return (
+    <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2.5">
+      <p className="text-[11px] font-bold text-purple-900 uppercase">Convenios y valores</p>
+      <p className="text-[10px] text-purple-700">Marque solo las prácticas no convenidas e ingrese su valor.</p>
+      {items.length === 0 ? <p className="text-xs text-slate-500">Seleccione un estudio para cargar sus valores.</p> : items.map(({ key, label }) => {
+        const config = (data.conveniosEstudios || {})[key] || { convenido: true, valor: '' };
+        const convenido = config.convenido !== false;
+        return <div key={key} className="flex flex-wrap items-center gap-2 bg-white border border-purple-100 rounded-lg p-2">
+          <span className="text-xs font-semibold text-slate-700 flex-1">{label}</span>
+          <label className="flex items-center gap-1 text-[11px] font-bold text-emerald-700"><input type="checkbox" checked={convenido} onChange={e => update(key, { convenido: e.target.checked, valor: e.target.checked ? '' : config.valor })} /> Convenido</label>
+          {!convenido && <input inputMode="decimal" placeholder="Valor" value={config.valor || ''} onChange={e => update(key, { convenido: false, valor: e.target.value })} className="w-28 px-2 py-1 border border-amber-300 rounded text-xs font-bold" />}
+          {!convenido && <span className="text-[10px] text-amber-700">{formatCurrencyARS(config.valor)}</span>}
+        </div>;
+      })}
+    </div>
+  );
+};
 
 export const buildStudyOrderLines = (surgery, codesLines) => {
   const isEstudio = surgery.tipoProcedimiento === 'ESTUDIO' || !!surgery.estudioBajoAnestesia;
@@ -108,13 +174,13 @@ export const buildStudyOrderLines = (surgery, codesLines) => {
   codesLines.forEach((name) => {
     const cfg = getConvenioConfig(name);
     const isConvenido = cfg.convenido !== false;
-    const valor = cfg.valor ? String(cfg.valor).replace('$', '').trim() : '';
+    const valor = formatCurrencyARS(cfg.valor);
 
     let tag = '';
     if (isConvenido) {
       tag = '(practica nomenclada: Valor convenio)';
     } else {
-      tag = valor ? `(practica no nomenclada: Valor $${valor})` : '(practica no nomenclada)';
+      tag = valor ? `(practica no nomenclada: Valor ${valor})` : '(practica no nomenclada)';
     }
     lines.push(`${name} ${tag}`);
   });
@@ -122,14 +188,14 @@ export const buildStudyOrderLines = (surgery, codesLines) => {
   if (!isDiseOnly) {
     const cfgInternacion = getConvenioConfig('INTERNACION_BREVE') || {};
     const intConvenido = cfgInternacion.convenido !== false;
-    const intValor = cfgInternacion.valor ? String(cfgInternacion.valor).replace('$', '').trim() : '';
-    const tagInternacion = intConvenido ? '(valor convenio)' : (intValor ? `(Valor $${intValor})` : '(no convenido)');
+    const intValor = formatCurrencyARS(cfgInternacion.valor);
+    const tagInternacion = intConvenido ? '(valor convenio)' : (intValor ? `(Valor ${intValor})` : '(no convenido)');
     lines.push(`Internación breve, uso de quirófano ${tagInternacion}`);
 
     const cfgMed = getConvenioConfig('MEDICAMENTOS_DESCARTABLES') || {};
     const medConvenido = cfgMed.convenido !== false;
-    const medValor = cfgMed.valor ? String(cfgMed.valor).replace('$', '').trim() : '';
-    const tagMed = medConvenido ? '(valor convenio)' : (medValor ? `(Valor $${medValor})` : '(no convenido)');
+    const medValor = formatCurrencyARS(cfgMed.valor);
+    const tagMed = medConvenido ? '(valor convenio)' : (medValor ? `(Valor ${medValor})` : '(no convenido)');
     lines.push(`Medicamentos y descartables ${tagMed}`);
   }
 
@@ -1698,6 +1764,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     obraSocial: '', 
     psicoprofilaxis: 'SI', 
     codigos: '', 
+    conveniosEstudios: {},
+    valorParticularEstudio: '',
+    incluyeIva: false,
     materiales: '', 
     requiereMaterial: 'NO',
     justificacion: '', 
@@ -2268,6 +2337,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       obraSocial: '', 
       psicoprofilaxis: 'SI', 
       codigos: '', 
+      conveniosEstudios: {},
+      valorParticularEstudio: '',
+      incluyeIva: false,
       materiales: '', 
       requiereMaterial: 'NO',
       justificacion: '', 
@@ -2578,6 +2650,17 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
   const handleCreateSurgery = (e) => {
     e.preventDefault();
+
+    const isSecreEstudiosUser = currentUser?.rol === ROLES.SECRE_ESTUDIOS;
+    const existingSurgery = isEditing ? surgeries.find(s => s.id === editingId) : null;
+    if (isSecreEstudiosUser && existingSurgery && existingSurgery.tipoProcedimiento !== 'ESTUDIO' && !existingSurgery.estudioBajoAnestesia) {
+      setError('La Secretaría de Estudios solo puede modificar solicitudes de estudios bajo anestesia.');
+      return;
+    }
+    if (isSecreEstudiosUser && (formData.tipoProcedimiento !== 'ESTUDIO' || !formData.estudioBajoAnestesia)) {
+      setError('La Secretaría de Estudios solo puede crear solicitudes de estudios bajo anestesia.');
+      return;
+    }
     
     if (!formData.professionalId && (!formData.emailProfesional || !formData.nombreProfesional)) {
       setError('Debe seleccionar un profesional o ingresar sus datos manualmente.');
@@ -2597,7 +2680,6 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     if (isEditing) {
       const dur = formData.duracion || '1:00 hs';
       const durMin = parseDurationToMinutes(dur);
-      const existingSurgery = surgeries.find(s => s.id === editingId);
       let finalHoraInicio = formData.horaInicio;
       let computedHoraFin = formData.horaFin || (formData.horaInicio ? addMinutesToTime(formData.horaInicio, durMin) : '');
       if (formData.estado === 'CANCELADA' && existingSurgery?.estado !== 'CANCELADA') {
@@ -3016,6 +3098,14 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   };
 
   const handleSaveEditModal = (data) => {
+    const existingForRoleCheck = surgeries.find(s => s.id === data.id);
+    if (currentUser?.rol === ROLES.SECRE_ESTUDIOS) {
+      if (!existingForRoleCheck || (existingForRoleCheck.tipoProcedimiento !== 'ESTUDIO' && !existingForRoleCheck.estudioBajoAnestesia)) {
+        alert('La Secretaría de Estudios solo puede editar estudios bajo anestesia.');
+        return;
+      }
+      data = { ...data, tipoProcedimiento: 'ESTUDIO', estudioBajoAnestesia: true };
+    }
     const dur = data.duracion || '1:00 hs';
     const durMin = parseDurationToMinutes(dur);
     const existingSurgery = surgeries.find(s => s.id === data.id);
@@ -3900,7 +3990,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
                       
                       {/* SECCIÓN 1: PROFESIONAL (Sólo si es residente o admin seleccionando) */}
-                      {(userRole === ROLES.RESIDENTE || formData.residente || isAdmin) && (
+                      {(userRole === ROLES.RESIDENTE || userRole === ROLES.SECRE_ESTUDIOS || formData.residente || isAdmin) && (
                         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
                           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                             <div className="flex items-center gap-2">
@@ -4039,7 +4129,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                               {obrasSociales.map(os => <option key={os} value={os} />)}
                             </datalist>
                           </div>
-                          <div className="sm:col-span-4">
+                          {!(formData.tipoProcedimiento === 'ESTUDIO' && formData.obraSocial?.trim().toLowerCase() === 'particular') && <div className="sm:col-span-4">
                             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
                               {formData.obraSocial?.toLowerCase() === 'particular' ? 'Honorarios Prof.' : 'Nº Afiliado'}
                             </label>
@@ -4048,7 +4138,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                               className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                               value={formData.nroAfiliado} onChange={e => setFormData({...formData, nroAfiliado: e.target.value})}
                             />
-                          </div>
+                          </div>}
                           <div className="sm:col-span-3">
                             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Psicoprofilaxis</label>
                             <select 
@@ -4326,7 +4416,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                    )}
                                  </div>
                               ))}
-                             <button
+                           <button
                                type="button"
                                onClick={() => setCodeInputs([...codeInputs, ''])}
                                className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 mt-1"
@@ -4335,6 +4425,12 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                              </button>
                            </div>
                           </div>
+
+                          <StudyPricingFields
+                            data={formData}
+                            setData={setFormData}
+                            codes={codeInputs.filter(c => c && c.trim())}
+                          />
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                             <div>
@@ -5754,7 +5850,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     placeholder="Ej: SALA 1, Q1..."
                     value={editModalData.habitacion || ''}
                     onChange={e => setEditModalData({...editModalData, habitacion: e.target.value.toUpperCase()})}
-                    disabled={!(userRole === ROLES.DIRECTORA || userRole === ROLES.SECRE || userRole === ROLES.ADMIN)}
+                    disabled={!(userRole === ROLES.DIRECTORA || userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.ADMIN)}
                   />
                 </div>
 
@@ -5763,7 +5859,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                   <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">
                     {editModalData.tipoProcedimiento === 'ESTUDIO' ? 'Detalles del Estudio bajo Anestesia' : 'Detalles de la Cirugía'}
                   </h4>
-                  <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
+                  {userRole === ROLES.SECRE_ESTUDIOS ? (
+                    <span className="px-3 py-1 text-xs font-bold rounded-md bg-purple-600 text-white">Estudio bajo Anestesia</span>
+                  ) : <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
                     <button
                       type="button"
                       onClick={() => setEditModalData(prev => ({ ...prev, tipoProcedimiento: 'CIRUGIA', estudioBajoAnestesia: false }))}
@@ -5778,7 +5876,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     >
                       Estudio bajo Anestesia
                     </button>
-                  </div>
+                  </div>}
                 </div>
 
                 {editModalData.tipoProcedimiento === 'ESTUDIO' && (
@@ -6074,7 +6172,30 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 </div>
 
                 {/* SECCIÓN CONVENIO Y VALORES PARA ESTUDIOS */}
-                {(editModalData.tipoProcedimiento === 'ESTUDIO' || editModalData.estudioBajoAnestesia) && (
+                {(editModalData.tipoProcedimiento === 'ESTUDIO' || editModalData.estudioBajoAnestesia) && editModalData.obraSocial?.trim().toLowerCase() === 'particular' && (
+                  <div className="md:col-span-2 p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
+                    <label className="block text-xs font-black text-purple-900 uppercase tracking-wider">Valor total del estudio *</label>
+                    <input
+                      required
+                      inputMode="decimal"
+                      placeholder="Ej: 580000"
+                      value={editModalData.valorParticularEstudio || ''}
+                      onChange={e => setEditModalData(prev => ({ ...prev, valorParticularEstudio: e.target.value, conveniosEstudios: {} }))}
+                      className="w-full px-3 py-2 rounded-lg border border-purple-300 focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold"
+                    />
+                    <p className="text-xs text-purple-700">En la orden: <strong>{formatCurrencyARS(editModalData.valorParticularEstudio) || '$0,00.'}</strong></p>
+                    <label className="flex items-center gap-1.5 text-xs font-bold text-purple-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!editModalData.incluyeIva}
+                        onChange={e => setEditModalData(prev => ({ ...prev, incluyeIva: e.target.checked }))}
+                        className="w-4 h-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      IVA
+                    </label>
+                  </div>
+                )}
+                {(editModalData.tipoProcedimiento === 'ESTUDIO' || editModalData.estudioBajoAnestesia) && editModalData.obraSocial?.trim().toLowerCase() !== 'particular' && (
                   <div className="md:col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                     <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                       <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import html2canvas from 'html2canvas';
 import { expandCodes, ESTUDIOS_BAJO_ANESTESIA } from '../data/clinicalCodes';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
 import { formatDoctorDisplayName, shortDoctorName } from '../utils/doctorName';
+import { formatCurrencyARS } from '../utils/currency';
 
 const formatPrintDateNumeric = (dateStr) => {
   if (!dateStr || typeof dateStr !== 'string') return '';
@@ -128,6 +129,7 @@ const buildStudyOrderLines = (surgery, codesLines) => {
   const isDiseOnly = rawCodes.length > 0 && rawCodes.every(c => c.toUpperCase() === 'DISE' || c.toUpperCase().includes('DISE'));
 
   const convenios = surgery.conveniosEstudios || {};
+  const isParticular = surgery.obraSocial?.trim().toLowerCase() === 'particular';
   const lines = [];
 
   const getConvenioConfig = (keyName) => {
@@ -150,13 +152,15 @@ const buildStudyOrderLines = (surgery, codesLines) => {
   codesLines.forEach((name) => {
     const cfg = getConvenioConfig(name);
     const isConvenido = cfg.convenido !== false; // por defecto true
-    const valor = cfg.valor ? String(cfg.valor).replace('$', '').trim() : '';
+    const valor = formatCurrencyARS(cfg.valor);
 
     let tag = '';
-    if (isConvenido) {
+    if (isParticular) {
+      tag = '';
+    } else if (isConvenido) {
       tag = '(practica nomenclada: Valor convenio)';
     } else {
-      tag = valor ? `(practica no nomenclada: Valor $${valor})` : '(practica no nomenclada)';
+      tag = valor ? `(practica no nomenclada: Valor ${valor})` : '(practica no nomenclada)';
     }
     lines.push(`${name} ${tag}`);
   });
@@ -165,14 +169,14 @@ const buildStudyOrderLines = (surgery, codesLines) => {
   if (!isDiseOnly) {
     const cfgInternacion = getConvenioConfig('INTERNACION_BREVE') || {};
     const intConvenido = cfgInternacion.convenido !== false;
-    const intValor = cfgInternacion.valor ? String(cfgInternacion.valor).replace('$', '').trim() : '';
-    const tagInternacion = intConvenido ? '(valor convenio)' : (intValor ? `(Valor $${intValor})` : '(no convenido)');
+    const intValor = formatCurrencyARS(cfgInternacion.valor);
+    const tagInternacion = isParticular ? '' : (intConvenido ? '(valor convenio)' : (intValor ? `(Valor ${intValor})` : '(no convenido)'));
     lines.push(`Internación breve, uso de quirófano ${tagInternacion}`);
 
     const cfgMed = getConvenioConfig('MEDICAMENTOS_DESCARTABLES') || {};
     const medConvenido = cfgMed.convenido !== false;
-    const medValor = cfgMed.valor ? String(cfgMed.valor).replace('$', '').trim() : '';
-    const tagMed = medConvenido ? '(valor convenio)' : (medValor ? `(Valor $${medValor})` : '(no convenido)');
+    const medValor = formatCurrencyARS(cfgMed.valor);
+    const tagMed = isParticular ? '' : (medConvenido ? '(valor convenio)' : (medValor ? `(Valor ${medValor})` : '(no convenido)'));
     lines.push(`Medicamentos y descartables ${tagMed}`);
   }
 
@@ -275,7 +279,34 @@ export default function PrintConsole({ surgery, onClose }) {
     return `/consentimientos/${fileOrUrl}`;
   };
 
+  const renderStudyJustification = () => {
+    const isPea = codesLines.some(line => /potenciales evocados|microfónicas/i.test(line));
+    return <div data-pdf-page="true" className="max-w-[210mm] mx-auto bg-white px-16 py-12 overflow-hidden" style={{ height: '297mm', width: '210mm', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif', position: 'relative', pageBreakBefore: 'always', breakBefore: 'page' }}>
+      <ProfessionalHeader />
+      <p style={{ textAlign: 'right', marginBottom: '28px', fontSize: '11pt', color: '#000' }}>Córdoba, {formatLongDate(surgery.fechaSolicitud || surgery.fecha)}</p>
+      <h1 style={{ textAlign: 'center', fontSize: '11pt', fontWeight: 700, marginBottom: '22px', textTransform: 'uppercase', color: '#000' }}>Justificación médica para realización de estudio bajo anestesia</h1>
+      <div style={{ fontSize: '10.5pt', lineHeight: 1.52, color: '#000' }}>
+        <p><strong>Paciente:</strong> {surgery.paciente?.toUpperCase() || ''}</p>
+        <p style={{ marginTop: '10px' }}><strong>Diagnóstico:</strong> {surgery.justificacion || ''}</p>
+        {isPea ? <>
+          <p style={{ marginTop: '16px' }}>Para una valoración objetiva y confiable de la audición, especialmente en pacientes pediátricos o en aquellos que no pueden realizar audiometría conductual confiable, se requiere una batería electrofisiológica completa, oído por separado.</p>
+          <p style={{ marginTop: '10px' }}>Una evaluación auditiva objetiva completa bajo anestesia general permitirá establecer diagnóstico audiológico preciso, estimación de umbrales auditivos por oído y definición de conducta terapéutica.</p>
+          <p style={{ marginTop: '10px' }}>El Potencial Evocado Auditivo de Tronco Encefálico brinda información importante sobre el funcionamiento de la vía auditiva, pero por sí solo no permite conocer con precisión la audición en todas las frecuencias del habla.</p>
+          <p style={{ marginTop: '10px' }}>Por este motivo es necesario complementar el estudio con potenciales evocados auditivos por tonos o multifrecuenciales y, cuando corresponde, registro de microfónicas cocleares, para obtener información bilateral y frecuencia específica.</p>
+          <p style={{ marginTop: '12px' }}>En función de lo expuesto, se solicita autorización de las prácticas detalladas en la primera hoja y anestesia general para realizar el estudio audiológico objetivo completo.</p>
+        </> : <>
+          <p style={{ marginTop: '16px' }}>Se requiere la realización del estudio bajo anestesia general para garantizar condiciones seguras, adecuadas y reproducibles durante el procedimiento.</p>
+          <p style={{ marginTop: '10px' }}>La indicación se fundamenta en la necesidad clínica de obtener información diagnóstica suficiente y evitar procedimientos incompletos o la repetición de una anestesia.</p>
+        </>}
+        <p style={{ marginTop: '14px' }}><strong>Tiempo estimado de realización:</strong> {surgery.duracion || '1 hora'}.</p>
+      </div>
+      <SignatureBlock nombreProfesional={surgery.nombreProfesional} especialidad={surgery.especialidad} mp={surgery.mp} me={surgery.me} firmaUrl={surgery.firmaUrl} />
+      <ProfessionalFooter />
+    </div>;
+  };
+
   const renderInternacion = () => (
+    <>
     <div data-pdf-page="true" className="max-w-[210mm] mx-auto bg-white px-16 py-12 overflow-hidden" style={{ height: '297mm', width: '210mm', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif', position: 'relative' }}>
       <ProfessionalHeader />
       <p style={{ textAlign: 'right', marginBottom: '40px', fontSize: '11pt', color: '#000' }}>
@@ -291,6 +322,7 @@ export default function PrintConsole({ surgery, onClose }) {
           <p><strong>Número de afiliado:</strong> {surgery.nroAfiliado || ''}</p>
         )}
         {surgery.dni && <p><strong>DNI:</strong> {surgery.dni}</p>}
+        {isEstudio && <p style={{ paddingTop: '8px' }}><strong>Diagnóstico:</strong> {surgery.justificacion?.toUpperCase() || ''}</p>}
         {isEstudio ? (
           <div style={{ paddingTop: '10px', paddingBottom: '4px' }}>
             <p style={{ fontWeight: 700, marginBottom: '6px' }}>Estudios solicitados:</p>
@@ -301,6 +333,10 @@ export default function PrintConsole({ surgery, onClose }) {
                 </p>
               ))}
             </div>
+            {isParticular && <p style={{ paddingTop: '10px', fontWeight: 700 }}>Valor total: {formatCurrencyARS(surgery.valorParticularEstudio)}</p>}
+            {isParticular && !surgery.incluyeIva && (
+              <p style={{ paddingTop: '18px', fontSize: '10pt' }}>Nota: <strong>El presente presupuesto no incluye IVA</strong></p>
+            )}
           </div>
         ) : (
           <div style={{ paddingTop: '8px', display: 'flex', gap: '8px' }}>
@@ -312,10 +348,12 @@ export default function PrintConsole({ surgery, onClose }) {
             </div>
           </div>
         )}
-        <p style={{ paddingTop: '8px' }}><strong>Tipo de anestesia:</strong> {surgery.anestesia?.toLowerCase() || ''}</p>
-        <p style={{ paddingTop: '8px' }}><strong>{isEstudio ? 'Fecha del estudio:' : 'Fecha de cirugía:'}</strong> {formatPrintDateNumeric(surgery.fecha)}</p>
-        <p style={{ paddingTop: '8px' }}><strong>Material:</strong> {surgery.materiales?.trim() ? 'Sí' : 'No'}</p>
-        <p style={{ paddingTop: '8px' }}><strong>Diagnóstico:</strong> {surgery.justificacion?.toUpperCase() || ''}</p>
+        {!isEstudio && <>
+          <p style={{ paddingTop: '8px' }}><strong>Tipo de anestesia:</strong> {surgery.anestesia?.toLowerCase() || ''}</p>
+          <p style={{ paddingTop: '8px' }}><strong>Fecha de cirugía:</strong> {formatPrintDateNumeric(surgery.fecha)}</p>
+          <p style={{ paddingTop: '8px' }}><strong>Material:</strong> {surgery.materiales?.trim() ? 'Sí' : 'No'}</p>
+          <p style={{ paddingTop: '8px' }}><strong>Diagnóstico:</strong> {surgery.justificacion?.toUpperCase() || ''}</p>
+        </>}
       </div>
       <SignatureBlock 
         nombreProfesional={surgery.nombreProfesional} 
@@ -326,6 +364,8 @@ export default function PrintConsole({ surgery, onClose }) {
       />
       <ProfessionalFooter />
     </div>
+    {isEstudio && renderStudyJustification()}
+    </>
   );
 
   const renderMaterial = () => (
