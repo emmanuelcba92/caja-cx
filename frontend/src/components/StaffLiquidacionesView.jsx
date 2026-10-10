@@ -21,26 +21,24 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
   const [manualLiqs, setManualLiqs] = useState([]);
 
   useEffect(() => {
-    const fetchDeductions = async () => {
+    const fetchLiquidationData = async () => {
       try {
-        const fromDb = await apiService.getCollection('deducciones');
-        if (fromDb && fromDb.length > 0) {
-          setDeductions(fromDb);
-        } else {
-          const local = localStorage.getItem('deducciones_liquidacion');
-          if (local) setDeductions(JSON.parse(local));
-        }
+        const [storedDeductions, storedManualLiqs] = await Promise.all([
+          apiService.getCollection('deducciones'),
+          apiService.getCollection('liquidaciones_manuales')
+        ]);
+        setDeductions(storedDeductions || []);
+        setManualLiqs(storedManualLiqs || []);
       } catch (err) {
-        const local = localStorage.getItem('deducciones_liquidacion');
-        if (local) setDeductions(JSON.parse(local));
+        try {
+          const localDeductions = localStorage.getItem('deducciones_liquidacion');
+          const localManualLiqs = localStorage.getItem('liquidaciones_manuales');
+          if (localDeductions) setDeductions(JSON.parse(localDeductions));
+          if (localManualLiqs) setManualLiqs(JSON.parse(localManualLiqs));
+        } catch {}
       }
     };
-    fetchDeductions();
-
-    try {
-      const localManual = localStorage.getItem('liquidaciones_manuales');
-      if (localManual) setManualLiqs(JSON.parse(localManual));
-    } catch {}
+    fetchLiquidationData();
   }, []);
 
   const shortProfName = (fullName) => getShortProfHeader(fullName);

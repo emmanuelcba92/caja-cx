@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { FileText, Printer, Trash2, MinusCircle, Plus, X, Download, Calendar } from 'lucide-react';
 import { formatMoney } from './CajaView';
 import { isSameProf, getCanonicalProf, isIgnoredProf } from './utils/profUtils';
+import apiService from './services/apiService';
 
 const saveAs = (blob, filename) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); };
 
@@ -45,6 +46,48 @@ export default function LiquidacionView({ history, currentUser, professionals })
 
   useEffect(() => { saveJSON(DED_KEY, deductions); }, [deductions]);
   useEffect(() => { saveJSON(MANUAL_KEY, manualLiqs); }, [manualLiqs]);
+
+  // Las versiones anteriores guardaban estos movimientos solamente en el
+  // navegador. Al abrir desde otra computadora no había nada para mostrar.
+  // Conservamos localStorage como respaldo y migramos automáticamente lo que
+  // ya exista ahí la primera vez que se carga la pantalla.
+  useEffect(() => {
+    let active = true;
+
+    const migrateLocalItems = async (collectionName, localItems, cloudItems) => {
+      const knownLegacyIds = new Set(cloudItems.map(item => String(item.legacyId ?? item.id)));
+      const missingItems = localItems.filter(item => !knownLegacyIds.has(String(item.id)));
+      const migrated = await Promise.all(missingItems.map(async ({ id, ...item }) => {
+        const savedId = await apiService.addDocument(collectionName, { ...item, legacyId: String(id) });
+        return { ...item, id: savedId, legacyId: String(id) };
+      }));
+      return [...cloudItems, ...migrated];
+    };
+
+    const loadLiquidationData = async () => {
+      try {
+        const [cloudDeductions, cloudManualLiqs] = await Promise.all([
+          apiService.getCollection('deducciones'),
+          apiService.getCollection('liquidaciones_manuales')
+        ]);
+
+        const syncedDeductions = await migrateLocalItems('deducciones', loadJSON(DED_KEY, []), cloudDeductions || []);
+        const syncedManualLiqs = await migrateLocalItems('liquidaciones_manuales', loadJSON(MANUAL_KEY, []), cloudManualLiqs || []);
+
+        if (active) {
+          setDeductions(syncedDeductions);
+          setManualLiqs(syncedManualLiqs);
+        }
+      } catch (error) {
+        // Si no hubiera conexión, se mantiene el respaldo local y se podrá
+        // sincronizar en la próxima carga con conexión.
+        console.error('No se pudieron cargar las liquidaciones persistidas:', error);
+      }
+    };
+
+    loadLiquidationData();
+    return () => { active = false; };
+  }, []);
 
   const isModel2Prof = (profName) => {
     if (!profName) return false;
@@ -207,32 +250,57 @@ export default function LiquidacionView({ history, currentUser, professionals })
     return `${d}/${m}/${y}`;
   };
 
-  const addDeduction = () => {
+  const addDeduction = async () => {
     if (!newDed.desc || !newDed.amount || !selectedProf) return;
-    setDeductions(prev => [...prev, { id: Date.now(), profesional: selectedProf, date: newDed.date, desc: newDed.desc, amount: Math.abs(parseFloat(newDed.amount)), currency: newDed.currency }]);
-    setNewDed({ date: today, desc: '', amount: '', currency: 'ARS' });
+    const deduction = {
+      profesional: selectedProf,
+      date: newDed.date,
+      desc: newDed.desc,
+      amount: Math.abs(parseFloat(newDed.amount)),
+      currency: newDed.currency,
+      createdBy: currentUser?.email || currentUser?.nombre || ''
+    };
+    try {
+      const id = await apiService.addDocument('deducciones', deduction);
+      setDeductions(prev => [...prev, { ...deduction, id }]);
+      setNewDed({ date: today, desc: '', amount: '', currency: 'ARS' });
+    } catch (error) {
+      console.error('No se pudo guardar la deducción:', error);
+      alert('No se pudo guardar la deducción. Verifique la conexión e inténtelo nuevamente.');
+    }
   };
 
-  const removeDeduction = (id) => {
+  const removeDeduction = async (id) => {
     if (!window.confirm('¿Eliminar esta deducción?')) return;
-    setDeductions(prev => prev.filter(d => d.id !== id));
+    try {
+      await apiService.deleteDocument('deducciones', id);
+      setDeductions(prev => prev.filter(d => d.id !== id));
+    } catch (error) {
+      console.error('No se pudo eliminar la deducción:', error);
+      alert('No se pudo eliminar la deducción.');
+    }
   };
 
-  const removeManualLiquidation = (id) => {
+  const removeManualLiquidation = async (id) => {
     if (!window.confirm('¿Eliminar esta liquidación manual?')) return;
-    setManualLiqs(prev => prev.filter(m => m.id !== id));
+    try {
+      await apiService.deleteDocument('liquidaciones_manuales', id);
+      setManualLiqs(prev => prev.filter(m => m.id !== id));
+    } catch (error) {
+      console.error('No se pudo eliminar la liquidación manual:', error);
+      alert('No se pudo eliminar la liquidación manual.');
+    }
   };
 
   const addManualProfRow = () => setManualForm(prev => ({ ...prev, profs: [...prev.profs, { prof: '', amount: '' }] }));
   const removeManualProfRow = (idx) => { if (manualForm.profs.length <= 1) return; setManualForm(prev => ({ ...prev, profs: prev.profs.filter((_, i) => i !== idx) })); };
   const updateManualProfRow = (idx, field, val) => setManualForm(prev => { const p = [...prev.profs]; p[idx] = { ...p[idx], [field]: val }; return { ...prev, profs: p }; });
 
-  const handleSaveManual = () => {
+  const handleSaveManual = async () => {
     if (!manualForm.patient || manualForm.profs.some(p => !p.prof || !p.amount)) {
       return alert('Complete todos los campos de profesionales y montos');
     }
     const newEntries = manualForm.profs.map(item => ({
-      id: Date.now() + Math.random(),
       fecha: manualForm.date,
       paciente: manualForm.patient + ' (Liq. Manual)',
       dni: '', obra_social: '',
@@ -250,9 +318,18 @@ export default function LiquidacionView({ history, currentUser, professionals })
       includeInReceipt: manualForm.inReceipt,
       createdAt: new Date().toISOString(),
     }));
-    setManualLiqs(prev => [...prev, ...newEntries]);
-    setShowManualModal(false);
-    setManualForm({ date: today, patient: '', totalPayment: '', currency: 'ARS', inReceipt: false, profs: [{ prof: selectedProf || '', amount: '' }] });
+    try {
+      const savedIds = await Promise.all(newEntries.map(entry => apiService.addDocument('liquidaciones_manuales', {
+        ...entry,
+        createdBy: currentUser?.email || currentUser?.nombre || ''
+      })));
+      setManualLiqs(prev => [...prev, ...newEntries.map((entry, index) => ({ ...entry, id: savedIds[index] }))]);
+      setShowManualModal(false);
+      setManualForm({ date: today, patient: '', totalPayment: '', currency: 'ARS', inReceipt: false, profs: [{ prof: selectedProf || '', amount: '' }] });
+    } catch (error) {
+      console.error('No se pudo guardar la liquidación manual:', error);
+      alert('No se pudo guardar la liquidación manual. Verifique la conexión e inténtelo nuevamente.');
+    }
   };
 
   const handlePrintDetail = () => {
@@ -316,8 +393,7 @@ export default function LiquidacionView({ history, currentUser, professionals })
   const handlePrintReceipt = () => {
     const nonTransfer = liquidationData.rows.filter(r => !r.isTransfer);
     const refNames = nonTransfer.map(r => r.displayName).filter(Boolean);
-    const dedRefs = profDeductions.filter(d => d.desc).map(d => d.desc);
-    const allRef = [...refNames, ...dedRefs].join(', ');
+    const allRef = refNames.join(', ');
 
     const printWin = window.open('', '_blank', 'height=800,width=800');
     if (!printWin) return;
@@ -346,7 +422,7 @@ export default function LiquidacionView({ history, currentUser, professionals })
       <dl class="meta">
         <dt>Fecha:</dt><dd>${startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} al ${formatDate(endDate)}`}</dd>
         <dt>Movimiento:</dt><dd>Egreso</dd>
-        <dt>Concepto:</dt><dd>Honorarios por técnica en común de por cuenta y orden de ${selectedProf}</dd>
+        <dt>Concepto:</dt><dd>Honorarios por técnica no convenida por cuenta y orden de ${selectedProf}</dd>
         <dt>Referencia:</dt><dd style="font-size:10pt">${allRef || '-'}</dd>
       </dl>
       <table>
@@ -417,10 +493,9 @@ export default function LiquidacionView({ history, currentUser, professionals })
   const buildReceiptHTML = (profName, data) => {
     const nonTransfer = data.rows.filter(r => !r.isTransfer);
     const refNames = nonTransfer.map(r => r.displayName).filter(Boolean);
-    const dedRefs = data.deductions.filter(d => d.desc).map(d => d.desc);
-    const allRef = [...refNames, ...dedRefs].join(', ');
+    const allRef = refNames.join(', ');
     return `<div class="page"><div style="text-align:center;margin-bottom:20px"><img src="${window.location.origin}/coat_logo.png" onerror="this.style.display='none'" style="height:55px"></div>
-      <dl class="meta"><dt>Fecha:</dt><dd>${startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} al ${formatDate(endDate)}`}</dd><dt>Movimiento:</dt><dd>Egreso</dd><dt>Concepto:</dt><dd>Honorarios por técnica en común de por cuenta y orden de ${profName}</dd><dt>Referencia:</dt><dd style="font-size:10pt">${allRef || '-'}</dd></dl>
+      <dl class="meta"><dt>Fecha:</dt><dd>${startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} al ${formatDate(endDate)}`}</dd><dt>Movimiento:</dt><dd>Egreso</dd><dt>Concepto:</dt><dd>Honorarios por técnica no convenida por cuenta y orden de ${profName}</dd><dt>Referencia:</dt><dd style="font-size:10pt">${allRef || '-'}</dd></dl>
       <table><thead><tr><th>M. de Pago</th><th>Número</th><th>F. Cobro</th><th class="text-right">Importe</th></tr></thead><tbody>
       ${data.totalPesos > 0 || data.totalDolares === 0 ? `<tr><td>Efectivo</td><td></td><td></td><td class="text-right" style="font-weight:700">$ ${formatMoney(data.totalPesos > 0 ? data.totalPesos : 0)}</td></tr>` : ''}
       ${data.totalDolares > 0 ? `<tr><td>Dólares</td><td></td><td></td><td class="text-right" style="font-weight:700">U$D ${formatMoney(data.totalDolares)}</td></tr>` : ''}
