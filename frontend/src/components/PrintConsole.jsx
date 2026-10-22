@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { Printer, Download, X, FileText, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 import { expandCodes, ESTUDIOS_BAJO_ANESTESIA } from '../data/clinicalCodes';
 import { CONSENTIMIENTOS_MAP, CONSENTIMIENTOS_COMBO, CONSENTIMIENTO_GENERICO } from '../data/consentimientos';
 import { formatDoctorDisplayName, shortDoctorName } from '../utils/doctorName';
@@ -183,6 +182,105 @@ const buildStudyOrderLines = (surgery, codesLines) => {
   return lines;
 };
 
+// Los pedidos descargables se dibujan directamente con jsPDF.  A diferencia de
+// una captura del DOM, `text` conserva una capa de texto seleccionable para
+// poder buscarlo, copiarlo o convertirlo posteriormente a Word.
+const loadPdfImage = (source) => new Promise((resolve, reject) => {
+  if (!source) {
+    reject(new Error('Sin imagen'));
+    return;
+  }
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+    resolve({ data: canvas.toDataURL('image/png'), ratio: canvas.width / canvas.height });
+  };
+  image.onerror = reject;
+  image.src = source;
+});
+
+const drawPdfHeader = async (doc) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  try {
+    const logo = await loadPdfImage('/coat_logo.png');
+    const width = 28;
+    doc.addImage(logo.data, 'PNG', 16, 11, width, width / logo.ratio);
+  } catch {
+    // El texto institucional sigue presente aunque el logo no se pueda cargar.
+  }
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('CENTRO OTOAUDIOLÓGICO DE ALTA TECNOLOGÍA', pageWidth / 2 + 8, 17, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(51, 65, 85);
+  doc.text('NARIZ • GARGANTA • OÍDO', pageWidth / 2 + 8, 22, { align: 'center' });
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.3);
+  doc.line(16, 32, pageWidth - 16, 32);
+  doc.setTextColor(0, 0, 0);
+};
+
+const drawPdfFooter = (doc) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setDrawColor(30, 58, 138);
+  doc.setLineWidth(0.5);
+  doc.line(16, pageHeight - 19, pageWidth - 16, pageHeight - 19);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Urquiza 401 - Alberdi • Córdoba • Tel: (0351) 423-0530 / 423-9428 • WhatsApp: 3543579794', pageWidth / 2, pageHeight - 13, { align: 'center' });
+  doc.text('Email: info@coat.com.ar • Web: www.coat.com.ar', pageWidth / 2, pageHeight - 9, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+};
+
+const drawPdfSignature = async (doc, surgery) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const centerX = pageWidth - 50;
+  const signatureBottom = pageHeight - 43;
+  if (surgery.firmaUrl) {
+    try {
+      const signature = await loadPdfImage(surgery.firmaUrl);
+      const maxWidth = 52;
+      const maxHeight = 24;
+      const width = Math.min(maxWidth, maxHeight * signature.ratio);
+      const height = width / signature.ratio;
+      doc.addImage(signature.data, 'PNG', centerX - (width / 2), signatureBottom - height - 4, width, height);
+    } catch {
+      // Una firma alojada sin CORS no impide generar el pedido editable.
+    }
+  }
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.25);
+  doc.line(centerX - 31, signatureBottom, centerX + 31, signatureBottom);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.text((formatDoctorDisplayName(surgery.nombreProfesional) || '').toUpperCase(), centerX, signatureBottom + 5, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.text(surgery.especialidad === 'ORL' ? 'Otorrinolaringología' : (surgery.especialidad || 'Otorrinolaringología'), centerX, signatureBottom + 9, { align: 'center' });
+  doc.text(`${surgery.mp ? `MP ${surgery.mp}` : 'MP —'} ${surgery.me ? `- ME ${surgery.me}` : '- ME —'}`, centerX, signatureBottom + 13, { align: 'center' });
+};
+
+const writePdfParagraph = (doc, text, x, y, width, options = {}) => {
+  const { fontSize = 10.5, style = 'normal', lineHeight = 5.2, align } = options;
+  doc.setFont('helvetica', style);
+  doc.setFontSize(fontSize);
+  const lines = doc.splitTextToSize(text || '', width);
+  doc.text(lines, x, y, align ? { align } : undefined);
+  return y + (lines.length * lineHeight);
+};
+
+const writePdfField = (doc, label, value, y) => writePdfParagraph(doc, `${label} ${value || ''}`, 20, y, 170, { style: 'normal', fontSize: 10.5, lineHeight: 5.6 });
+
 export default function PrintConsole({ surgery, onClose }) {
   const [activeTab, setActiveTab] = useState('internacion');
   const [isDownloading, setIsDownloading] = useState(false);
@@ -203,6 +301,159 @@ export default function PrintConsole({ surgery, onClose }) {
     window.print();
   };
 
+  const addOrderPage = async (pdf, title) => {
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    await drawPdfHeader(pdf);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    pdf.text(`Córdoba, ${formatLongDate(surgery.fechaSolicitud || (surgery.fechaCreacion ? surgery.fechaCreacion.slice(0, 10) : surgery.fecha))}`, pageWidth - 20, 42, { align: 'right' });
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.text(pdf.splitTextToSize(title, 165), pageWidth / 2, 57, { align: 'center', lineHeightFactor: 1.15 });
+  };
+
+  const addStudyJustificationPage = async (pdf) => {
+    pdf.addPage('a4', 'portrait');
+    await addOrderPage(pdf, 'JUSTIFICACIÓN MÉDICA PARA REALIZACIÓN DE ESTUDIO BAJO ANESTESIA');
+    let y = 70;
+    y = writePdfField(pdf, 'Paciente:', surgery.paciente?.toUpperCase(), y);
+    y += 4;
+    y = writePdfField(pdf, 'Diagnóstico:', surgery.justificacion, y);
+    y += 7;
+    const isPea = codesLines.some(line => /potenciales evocados|microfónicas/i.test(line));
+    const paragraphs = isPea ? [
+      'Para una valoración objetiva y confiable de la audición, especialmente en pacientes pediátricos o en aquellos que no pueden realizar audiometría conductual confiable, se requiere una batería electrofisiológica completa, oído por separado.',
+      'Una evaluación auditiva objetiva completa bajo anestesia general permitirá establecer diagnóstico audiológico preciso, estimación de umbrales auditivos por oído y definición de conducta terapéutica.',
+      'El Potencial Evocado Auditivo de Tronco Encefálico brinda información importante sobre el funcionamiento de la vía auditiva, pero por sí solo no permite conocer con precisión la audición en todas las frecuencias del habla.',
+      'Por este motivo es necesario complementar el estudio con potenciales evocados auditivos por tonos o multifrecuenciales y, cuando corresponde, registro de microfónicas cocleares, para obtener información bilateral y frecuencia específica.',
+      'En función de lo expuesto, se solicita autorización de las prácticas detalladas en la primera hoja y anestesia general para realizar el estudio audiológico objetivo completo.'
+    ] : [
+      'Se requiere la realización del estudio bajo anestesia general para garantizar condiciones seguras, adecuadas y reproducibles durante el procedimiento.',
+      'La indicación se fundamenta en la necesidad clínica de obtener información diagnóstica suficiente y evitar procedimientos incompletos o la repetición de una anestesia.'
+    ];
+    paragraphs.forEach((paragraph) => {
+      y = writePdfParagraph(pdf, paragraph, 20, y, 170, { fontSize: 9.7, lineHeight: 4.7 });
+      y += 4;
+    });
+    writePdfParagraph(pdf, `Tiempo estimado de realización: ${surgery.duracion || '1 hora'}.`, 20, y, 170, { style: 'bold', fontSize: 9.7, lineHeight: 4.7 });
+    await drawPdfSignature(pdf, surgery);
+    drawPdfFooter(pdf);
+  };
+
+  const addInternacionPages = async (pdf) => {
+    await addOrderPage(pdf, isEstudio ? 'PEDIDO DE ESTUDIO BAJO ANESTESIA' : 'ORDEN DE INTERNACIÓN');
+    let y = 70;
+    y = writePdfField(pdf, 'Afiliado:', surgery.paciente?.toUpperCase(), y);
+    y = writePdfField(pdf, 'Obra social:', surgery.obraSocial?.toUpperCase(), y);
+    if (!isParticular) y = writePdfField(pdf, 'Número de afiliado:', surgery.nroAfiliado, y);
+    if (surgery.dni) y = writePdfField(pdf, 'DNI:', surgery.dni, y);
+
+    if (isEstudio) {
+      y += 3;
+      y = writePdfField(pdf, 'Diagnóstico:', surgery.justificacion?.toUpperCase(), y);
+      y += 5;
+      y = writePdfParagraph(pdf, 'Estudios solicitados:', 20, y, 170, { style: 'bold', fontSize: 10.5, lineHeight: 5.3 });
+      (studyOrderLines || []).forEach((line, index) => {
+        y = writePdfParagraph(pdf, `${index + 1}-  ${line}`, 25, y, 162, { fontSize: 10, lineHeight: 5 });
+        y += 1;
+      });
+      if (!isParticular) {
+        y += 5;
+        y = writePdfParagraph(pdf, 'Anestesia general: Convenio por ADAARC', 20, y, 170, { fontSize: 10.5, lineHeight: 5.2 });
+        y += 3;
+        writePdfParagraph(pdf, 'Estudios realizados en el quirófano con anestesia general e internación breve.', 20, y, 170, { fontSize: 10.5, lineHeight: 5.2 });
+      } else {
+        y += 4;
+        y = writePdfParagraph(pdf, `Valor total: ${formatCurrencyARS(surgery.valorParticularEstudio)}`, 20, y, 170, { style: 'bold', fontSize: 10.5, lineHeight: 5.2 });
+        if (!surgery.incluyeIva) {
+          const noteY = y + 8;
+          pdf.setFontSize(10);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text('Nota:', 20, noteY);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('El presente presupuesto no incluye IVA', 31, noteY);
+        }
+      }
+    } else {
+      y += 4;
+      y = writePdfParagraph(pdf, 'Códigos de cirugía:', 20, y, 170, { style: 'bold', fontSize: 10.5, lineHeight: 5.3 });
+      codesLines.forEach((line) => { y = writePdfParagraph(pdf, line, 27, y, 160, { fontSize: 10, lineHeight: 5 }); });
+      y += 3;
+      y = writePdfField(pdf, 'Tipo de anestesia:', surgery.anestesia?.toLowerCase(), y);
+      y = writePdfField(pdf, 'Fecha de cirugía:', formatPrintDateNumeric(surgery.fecha), y);
+      y = writePdfField(pdf, 'Material:', surgery.materiales?.trim() ? 'Sí' : 'No', y);
+      writePdfField(pdf, 'Diagnóstico:', surgery.justificacion?.toUpperCase(), y);
+    }
+    await drawPdfSignature(pdf, surgery);
+    drawPdfFooter(pdf);
+    if (isEstudio) await addStudyJustificationPage(pdf);
+  };
+
+  const addMaterialPage = async (pdf, needsNewPage = true) => {
+    if (needsNewPage) pdf.addPage('a4', 'portrait');
+    await addOrderPage(pdf, 'ORDEN DE PEDIDO DE MATERIAL');
+    let y = 70;
+    y = writePdfField(pdf, 'Afiliado:', surgery.paciente?.toUpperCase(), y);
+    y = writePdfField(pdf, 'Obra social:', surgery.obraSocial?.toUpperCase(), y);
+    if (!isParticular) y = writePdfField(pdf, 'Número de afiliado:', surgery.nroAfiliado, y);
+    if (surgery.dni) y = writePdfField(pdf, 'DNI:', surgery.dni, y);
+    y += 4;
+    y = writePdfParagraph(pdf, 'Material solicitado:', 20, y, 170, { style: 'bold', fontSize: 10.5, lineHeight: 5.3 });
+    y = writePdfParagraph(pdf, surgery.materiales || '', 20, y, 170, { fontSize: 10.5, lineHeight: 5.3 });
+    y += 3;
+    y = writePdfField(pdf, 'Tipo de anestesia:', surgery.anestesia?.toLowerCase(), y);
+    y = writePdfField(pdf, 'Fecha de cirugía:', formatPrintDateNumeric(surgery.fecha), y);
+    writePdfField(pdf, 'Diagnóstico:', surgery.justificacion?.toUpperCase(), y);
+    await drawPdfSignature(pdf, surgery);
+    drawPdfFooter(pdf);
+  };
+
+  const generateTextPDF = async () => {
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+    if (activeTab === 'caratula') {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(24);
+      const centerX = pdf.internal.pageSize.getWidth() / 2;
+      let y = 55;
+      [
+        surgery.paciente?.toUpperCase() || '',
+        `DNI ${surgery.dni || '-'}`,
+        surgery.obraSocial?.toUpperCase() || '',
+        shortDoctorName(surgery.nombreProfesional)?.toUpperCase() || '',
+        formatPrintDateNumeric(surgery.fecha),
+        'ALERGIA (-)'
+      ].forEach((line) => { pdf.text(line, centerX, y, { align: 'center' }); y += 16; });
+      if (surgery.habitacion) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(surgery.habitacion.toUpperCase(), 190, 20, { align: 'right' });
+      }
+    } else if (activeTab === 'material') {
+      await addMaterialPage(pdf, false);
+    } else if (activeTab === 'ambas') {
+      await addInternacionPages(pdf);
+      await addMaterialPage(pdf);
+    } else if (activeTab === 'consentimientos') {
+      await drawPdfHeader(pdf);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.text('CONSENTIMIENTOS APLICABLES', 105, 54, { align: 'center' });
+      let y = 70;
+      if (applicableConsents.length === 0) {
+        writePdfParagraph(pdf, 'No se encontraron consentimientos para los códigos de esta cirugía.', 20, y, 170, { fontSize: 10.5, lineHeight: 5.3 });
+      } else {
+        applicableConsents.forEach((consent, index) => {
+          y = writePdfParagraph(pdf, `${index + 1}. ${consent.nombre}`, 20, y, 170, { style: 'bold', fontSize: 11, lineHeight: 5.5 });
+          y = writePdfParagraph(pdf, `Códigos: ${consent.codigos?.join(' + ') || ''}`, 25, y, 165, { fontSize: 9.5, lineHeight: 5 });
+          y += 4;
+        });
+      }
+      drawPdfFooter(pdf);
+    } else {
+      await addInternacionPages(pdf);
+    }
+    return pdf;
+  };
+
   const handleDownloadPDF = async () => {
     if (isDownloading) return;
 
@@ -215,42 +466,10 @@ export default function PrintConsole({ surgery, onClose }) {
       return;
     }
 
-    if (!printRef.current) return;
-
     try {
       setIsDownloading(true);
       const toastId = toast.loading('Generando PDF...');
-
-      const container = printRef.current;
-      const pageElements = container.querySelectorAll('[data-pdf-page="true"]');
-      const targets = pageElements.length > 0 ? Array.from(pageElements) : [container];
-
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true,
-      });
-
-      const canvases = await Promise.all(
-        targets.map(pageEl =>
-          html2canvas(pageEl, {
-            scale: 1.8,
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-            backgroundColor: '#ffffff',
-          })
-        )
-      );
-
-      canvases.forEach((canvas, idx) => {
-        if (idx > 0) {
-          pdf.addPage('a4', 'portrait');
-        }
-        const imgData = canvas.toDataURL('image/jpeg', 0.92);
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-      });
+      const pdf = await generateTextPDF();
 
       const cleanPatient = (surgery.paciente || 'Cirugia')
         .normalize('NFD')
@@ -333,6 +552,10 @@ export default function PrintConsole({ surgery, onClose }) {
                 </p>
               ))}
             </div>
+            {!isParticular && <>
+              <p style={{ paddingTop: '18px' }}>Anestesia general: Convenio por ADAARC</p>
+              <p style={{ paddingTop: '8px' }}>Estudios realizados en el quirófano con anestesia general e internación breve.</p>
+            </>}
             {isParticular && <p style={{ paddingTop: '10px', fontWeight: 700 }}>Valor total: {formatCurrencyARS(surgery.valorParticularEstudio)}</p>}
             {isParticular && !surgery.incluyeIva && (
               <p style={{ paddingTop: '18px', fontSize: '10pt' }}>Nota: <strong>El presente presupuesto no incluye IVA</strong></p>
