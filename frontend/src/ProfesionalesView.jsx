@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Users, 
-  Plus, 
   Pencil, 
   Trash2, 
   Search, 
   UserPlus, 
   GraduationCap, 
-  IdCard, 
   X, 
   Check,
   AlertCircle
@@ -42,6 +40,10 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
     setProfessionalsState(newVal);
     localStorage.setItem(PROFESSIONALS_KEY, JSON.stringify(newVal));
   });
+  const busy = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notice, setNotice] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,7 +61,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
     const fetchRealProfs = async () => {
       try {
         const fromDb = await apiService.getCollection('profesionales');
-        if (fromDb && fromDb.length > 0) {
+        if (fromDb) {
           const mapped = fromDb.map(p => {
             const isTutora = (p.nombre || '').toLowerCase().includes('tutora') || (p.apellido || '').toLowerCase().includes('tutora');
             const parsed = parseDoctorNameParts(p.nombre, p.prefijo, p.nombreOnly, p.apellido);
@@ -94,8 +96,10 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
           }
           setProfessionals(mapped);
         }
-      } catch (e) {
-        console.error("Error fetching professionals from Firestore:", e);
+      } catch {
+        setError('No se pudieron cargar los profesionales. Recargá la página para reintentar.');
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchRealProfs();
@@ -122,7 +126,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
   const handleOpenModal = (prof = null) => {
     if (prof) {
       const isTutora = (prof.nombre || '').toLowerCase().includes('tutora') || (prof.apellido || '').toLowerCase().includes('tutora');
-      const parsed = parseDoctorNameParts(prof.nombre, prof.prefijo, prof.nombreOnly, prof.apellido);
+      const parsed = parseDoctorNameParts(prof.nombre, prof.prefijo, prof.nombrePila || prof.nombreOnly, prof.apellido);
       setFormData({
         ...prof,
         prefijo: isTutora ? '-' : (parsed.prefijo || 'Dr'),
@@ -133,7 +137,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
       setIsEditing(true);
     } else {
       setFormData({
-        id: null,
+        id: crypto.randomUUID(),
         prefijo: 'Dr',
         nombrePila: '',
         apellido: '',
@@ -150,6 +154,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
   };
 
   const handleCloseModal = () => {
+    if (busy.current) return;
     setIsModalOpen(false);
     setError('');
     setFirmaFile(null);
@@ -165,6 +170,8 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (busy.current || isLoading) return;
+    setError('');
     const isTutora = formData.apellido.toLowerCase().includes('tutora') || formData.nombrePila.toLowerCase().includes('tutora') || formData.especialidad === 'Tutoras';
     if (!isTutora && (!formData.apellido.trim() || !formData.mp.trim())) {
       setError('Apellido y Matrícula Profesional (MP) son obligatorios');
@@ -182,47 +189,72 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
       mp: isTutora ? (formData.mp || 'MP-TUTORAS') : formData.mp.trim()
     };
 
-    if (isEditing) {
-      setProfessionals(professionals.map(p => p.id === dataToSave.id ? { ...dataToSave } : p));
-      if (typeof dataToSave.id === 'string' && !dataToSave.id.startsWith('local_')) {
-        try {
-          await apiService.updateDocument('profesionales', dataToSave.id, {
-            nombre: canonicalFullName,
-            prefijo: dataToSave.prefijo,
-            nombreOnly: dataToSave.nombrePila,
-            apellido: dataToSave.apellido,
-            email: dataToSave.email,
-            categoria: dataToSave.especialidad,
-            especialidad: dataToSave.especialidad,
-            mp: dataToSave.mp,
-            me: dataToSave.me,
-            firmaUrl: dataToSave.firma
-          });
-        } catch (err) {
-          console.error("Error updating profesional in Firestore:", err);
-        }
-      }
-    } else {
-      const newProf = {
-        ...dataToSave,
-        id: Date.now()
-      };
-      setProfessionals([...professionals, newProf]);
+    if (professionals.some(p => p.id !== dataToSave.id &&
+      String(p.mp || '').trim().toLowerCase() === dataToSave.mp.toLowerCase())) {
+      setError('Ya existe un profesional con esa matrícula. Editá el registro existente.');
+      return;
     }
-    handleCloseModal();
+    busy.current = true;
+    setIsSaving(true);
+    try {
+      if (firmaFile) {
+        dataToSave.firma = await apiService.uploadFile(`profesionales/${dataToSave.id}/firma`, firmaFile);
+      }
+      const payload = {
+        nombre: canonicalFullName, prefijo: dataToSave.prefijo,
+        nombreOnly: dataToSave.nombrePila, apellido: dataToSave.apellido,
+        email: dataToSave.email || '', categoria: dataToSave.especialidad,
+        especialidad: dataToSave.especialidad, mp: dataToSave.mp,
+        me: dataToSave.me || '', firmaUrl: dataToSave.firma || ''
+      };
+      if (isEditing) {
+        if (await apiService.updateDocument('profesionales', String(dataToSave.id), payload) === false) {
+          throw new Error('El registro ya no existe. Recargá la página.');
+        }
+      } else {
+        // Stable ID for this form: retrying an uncertain result cannot create a second document.
+        await apiService.setDocument('profesionales', dataToSave.id, payload);
+      }
+      setProfessionals(prev => isEditing
+        ? prev.map(p => p.id === dataToSave.id ? dataToSave : p)
+        : [...prev.filter(p => p.id !== dataToSave.id), dataToSave]);
+      setNotice(isEditing ? 'Cambios guardados.' : 'Profesional guardado.');
+      busy.current = false;
+      handleCloseModal();
+    } catch (err) {
+      setError(err.code === 'permission-denied'
+        ? 'Firebase rechazó la operación: no tenés permisos para guardar profesionales.'
+        : 'No se pudo confirmar el guardado. Revisá la conexión y reintentá con este formulario.');
+    } finally {
+      busy.current = false;
+      setIsSaving(false);
+    }
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('¿Estás seguro de eliminar este profesional?')) {
-      setProfessionals(professionals.filter(p => p.id !== id));
+  const handleDelete = async (id) => {
+    if (busy.current || isLoading || !window.confirm('¿Estás seguro de eliminar este profesional?')) return;
+    busy.current = true;
+    setIsSaving(true);
+    setError('');
+    try {
+      await apiService.deleteDocument('profesionales', String(id));
+      setProfessionals(prev => prev.filter(p => p.id !== id));
+      setNotice('Profesional eliminado.');
+    } catch (err) {
+      setError(err.code === 'permission-denied'
+        ? 'Firebase rechazó la eliminación: no tenés permisos.'
+        : 'No se pudo confirmar la eliminación. Revisá la conexión y reintentá.');
+    } finally {
+      busy.current = false;
+      setIsSaving(false);
     }
   };
 
   const filteredProfessionals = professionals.filter(p => 
     (p.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (p.apellido || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.especialidad.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.mp.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.especialidad || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.mp || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (p.me || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -237,6 +269,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
           <p className="text-sm text-slate-500 mt-1">Gestioná el registro de médicos y especialistas de la clínica.</p>
         </div>
         <button
+          disabled={isSaving || isLoading}
           onClick={() => handleOpenModal()}
           className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
         >
@@ -245,6 +278,9 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
         </button>
       </div>
 
+      {isLoading && <p role="status">Cargando profesionales…</p>}
+      {notice && <p role="status" className="text-green-700">{notice}</p>}
+      {error && !isModalOpen && <p role="alert" className="text-rose-700">{error}</p>}
       {/* Search & Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="md:col-span-2 relative">
@@ -314,12 +350,14 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
+          disabled={isSaving || isLoading}
                           onClick={() => handleOpenModal(prof)}
                           className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                         >
                           <Pencil size={18} />
                         </button>
                         <button
+          disabled={isSaving || isLoading}
                           onClick={() => handleDelete(prof.id)}
                           className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                         >
@@ -365,6 +403,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <fieldset disabled={isSaving} className="space-y-4">
               {error && (
                 <div className="p-3 rounded-lg bg-rose-50 text-rose-700 text-xs font-medium border border-rose-200 flex items-center gap-2">
                   <AlertCircle size={14} />
@@ -462,6 +501,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
 
               <div className="pt-4 flex gap-3">
                 <button
+          disabled={isSaving || isLoading}
                   type="button"
                   onClick={handleCloseModal}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 transition-all"
@@ -469,13 +509,15 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
                   Cancelar
                 </button>
                 <button
+          disabled={isSaving || isLoading}
                   type="submit"
                   className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
                 >
                   <Check size={18} />
-                  {isEditing ? 'Guardar Cambios' : 'Crear'}
+                  {isSaving ? 'Guardando…' : (isEditing ? 'Guardar Cambios' : 'Crear')}
                 </button>
               </div>
+              </fieldset>
             </form>
           </div>
         </div>
