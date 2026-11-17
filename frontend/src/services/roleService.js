@@ -128,6 +128,25 @@ export const DEFAULT_ROLES = {
       readonly_caja: false,
       is_ephemeral: false
     }
+  },
+  consulta: {
+    name: 'Consulta',
+    isSystem: true,
+    permissions: {
+      can_view_admin: false,
+      can_manage_users: false,
+      can_view_shared_catalog: true,
+      can_view_ordenes: true,
+      can_share_ordenes: false,
+      can_view_stats: true,
+      can_delete_data: false,
+      can_edit_data: false,
+      can_edit_own: false,
+      can_delete_own: false,
+      readonly_caja: true,
+      is_consulta: true,
+      is_ephemeral: false
+    }
   }
 };
 

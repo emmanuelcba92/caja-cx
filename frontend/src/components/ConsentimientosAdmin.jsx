@@ -97,78 +97,78 @@ export default function ConsentimientosAdmin() {
   return (
     <div className="space-y-6">
       <div>
-        <h4 className="text-xs font-black text-rose-600 uppercase tracking-widest mb-3">Consentimientos COMBO (requieren múltiples códigos)</h4>
+        <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Consentimientos COMBO (requieren múltiples códigos)</h4>
         <div className="space-y-2">
           {CONSENTIMIENTOS_COMBO.map((combo, idx) => (
-            <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
+            <div key={idx} className="flex items-center justify-between p-3.5 rounded-2xl bg-[var(--bg-secondary)]/50 border border-[var(--border-main)]">
               <div>
-                <p className="text-sm font-bold text-slate-700">{combo.nombre}</p>
-                <p className="text-[10px] text-slate-400 font-mono">{combo.codigos.join(' + ')}</p>
+                <p className="text-sm font-bold text-[var(--text-main)]">{combo.nombre}</p>
+                <p className="text-[10px] text-[var(--text-sub)] font-mono">{combo.codigos.join(' + ')}</p>
               </div>
               <div className="flex gap-2 text-[10px] font-bold">
-                {combo.adulto && <span className="px-2 py-1 rounded bg-blue-50 text-blue-600">{combo.adulto}</span>}
-                {combo.menor && <span className="px-2 py-1 rounded bg-pink-50 text-pink-600">{combo.menor}</span>}
+                {combo.adulto && <span className="px-2 py-1 rounded-lg bg-blue-50 text-blue-600">{combo.adulto}</span>}
+                {combo.menor && <span className="px-2 py-1 rounded-lg bg-pink-50 text-pink-600">{combo.menor}</span>}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="border-t border-slate-200 pt-6">
-        <h4 className="text-xs font-black text-rose-600 uppercase tracking-widest mb-3">Agregar nuevo consentimiento</h4>
-        {error && <div className="p-2 rounded-lg bg-rose-50 text-rose-700 text-xs font-medium border border-rose-200 mb-3">{error}</div>}
-        {success && <div className="p-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200 mb-3 flex items-center gap-2"><CheckCircle2 size={14} /> {success}</div>}
+      <div className="border-t border-[var(--border-main)] pt-6">
+        <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Agregar nuevo consentimiento</h4>
+        {error && <div className="p-2.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-medium border border-rose-200 mb-3">{error}</div>}
+        {success && <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200 mb-3 flex items-center gap-2"><CheckCircle2 size={14} /> {success}</div>}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Código de cirugía</label>
-            <input className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-rose-500 outline-none text-sm"
+            <label className="block text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1">Código de cirugía</label>
+            <input className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none text-sm"
               placeholder="Ej: 031301" value={newCode} onChange={e => setNewCode(e.target.value)} />
           </div>
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nombre</label>
-            <input className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-rose-500 outline-none text-sm"
+            <label className="block text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1">Nombre</label>
+            <input className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none text-sm"
               placeholder="Ej: Amigdalectomía" value={newNombre} onChange={e => setNewNombre(e.target.value)} />
           </div>
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">PDF Adulto (nombre del archivo)</label>
-            <input className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-rose-500 outline-none text-sm"
+            <label className="block text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1">PDF Adulto (nombre del archivo)</label>
+            <input className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none text-sm"
               placeholder="Ej: Amigdalectomia adulto.pdf" value={newAdulto} onChange={e => setNewAdulto(e.target.value)} />
           </div>
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">PDF Menor (nombre del archivo)</label>
-            <input className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-rose-500 outline-none text-sm"
+            <label className="block text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1">PDF Menor (nombre del archivo)</label>
+            <input className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none text-sm"
               placeholder="Ej: Amigdalectomia menor.pdf" value={newMenor} onChange={e => setNewMenor(e.target.value)} />
           </div>
         </div>
         <button onClick={handleAdd}
-          className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-all">
+          className="mt-3 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-all shadow-sm">
           <PlusCircle size={14} /> Agregar consentimiento
         </button>
       </div>
 
-      <div className="border-t border-slate-200 pt-6">
-        <h4 className="text-xs font-black text-rose-600 uppercase tracking-widest mb-3">Consentimientos individuales por código</h4>
+      <div className="border-t border-[var(--border-main)] pt-6">
+        <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Consentimientos individuales por código</h4>
         <div className="space-y-2 max-h-[400px] overflow-y-auto">
           {Object.entries(allConsents).sort(([a], [b]) => a.localeCompare(b)).map(([code, c]) => (
-            <div key={code} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">
+            <div key={code} className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border-main)] hover:bg-[var(--hover-main)] transition-colors">
               {editingCode === code ? (
                 <div className="flex-1 flex items-center gap-2">
-                  <span className="text-xs font-mono font-bold text-slate-400 w-16">{code}</span>
-                  <span className="text-xs font-bold text-slate-600 w-32 truncate">{c.nombre}</span>
-                  <input className="flex-1 px-2 py-1 rounded border border-slate-300 text-xs outline-none focus:ring-1 focus:ring-rose-500"
+                  <span className="text-xs font-mono font-bold text-[var(--text-sub)] w-16">{code}</span>
+                  <span className="text-xs font-bold text-[var(--text-main)] w-32 truncate">{c.nombre}</span>
+                  <input className="flex-1 px-2.5 py-1.5 rounded-lg border border-[var(--border-main)] bg-[var(--bg-card)] text-[var(--text-main)] text-xs outline-none focus:ring-1 focus:ring-blue-500"
                     placeholder="Adulto PDF" value={editAdulto} onChange={e => setEditAdulto(e.target.value)} />
-                  <input className="flex-1 px-2 py-1 rounded border border-slate-300 text-xs outline-none focus:ring-1 focus:ring-rose-500"
+                  <input className="flex-1 px-2.5 py-1.5 rounded-lg border border-[var(--border-main)] bg-[var(--bg-card)] text-[var(--text-main)] text-xs outline-none focus:ring-1 focus:ring-blue-500"
                     placeholder="Menor PDF" value={editMenor} onChange={e => setEditMenor(e.target.value)} />
-                  <button onClick={() => handleSaveEdit(code)} className="p-1.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
+                  <button onClick={() => handleSaveEdit(code)} className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
                     <CheckCircle2 size={14} />
                   </button>
-                  <button onClick={() => setEditingCode(null)} className="p-1.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 text-xs">Cancelar</button>
+                  <button onClick={() => setEditingCode(null)} className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 text-xs">Cancelar</button>
                 </div>
               ) : (
                 <>
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <span className="text-xs font-mono font-bold text-slate-400 w-16 shrink-0">{code}</span>
-                    <span className="text-xs font-bold text-slate-600 truncate">{c.nombre}</span>
+                    <span className="text-xs font-mono font-bold text-[var(--text-sub)] w-16 shrink-0">{code}</span>
+                    <span className="text-xs font-bold text-[var(--text-main)] truncate">{c.nombre}</span>
                     <div className="flex gap-1.5 shrink-0">
                       {c.adulto && <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-100">{c.adulto}</span>}
                       {c.menor && <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-pink-50 text-pink-600 border border-pink-100">{c.menor}</span>}
@@ -177,12 +177,12 @@ export default function ConsentimientosAdmin() {
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <button onClick={() => handleStartEdit(code)}
-                      className="p-1.5 rounded bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors" title="Editar">
+                      className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-main)] text-[var(--text-sub)] hover:bg-blue-50 hover:text-blue-600 transition-colors" title="Editar">
                       <FileText size={14} />
                     </button>
                     {customMap[code] && (
                       <button onClick={() => handleDelete(code)}
-                        className="p-1.5 rounded bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors" title="Eliminar">
+                        className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-main)] text-[var(--text-sub)] hover:bg-rose-50 hover:text-rose-600 transition-colors" title="Eliminar">
                         <Trash2 size={14} />
                       </button>
                     )}
@@ -194,10 +194,10 @@ export default function ConsentimientosAdmin() {
         </div>
       </div>
 
-      <div className="border-t border-slate-200 pt-4">
-        <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Consentimiento Genérico</h4>
-        <p className="text-xs text-slate-500">Archivo: <span className="font-mono font-bold">{CONSENTIMIENTO_GENERICO}</span></p>
-        <p className="text-[10px] text-slate-400 mt-1">Coloque este archivo en la carpeta <code className="bg-slate-100 px-1 rounded">public/consentimientos/</code> del proyecto.</p>
+      <div className="border-t border-[var(--border-main)] pt-4">
+        <h4 className="text-xs font-black text-[var(--text-sub)] uppercase tracking-widest mb-2">Consentimiento Genérico</h4>
+        <p className="text-xs text-[var(--text-sub)]">Archivo: <span className="font-mono font-bold text-[var(--text-main)]">{CONSENTIMIENTO_GENERICO}</span></p>
+        <p className="text-[10px] text-slate-400 mt-1">Coloque este archivo en la carpeta <code className="bg-[var(--bg-secondary)] px-1 rounded">public/consentimientos/</code> del proyecto.</p>
       </div>
     </div>
   );

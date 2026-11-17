@@ -1,5 +1,5 @@
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase/config';
+import { db, auth, isTestEnv } from '../firebase/config';
 
 /**
  * Registra una acción en el log de auditoría.
@@ -9,6 +9,7 @@ import { db, auth } from '../firebase/config';
  * @param {object} details - Información adicional (opcional)
  */
 export const logAction = async (action, targetId, targetName, details = {}) => {
+  if (isTestEnv) return;
   try {
     const user = auth.currentUser;
     if (!user) return;
@@ -55,7 +56,14 @@ export const AUDIT_ACTIONS = {
   
   // Acciones de Configuración Administrativa
   ADMIN_CHANGE_SETTINGS: 'CAMBIO_CONFIGURACION',
-  
+
+  // Acciones de Presupuestos Quirúrgicos
+  CREATE_PRESUPUESTO_DRAFT: 'CREAR_BORRADOR_PRESUPUESTO',
+  EMIT_PRESUPUESTO: 'EMITIR_PRESUPUESTO',
+  DELETE_PRESUPUESTO_DRAFT: 'ELIMINAR_BORRADOR_PRESUPUESTO',
+  UPDATE_PRESUPUESTO_CODIGOS: 'ACTUALIZAR_CODIGOS_PRESUPUESTO',
+  IMPORT_PRESUPUESTO_CODIGOS: 'IMPORTAR_CODIGOS_PRESUPUESTO',
+
   // Autenticación
   AUTH_LOGIN: 'INICIO_SESION'
 };

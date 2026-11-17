@@ -1,33 +1,31 @@
-# Dependencies
+# Variables de entorno y secretos locales
+.env
+.env.*
+!.env.example
+
+# Credenciales y llaves privadas
+*serviceAccount*.json
+*firebase-adminsdk*.json
+*.pem
+*.key
+
+# Dependencias y compilaciones
 node_modules/
-frontend/node_modules/
-backend/venv/
+dist/
+coverage/
+
+# Firebase local y emuladores
+.firebase/
+emulator-data/
+*-debug.log
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+.venv/
 venv/
 
-# Local databases and SQLite
-*.db
-backend/*.db
-
-# Python files
-__pycache__/
-backend/__pycache__/
-*.pyc
-
-# Builds
-dist/
-frontend/dist/
-
-# Secrets and Env variables
-.env
-frontend/.env
-*.env.local
-
-# Firebase caches
-.firebase/
-frontend/.firebase/
-
-# IDE / System
-.vscode/
-.idea/
+# Logs y archivos temporales
+*.log
 .DS_Store
 Thumbs.db

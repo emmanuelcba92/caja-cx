@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../firebase/config';
+import { db, firebaseConfig } from '../firebase/config';
+import {
+  exportOperationalBackup,
+  BACKUP_COLLECTIONS,
+  EXCLUDED_PRIVATE_COLLECTIONS,
+} from '../utils/backupExport';
 import {
   collection, getDocs, doc, setDoc, updateDoc, deleteDoc,
   query, where, orderBy, getDoc, writeBatch, getCountFromServer
@@ -19,7 +24,8 @@ import WhatsAppTemplatesAdmin from './WhatsAppTemplatesAdmin.jsx';
 import { getCleanUsername } from '../utils/doctorName';
 
 const AdminView = () => {
-  const { currentUser, isSuperAdmin } = useAuth();
+  const { currentUser, isSuperAdmin, userRole } = useAuth();
+  const isAdmin = isSuperAdmin || String(userRole || '').trim().toLowerCase() === 'admin';
   const [activeSubTab, setActiveSubTab] = useState('usuarios');
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -33,6 +39,8 @@ const AdminView = () => {
 
   // Authorized emails
   const [authorizedEmails, setAuthorizedEmails] = useState([]);
+  const [exportStatus, setExportStatus] = useState(null);
+  const [exportingBackup, setExportingBackup] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -62,7 +70,8 @@ const AdminView = () => {
     e.preventDefault();
     if (!newEmail.trim()) return toast.error("Ingresá un email");
 
-    const fullEmail = newEmail.includes('@') ? newEmail : `${newEmail}@coat.com.ar`;
+    const cleanEmail = newEmail.trim().toLowerCase();
+    const fullEmail = cleanEmail.includes('@') ? cleanEmail : `${cleanEmail}@coat.com.ar`;
 
     // Check if already exists
     if (authorizedEmails.find(u => u.email === fullEmail)) {
@@ -70,7 +79,7 @@ const AdminView = () => {
     }
 
     try {
-      await setDoc(doc(db, 'authorized_emails', fullEmail.replace(/[.@]/g, '_')), {
+      await setDoc(doc(db, 'authorized_emails', fullEmail), {
         email: fullEmail,
         role: newRole,
         profesionalName: newProfName || '',
@@ -113,25 +122,50 @@ const AdminView = () => {
   };
 
   const handleExportData = async () => {
+    if (!isAdmin) {
+      toast.error("Solo un administrador autorizado puede exportar respaldos");
+      return;
+    }
+
+    setExportingBackup(true);
+    setExportStatus(null);
     try {
-      const collections = ['caja', 'ordenes_internacion', 'profesionales', 'pacientes'];
-      const exportData = {};
+      const result = await exportOperationalBackup({
+        db,
+        getDocsFn: getDocs,
+        collectionFn: collection,
+        isAdmin,
+        environment: firebaseConfig?.projectId || 'unknown',
+        exportedByEmail: currentUser?.email || null,
+      });
 
-      for (const col of collections) {
-        const snap = await getDocs(collection(db, col));
-        exportData[col] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      }
-
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(result.backup, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `coat_backup_${new Date().toISOString().split('T')[0]}.json`;
+      const dateStr = new Date().toISOString().split('T')[0];
+      const suffix = result.complete ? '' : '_PARCIAL';
+      a.download = `coat_backup_${firebaseConfig?.projectId || 'coat'}_${dateStr}${suffix}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success("Backup descargado");
+
+      setExportStatus({
+        complete: result.complete,
+        includedCount: result.includedCollections.length,
+        failedCollections: result.failedCollections,
+      });
+
+      if (result.complete) {
+        toast.success(`Backup operativo descargado (${result.includedCollections.length} colecciones)`);
+      } else {
+        toast.error(
+          `Backup PARCIAL descargado: fallaron ${result.failedCollections.length} colección(es) (${result.failedCollections.map(f => f.collection).join(', ')})`
+        );
+      }
     } catch (error) {
-      toast.error("Error al exportar datos");
+      toast.error(error?.message || "Error al exportar datos");
+    } finally {
+      setExportingBackup(false);
     }
   };
 
@@ -152,7 +186,7 @@ const AdminView = () => {
     { id: 'usuarios', label: 'Usuarios', icon: Users },
     { id: 'roles', label: 'Roles', icon: Shield },
     { id: 'mensajesWA', label: 'Mensajes WhatsApp', icon: MessageSquare },
-    { id: 'datos', label: 'Datos', icon: Database },
+    ...(isAdmin ? [{ id: 'datos', label: 'Datos', icon: Database }] : []),
   ];
 
   if (loading) {
@@ -301,30 +335,61 @@ const AdminView = () => {
       )}
 
       {/* Datos Tab */}
-      {activeSubTab === 'datos' && (
+      {activeSubTab === 'datos' && isAdmin && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
           <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Gestión de Datos y Backup</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <button
               onClick={handleExportData}
-              className="flex items-center gap-4 p-6 rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all group"
+              disabled={exportingBackup}
+              className="flex items-center gap-4 p-6 rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 disabled:opacity-60 transition-all group"
             >
               <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-200 transition-colors">
                 <Download size={24} />
               </div>
               <div className="text-left">
-                <p className="font-bold text-slate-700 text-sm">Exportar Backup</p>
-                <p className="text-[10px] text-slate-400">Descarga un JSON con los datos actuales</p>
+                <p className="font-bold text-slate-700 text-sm">
+                  {exportingBackup ? 'Exportando respaldo...' : `Exportar Backup v2.0 (${BACKUP_COLLECTIONS.length} colecciones)`}
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  Incluye metadatos, IDs y fechas. Excluye privadas por usuario ({EXCLUDED_PRIVATE_COLLECTIONS.map(c => c.name).join(', ')}).
+                </p>
               </div>
             </button>
+
+            {exportStatus && (
+              <div className={`p-4 rounded-xl border text-xs ${
+                exportStatus.complete
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-800'
+              }`}>
+                <p className="font-bold mb-1">
+                  {exportStatus.complete
+                    ? `Respaldo completo (${exportStatus.includedCount} colecciones exportadas)`
+                    : `Respaldo PARCIAL (${exportStatus.includedCount} exportadas, ${exportStatus.failedCollections.length} con error)`}
+                </p>
+                {!exportStatus.complete && (
+                  <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                    {exportStatus.failedCollections.map(f => (
+                      <li key={f.collection}>
+                        <strong>{f.collection}</strong>: {f.code} — {f.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="border-t border-slate-100 pt-6">
             <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-4">Importador de Backup Maestro</h4>
-            <DataImporter onDataImported={() => {
-              toast.success("Datos importados con éxito");
-              fetchData();
-            }} />
+            <DataImporter
+              userRole={isAdmin ? 'admin' : userRole}
+              onDataImported={() => {
+                toast.success("Datos importados con éxito");
+                fetchData();
+              }}
+            />
           </div>
 
           {/* Firestore Stats */}

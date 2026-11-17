@@ -2,19 +2,436 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Colección de Auditoría (INMUTABLE)
-    match /audit_logs/{logId} {
-      allow read: if request.auth != null && 
-        (request.auth.token.email.lower() == 'emmanuel.ag92@gmail.com' ||
-         (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role.lower() in ['admin', 'superadmin', 'super_admin']));
-      allow create: if request.auth != null;
-      allow update, delete: if false; // Bloqueo total de edición/borrado
+
+    // =========================================================================
+    // FUNCIONES AUXILIARES DE AUTENTICACIÓN Y ROL
+    // (100 % libre de métodos de transformación de strings sobre el email)
+    //
+    // Cómo se resuelve de forma segura `authorized_emails` sin transformar strings:
+    //   En lugar de manipular el string del email dentro de las reglas, el documento
+    //   de autorización se resuelve por clave directa e inmutable en `authorized_emails`:
+    //     1) `authorized_emails/$(request.auth.uid)` (clave primaria por UID de Auth)
+    //     2) `authorized_emails/$(request.auth.token.email)` (clave exacta por email de Auth)
+    //   Y además verificamos que el campo `email` guardado en el documento coincida
+    //   exactamente con `request.auth.token.email`.
+    //   El script de carga crea también el documento legacy con '_' para mantener
+    //   compatibilidad total con las consultas del cliente (`where("email", "==", user.email)`).
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email is string;
     }
 
-    // CAJA PROJECT RULES
+    function hasUidAuthDoc() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/authorized_emails/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/authorized_emails/$(request.auth.uid)).data.email == request.auth.token.email;
+    }
+
+    function hasEmailAuthDoc() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/authorized_emails/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/authorized_emails/$(request.auth.token.email)).data.email == request.auth.token.email;
+    }
+
+    function userRole() {
+      return hasUidAuthDoc()
+        ? get(/databases/$(database)/documents/authorized_emails/$(request.auth.uid)).data.role
+        : (hasEmailAuthDoc()
+            ? get(/databases/$(database)/documents/authorized_emails/$(request.auth.token.email)).data.role
+            : 'unauthorized');
+    }
+
+    function isAuthorizedUser() {
+      return userRole() in [
+        'admin',
+        'direccion_medica',
+        'secre',
+        'medico',
+        'residente',
+        'secre_estudios',
+        'consulta'
+      ];
+    }
+
+    function isAdmin() {
+      return userRole() == 'admin';
+    }
+
+    function isDireccionMedica() {
+      return userRole() == 'direccion_medica';
+    }
+
+    function isSecre() {
+      return userRole() == 'secre';
+    }
+
+    function isMedico() {
+      return userRole() == 'medico';
+    }
+
+    function isResidente() {
+      return userRole() == 'residente';
+    }
+
+    function isSecreEstudios() {
+      return userRole() == 'secre_estudios';
+    }
+
+    function isConsulta() {
+      return userRole() == 'consulta';
+    }
+
+    // Verifica que el documento de orden sea estrictamente un Estudio bajo anestesia
+    function isEstudioOrder(data) {
+      return data.tipoProcedimiento == 'ESTUDIO' && data.estudioBajoAnestesia == true;
+    }
+
+    // Verifica que el documento de orden existente pertenezca al profesional/usuario autenticado
+    function isOwnExistingOrder(data) {
+      return isSignedIn() && (
+        (data.createdBy is string && data.createdBy == request.auth.token.email) ||
+        (data.emailProfesional is string && data.emailProfesional == request.auth.token.email)
+      );
+    }
+
+    // Anti-spoofing en creación de orden por médico/residente/dirección médica/secre_estudios:
+    // obliga a que `createdBy` sea exactamente el email autenticado del token.
+    function hasValidOrderCreator(data) {
+      return isSignedIn() &&
+        data.createdBy is string &&
+        data.createdBy == request.auth.token.email;
+    }
+
+    // Inmutabilidad de campos de propiedad y tipo de procedimiento para roles no-admin/no-secre:
+    // impide que un médico, residente o secre_estudios se transfiera una orden, cambie `createdBy`,
+    // cambie `emailProfesional`, altere `tipoProcedimiento` o se auto-autorice la cirugía.
+    function preservesOrderOwnershipAndType() {
+      return request.resource.data.createdBy == resource.data.createdBy &&
+             request.resource.data.get('emailProfesional', '') == resource.data.get('emailProfesional', '') &&
+             request.resource.data.get('tipoProcedimiento', 'CIRUGIA') == resource.data.get('tipoProcedimiento', 'CIRUGIA') &&
+             request.resource.data.get('estudioBajoAnestesia', false) == resource.data.get('estudioBajoAnestesia', false);
+    }
+
+    // Inmutabilidad adicional para médico y residente al editar su propia solicitud:
+    // no pueden auto-aprobarse ni pasar directamente a AUTORIZADA / ENVIADA sin pasar por Auditoría/Secretaría.
+    function medicoResidenteSafeOrderUpdate() {
+      return preservesOrderOwnershipAndType() &&
+             (
+               // Pueden conservar el estado actual o cancelar/suspender su propia solicitud
+               request.resource.data.get('estado', resource.data.get('estado', 'SOLICITADA')) == resource.data.get('estado', 'SOLICITADA') ||
+               request.resource.data.get('estado', '') in ['SOLICITADA', 'CANCELADA']
+             ) &&
+             (
+               // No pueden marcar `autorizada: true` si no estaba ya autorizada
+               request.resource.data.get('autorizada', false) == false ||
+               resource.data.get('autorizada', false) == true
+             );
+    }
+
+    // =========================================================================
+    // 1. CONTROL DE ACCESO Y ROLES (ANTI-ESCALADA DE PRIVILEGIOS)
+    // =========================================================================
+    match /authorized_emails/{docId} {
+      // Un usuario autenticado puede consultar su propio documento para saber si está autorizado;
+      // solo usuarios ya autorizados pueden listar el padrón.
+      allow get: if isSignedIn() && (docId == request.auth.uid || docId == request.auth.token.email || isAuthorizedUser());
+      allow list: if isAuthorizedUser();
+      // EXCLUSIVO ADMIN: ningún otro rol puede crearse documento, cambiarse `role` ni borrar usuarios.
+      allow create, update: if isAdmin() &&
+        request.resource.data.role in [
+          'admin',
+          'direccion_medica',
+          'secre',
+          'medico',
+          'residente',
+          'secre_estudios',
+          'consulta'
+        ];
+      allow delete: if isAdmin();
+    }
+
+    match /roles/{roleId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 2. AUDITORÍA (INMUTABLE Y ANTI-SUPLANTACIÓN)
+    // =========================================================================
+    match /audit_logs/{logId} {
+      allow read: if isAdmin() || isDireccionMedica();
+      allow create: if isAuthorizedUser() &&
+                    !isConsulta() &&
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.userEmail == request.auth.token.email;
+      allow update, delete: if false;
+    }
+
+    // =========================================================================
+    // 3. ÓRDENES DE INTERNACIÓN / SOLICITUDES DE CIRUGÍA Y ESTUDIOS
+    // =========================================================================
+    match /ordenes_internacion/{orderId} {
+      allow read: if isAuthorizedUser();
+
+      // Creación:
+      // - admin: libre
+      // - direccion_medica, medico, residente: deben firmar `createdBy == request.auth.token.email`
+      //   (y medico además no puede asignar `emailProfesional` de otro médico distinto si se autodeclara)
+      // - secre_estudios: solo puede crear estudios (`tipoProcedimiento == 'ESTUDIO'` y `estudioBajoAnestesia == true`)
+      //   y con `createdBy == request.auth.token.email`
+      allow create: if isAdmin() ||
+                    (
+                      hasValidOrderCreator(request.resource.data) && (
+                        isDireccionMedica() ||
+                        isResidente() ||
+                        (isMedico() && (
+                          request.resource.data.get('emailProfesional', '') == '' ||
+                          request.resource.data.emailProfesional == request.auth.token.email
+                        )) ||
+                        (isSecreEstudios() && isEstudioOrder(request.resource.data))
+                      )
+                    );
+
+      // Actualización:
+      // - admin y secre: gestión administrativa completa (preservando `createdBy` original salvo admin)
+      // - direccion_medica: puede auditar/codificar cualquier orden o editar las propias, sin alterar `createdBy`
+      // - secre_estudios: solo sobre estudios (`resource` y `request.resource` ambos ESTUDIO) y sin alterar `createdBy`/`tipoProcedimiento`
+      // - medico y residente: solo sobre órdenes propias (`isOwnExistingOrder(resource.data)`), sin cambiar
+      //   `createdBy`, `emailProfesional`, `tipoProcedimiento` ni auto-autorizarse
+      allow update: if isAdmin() ||
+                    (isSecre() && request.resource.data.createdBy == resource.data.createdBy) ||
+                    (isDireccionMedica() && request.resource.data.createdBy == resource.data.createdBy) ||
+                    (isSecreEstudios() &&
+                      isEstudioOrder(resource.data) &&
+                      isEstudioOrder(request.resource.data) &&
+                      preservesOrderOwnershipAndType()) ||
+                    ((isMedico() || isResidente()) &&
+                      isOwnExistingOrder(resource.data) &&
+                      medicoResidenteSafeOrderUpdate());
+
+      // Eliminación:
+      // - admin y secre: pueden eliminar órdenes
+      // - secre_estudios: solo estudios bajo anestesia
+      // - medico, residente, direccion_medica: solo sus propias solicitudes mientras sigan pendientes/solicitadas
+      allow delete: if isAdmin() ||
+                    isSecre() ||
+                    (isSecreEstudios() && isEstudioOrder(resource.data)) ||
+                    ((isMedico() || isResidente() || isDireccionMedica()) &&
+                      isOwnExistingOrder(resource.data) &&
+                      resource.data.get('estado', 'SOLICITADA') in ['SOLICITADA', 'CANCELADA'] &&
+                      resource.data.get('autorizada', false) == false);
+    }
+
+    // =========================================================================
+    // 4. PACIENTES Y PROFESIONALES
+    // =========================================================================
+    match /pacientes/{pacienteId} {
+      allow read: if isAuthorizedUser();
+      // Al crear o editar paciente, el ID del documento o campo `dni` no puede vaciarse
+      allow create, update: if isAuthorizedUser() &&
+                            !isConsulta() &&
+                            request.resource.data.dni is string &&
+                            request.resource.data.dni.size() > 0;
+      allow delete: if isAdmin() || isSecre();
+    }
+
+    match /profesionales/{profId} {
+      allow read: if isAuthorizedUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 5. MÓDULO FINANCIERO: CAJA, LIQUIDACIONES Y RECIBOS
+    //    (Exclusivo Admin y Secretaría; Consulta solo lectura)
+    // =========================================================================
+    match /caja/{entryId} {
+      allow read: if isAdmin() || isSecre() || isConsulta();
+      allow create, update, delete: if isAdmin() || isSecre();
+    }
+
+    match /caja_comentarios/{commentDate} {
+      allow read: if isAdmin() || isSecre() || isConsulta();
+      allow create, update, delete: if isAdmin() || isSecre();
+    }
+
+    match /deducciones/{dedId} {
+      allow read: if isAdmin() || isSecre() || isConsulta();
+      allow create, update, delete: if isAdmin() || isSecre();
+    }
+
+    match /liquidaciones_manuales/{liqId} {
+      allow read: if isAdmin() || isSecre() || isConsulta();
+      allow create, update, delete: if isAdmin() || isSecre();
+    }
+
+    match /recibos_libres/{reciboId} {
+      allow read: if isAdmin() || isSecre() || isConsulta();
+      allow create, update, delete: if isAdmin() || isSecre();
+    }
+
+    // =========================================================================
+    // 6. NOTAS, RECORDATORIOS, PLANTILLAS Y CONFIGURACIÓN PERSONAL
+    //    (Con inmutabilidad de `userId` / `ownerUid`)
+    // =========================================================================
+    match /notes/{noteId} {
+      allow get: if isAuthorizedUser() && (resource == null || resource.data.userId == request.auth.uid);
+      allow list: if isAuthorizedUser() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthorizedUser() && !isConsulta() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthorizedUser() &&
+                    !isConsulta() &&
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthorizedUser() && !isConsulta() && resource.data.userId == request.auth.uid;
+    }
+
+    match /reminders/{remId} {
+      allow read: if isAuthorizedUser() && !isSecreEstudios();
+      allow create, update, delete: if isAuthorizedUser() && !isSecreEstudios() && !isConsulta();
+    }
+
+    match /user_surgical_templates/{tplId} {
+      allow read: if isAuthorizedUser();
+      allow create: if isAuthorizedUser() &&
+                    (isAdmin() || isDireccionMedica() || isMedico() || isResidente()) &&
+                    request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() || (
+                    isAuthorizedUser() &&
+                    !isConsulta() &&
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.userId == resource.data.userId
+                  );
+      allow delete: if isAdmin() || (isAuthorizedUser() && !isConsulta() && resource.data.userId == request.auth.uid);
+    }
+
+    match /user_settings/{uid} {
+      allow read: if isAuthorizedUser() && request.auth.uid == uid;
+      allow write: if isAuthorizedUser() && !isConsulta() && request.auth.uid == uid;
+    }
+
+    match /consentimientos/{consentId} {
+      allow read: if isAuthorizedUser();
+      allow write: if isAdmin();
+    }
+
+    match /consent_mappings/{codeId} {
+      allow read: if isAuthorizedUser();
+      allow write: if isAdmin();
+    }
+
+    match /material_requests/{reqId} {
+      allow read: if isAuthorizedUser();
+      allow write: if isAdmin() || isSecre();
+    }
+
+    match /access_grants/{grantId} {
+      allow read: if isAuthorizedUser() && (
+                    resource.data.ownerUid == request.auth.uid ||
+                    resource.data.grantedEmail == request.auth.token.email
+                  );
+      allow create: if isAuthorizedUser() && !isConsulta() && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if isAuthorizedUser() && !isConsulta() && resource.data.ownerUid == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /presupuestos/{presupuestoId} {
+      allow read: if isAdmin() ||
+                    isSecre() ||
+                    isDireccionMedica() ||
+                    (isConsulta() && resource.data.status in ['emitido', 'reemplazado']);
+
+      allow create: if (isAdmin() || isSecre()) &&
+                      request.resource.data.surgeryId is string &&
+                      request.resource.data.surgeryId.size() > 0 &&
+                      request.resource.data.groupId == request.resource.data.surgeryId &&
+                      request.resource.data.version is int &&
+                      request.resource.data.version >= 1 &&
+                      presupuestoId == request.resource.data.surgeryId + '__v' + string(request.resource.data.version) &&
+                      request.resource.data.status == 'borrador' &&
+                      request.resource.data.tipo in ['particular', 'obra-social'] &&
+                      request.resource.data.replacedByVersionId == null &&
+                      (
+                        request.resource.data.version == 1
+                          ? request.resource.data.previousVersionId == null
+                          : (
+                              request.resource.data.previousVersionId == request.resource.data.surgeryId + '__v' + string(request.resource.data.version - 1) &&
+                              exists(/databases/$(database)/documents/presupuestos/$(request.resource.data.previousVersionId))
+                            )
+                      );
+
+      allow update: if (isAdmin() || isSecre()) &&
+                      request.resource.data.surgeryId == resource.data.surgeryId &&
+                      request.resource.data.groupId == resource.data.groupId &&
+                      request.resource.data.version == resource.data.version &&
+                      request.resource.data.previousVersionId == resource.data.previousVersionId &&
+                      (
+                        (
+                          resource.data.status == 'borrador' &&
+                          request.resource.data.status in ['borrador', 'emitido'] &&
+                          request.resource.data.replacedByVersionId == null &&
+                          (
+                            request.resource.data.status == 'borrador' ||
+                            (
+                              request.resource.data.validUntil is string &&
+                              request.resource.data.validUntil.size() > 0 &&
+                              request.resource.data.emittedAt is string &&
+                              request.resource.data.emittedAt.size() > 0
+                            )
+                          )
+                        ) ||
+                        (
+                          resource.data.status == 'emitido' &&
+                          request.resource.data.status == 'reemplazado' &&
+                          request.resource.data.replacedByVersionId is string &&
+                          request.resource.data.replacedByVersionId.size() > 0 &&
+                          request.resource.data.tipo == resource.data.tipo &&
+                          request.resource.data.fecha == resource.data.fecha &&
+                          request.resource.data.validDays == resource.data.validDays &&
+                          request.resource.data.validUntil == resource.data.validUntil &&
+                          request.resource.data.paciente == resource.data.paciente &&
+                          request.resource.data.dni == resource.data.dni &&
+                          request.resource.data.obraSocial == resource.data.obraSocial &&
+                          request.resource.data.numeroAfiliado == resource.data.numeroAfiliado &&
+                          request.resource.data.cirugia == resource.data.cirugia &&
+                          request.resource.data.items == resource.data.items &&
+                          request.resource.data.condiciones == resource.data.condiciones &&
+                          request.resource.data.emittedAt == resource.data.emittedAt &&
+                          request.resource.data.emittedBy == resource.data.emittedBy
+                        )
+                      );
+
+      allow delete: if (isAdmin() || isSecre()) &&
+                      resource.data.status == 'borrador';
+    }
+
+    match /presupuestos_series/{surgeryId} {
+      allow read: if isAdmin() || isSecre() || isDireccionMedica() || isConsulta();
+      allow create, update: if (isAdmin() || isSecre()) &&
+                              request.resource.data.surgeryId == surgeryId &&
+                              request.resource.data.latestVersion is int &&
+                              request.resource.data.latestVersion >= 0;
+      allow delete: if false;
+    }
+
+    match /presupuesto_codigos_config/{docId} {
+      allow read: if isAuthorizedUser();
+      allow create: if isAdmin() &&
+                      docId == 'shared' &&
+                      request.resource.data.version is int &&
+                      request.resource.data.version == 1 &&
+                      request.resource.data.rules is map;
+      allow update: if isAdmin() &&
+                      docId == 'shared' &&
+                      request.resource.data.version is int &&
+                      resource.data.version is int &&
+                      request.resource.data.version == resource.data.version + 1 &&
+                      request.resource.data.rules is map;
+      allow delete: if false;
+    }
+
+    // Bloqueo por defecto para cualquier otra colección
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

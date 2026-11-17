@@ -29,3 +29,10 @@ dist-ssr
 # Local env files
 .env
 .env.*
+
+# Plantilla de entorno versionable (solo placeholders)
+!.env.example
+build_output.txt
+emulator-data/
+serviceAccount*.json
+*-firebase-adminsdk-*.json

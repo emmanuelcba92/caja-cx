@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../firebase/config';
+import { db, isTestEnv } from '../firebase/config';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { logAction, AUDIT_ACTIONS } from '../services/auditService';
 import { Printer, Calendar, User, FileText, RefreshCw, PenTool, Trash2, Plus, Trash, Download } from 'lucide-react';
 import { formatMoney } from '../CajaView';
+import { buildReceiptConcept } from '../utils/profUtils';
+import apiService from '../services/apiService';
 
 const SEED_PROFESSIONALS = [
   { id: 1, nombre: 'Dr. García', especialidad: 'ORL' },
@@ -20,7 +22,7 @@ const emptyPatient = (today) => ({
   cobroPesos: '', cobroDolares: '', liqPesos: '', liqDolares: ''
 });
 
-const ReciboLibreView = () => {
+const ReciboLibreView = ({ isReadOnly = false }) => {
   const { currentUser } = useAuth();
   const today = new Date().toISOString().split('T')[0];
 
@@ -41,16 +43,19 @@ const ReciboLibreView = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (selectedProf) {
-      setConcept(`Honorarios por técnica en común de por cuenta y orden de ${selectedProf}`);
-    } else {
-      setConcept('');
-    }
+    setConcept(buildReceiptConcept(selectedProf));
   }, [selectedProf]);
 
   useEffect(() => {
     const fetchProfs = async () => {
       try {
+        if (isTestEnv) {
+          const list = await apiService.getCollection('profesionales');
+          if (list && list.length > 0) {
+            setProfesionales([...list].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')));
+          }
+          return;
+        }
         const q = query(collection(db, "profesionales"));
         const snap = await getDocs(q);
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -86,6 +91,7 @@ const ReciboLibreView = () => {
   const validPatients = patients.filter(p => p.paciente || parseFloat(p.liqPesos) || parseFloat(p.liqDolares));
 
   const handleSave = async () => {
+    if (isReadOnly) return;
     if (!selectedProf) return alert("Seleccioná un profesional");
     if (validPatients.length === 0) return alert("Agregá al menos un paciente");
     setIsSaving(true);
@@ -97,7 +103,11 @@ const ReciboLibreView = () => {
         totals: { cobroPesos: totalCobroPesos, cobroDolares: totalCobroDolares, liqPesos: totalLiqPesos, liqDolares: totalLiqDolares },
         createdAt: new Date()
       };
-      await addDoc(collection(db, 'recibos_libres'), receiptData);
+      if (isTestEnv) {
+        await apiService.addDocument('recibos_libres', receiptData);
+      } else {
+        await addDoc(collection(db, 'recibos_libres'), receiptData);
+      }
       logAction(AUDIT_ACTIONS.CREATE_CAJA_ENTRY, '', `Recibo libre para ${selectedProf}`);
       alert("Recibo guardado");
     } catch (error) {
@@ -196,6 +206,7 @@ const ReciboLibreView = () => {
   };
 
   const handlePrint = () => {
+    if (isReadOnly) return;
     const printWin = window.open('', '_blank', 'height=800,width=900');
     if (!printWin) return;
     printWin.document.write(buildPrintHTML());
@@ -209,19 +220,19 @@ const ReciboLibreView = () => {
       {/* LEFT: FORM */}
       <div className="space-y-4">
         <div>
-          <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Recibo Libre / Especial</h2>
-          <p className="text-xs text-slate-400 font-medium mt-1">Carga múltiple de pacientes y liquidación de honorarios</p>
+          <h2 className="text-xl font-black text-[var(--text-main)] uppercase tracking-tight">Recibo Libre / Especial</h2>
+          <p className="text-xs text-[var(--text-sub)] font-medium mt-1">Carga múltiple de pacientes y liquidación de honorarios</p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+        <div className="card p-5 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Fecha del Movimiento</label>
-              <input type="date" className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={date} onChange={e => setDate(e.target.value)} />
+              <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-sub)] ml-1">Fecha del Movimiento</label>
+              <input type="date" className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={date} onChange={e => setDate(e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Profesional Beneficiario</label>
-              <select className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={selectedProf} onChange={e => setSelectedProf(e.target.value)}>
+              <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-sub)] ml-1">Profesional Beneficiario</label>
+              <select className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={selectedProf} onChange={e => setSelectedProf(e.target.value)}>
                 <option value="">Seleccione profesional...</option>
                 {profesionales.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
               </select>
@@ -229,83 +240,83 @@ const ReciboLibreView = () => {
           </div>
 
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Concepto General del Recibo</label>
-            <input type="text" className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={concept} onChange={e => setConcept(e.target.value)} />
+            <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-sub)] ml-1">Concepto General del Recibo</label>
+            <input type="text" className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={concept} onChange={e => setConcept(e.target.value)} />
           </div>
 
-          <label className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm cursor-pointer hover:bg-slate-100 transition-colors w-fit">
-            <input type="checkbox" checked={isTransfer} onChange={e => setIsTransfer(e.target.checked)} className="rounded" />
-            <span className="font-medium text-slate-600">Liquidado vía transferencia bancaria</span>
+          <label className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-main)] rounded-xl text-sm cursor-pointer hover:bg-[var(--hover-main)] transition-colors w-fit">
+            <input type="checkbox" checked={isTransfer} onChange={e => setIsTransfer(e.target.checked)} className="rounded text-blue-600" />
+            <span className="font-medium text-[var(--text-main)]">Liquidado vía transferencia bancaria</span>
           </label>
 
           <div className="flex gap-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 self-center">Modelo:</span>
-            <button onClick={() => setModelo(1)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${modelo === 1 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+            <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-sub)] ml-1 self-center">Modelo:</span>
+            <button onClick={() => setModelo(1)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${modelo === 1 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-[var(--bg-secondary)] text-[var(--text-sub)] hover:bg-[var(--hover-main)]'}`}>
               Modelo 1 — COAT cobra y paga
             </button>
-            <button onClick={() => setModelo(2)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${modelo === 2 ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+            <button onClick={() => setModelo(2)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${modelo === 2 ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-[var(--bg-secondary)] text-[var(--text-sub)] hover:bg-[var(--hover-main)]'}`}>
               Modelo 2 — Profesional cobra directo
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Detalle de Pacientes a Liquidar</h3>
-            <button onClick={addPatientRow} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">
+        <div className="card overflow-hidden">
+          <div className="p-4 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-secondary)]/50">
+            <h3 className="text-xs font-black text-[var(--text-sub)] uppercase tracking-widest">Detalle de Pacientes a Liquidar</h3>
+            <button onClick={addPatientRow} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors">
               <Plus size={14} /> Cargar Paciente Manual
             </button>
           </div>
 
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-[var(--border-main)]">
             {patients.map((patient, idx) => (
               <div key={idx} className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-indigo-500 uppercase tracking-widest">Paciente #{idx + 1}</span>
+                  <span className="text-xs font-black text-blue-600 uppercase tracking-widest">Paciente #{idx + 1}</span>
                   {patients.length > 1 && (
                     <button onClick={() => removePatientRow(idx)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors"><Trash2 size={14} /></button>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Nombre Completo</label>
-                    <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nombre y Apellido..." value={patient.paciente} onChange={e => updatePatient(idx, 'paciente', e.target.value)} />
+                    <label className="text-[10px] font-bold text-[var(--text-sub)] uppercase">Nombre Completo</label>
+                    <input type="text" className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nombre y Apellido..." value={patient.paciente} onChange={e => updatePatient(idx, 'paciente', e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Cirugía</label>
-                    <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" value={patient.fecha_cirugia} onChange={e => updatePatient(idx, 'fecha_cirugia', e.target.value)} />
+                    <label className="text-[10px] font-bold text-[var(--text-sub)] uppercase">Fecha Cirugía</label>
+                    <input type="date" className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" value={patient.fecha_cirugia} onChange={e => updatePatient(idx, 'fecha_cirugia', e.target.value)} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">DNI (Opcional)</label>
-                    <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="DNI..." value={patient.dni} onChange={e => updatePatient(idx, 'dni', e.target.value)} />
+                    <label className="text-[10px] font-bold text-[var(--text-sub)] uppercase">DNI (Opcional)</label>
+                    <input type="text" className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="DNI..." value={patient.dni} onChange={e => updatePatient(idx, 'dni', e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Obra Social (Opcional)</label>
-                    <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Obra Social / Prepaga..." value={patient.obra_social} onChange={e => updatePatient(idx, 'obra_social', e.target.value)} />
+                    <label className="text-[10px] font-bold text-[var(--text-sub)] uppercase">Obra Social (Opcional)</label>
+                    <input type="text" className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Obra Social / Prepaga..." value={patient.obra_social} onChange={e => updatePatient(idx, 'obra_social', e.target.value)} />
                   </div>
                 </div>
                 <div className={`grid gap-3 ${modelo === 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
                   {modelo === 1 && (
                     <>
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Abonó $ (Opcional)</label>
-                        <input type="number" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0,00" value={patient.cobroPesos} onChange={e => updatePatient(idx, 'cobroPesos', e.target.value)} />
+                        <label className="text-[10px] font-bold text-[var(--text-sub)] uppercase">Abonó $ (Opcional)</label>
+                        <input type="number" className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0,00" value={patient.cobroPesos} onChange={e => updatePatient(idx, 'cobroPesos', e.target.value)} />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Abonó USD (Opcional)</label>
-                        <input type="number" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0,00" value={patient.cobroDolares} onChange={e => updatePatient(idx, 'cobroDolares', e.target.value)} />
+                        <label className="text-[10px] font-bold text-[var(--text-sub)] uppercase">Abonó USD (Opcional)</label>
+                        <input type="number" className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0,00" value={patient.cobroDolares} onChange={e => updatePatient(idx, 'cobroDolares', e.target.value)} />
                       </div>
                     </>
                   )}
                   <div>
                     <label className="text-[10px] font-bold text-emerald-500 uppercase">Liquidación ARS ($)</label>
-                    <input type="number" className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-right font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0,00" value={patient.liqPesos} onChange={e => updatePatient(idx, 'liqPesos', e.target.value)} />
+                    <input type="number" className="w-full px-3 py-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-xl text-xs text-right font-bold text-emerald-700 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0,00" value={patient.liqPesos} onChange={e => updatePatient(idx, 'liqPesos', e.target.value)} />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-emerald-500 uppercase">Liquidación USD (USD)</label>
-                    <input type="number" className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-right font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0,00" value={patient.liqDolares} onChange={e => updatePatient(idx, 'liqDolares', e.target.value)} />
+                    <input type="number" className="w-full px-3 py-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-xl text-xs text-right font-bold text-emerald-700 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0,00" value={patient.liqDolares} onChange={e => updatePatient(idx, 'liqDolares', e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -314,24 +325,28 @@ const ReciboLibreView = () => {
         </div>
 
         <div className="flex gap-3 justify-end">
-          <button onClick={handlePrint} disabled={!selectedProf} className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-all disabled:opacity-40">
-            <Printer size={16} /> Imprimir
-          </button>
-          <button onClick={handleSave} disabled={isSaving || !selectedProf} className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50">
-            {isSaving ? <RefreshCw size={16} className="animate-spin" /> : <PenTool size={16} />}
-            Guardar Recibo
-          </button>
+          {!isReadOnly && (
+            <button onClick={handlePrint} disabled={!selectedProf} className="flex items-center gap-2 px-5 py-2.5 bg-[var(--bg-secondary)] hover:bg-[var(--hover-main)] text-[var(--text-main)] border border-[var(--border-main)] rounded-xl font-bold text-sm transition-all disabled:opacity-40">
+              <Printer size={16} /> Imprimir
+            </button>
+          )}
+          {!isReadOnly && (
+            <button onClick={handleSave} disabled={isSaving || !selectedProf} className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50">
+              {isSaving ? <RefreshCw size={16} className="animate-spin" /> : <PenTool size={16} />}
+              Guardar Recibo
+            </button>
+          )}
         </div>
       </div>
 
       {/* RIGHT: PRINT PREVIEW */}
       <div className="space-y-4">
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vista Previa de Impresión (2 páginas)</p>
+        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-sub)]">Vista Previa de Impresión (2 páginas)</p>
 
         {/* PAGINA 1 */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100">
-            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Página 1: Detalle de Liquidación (Profesional)</p>
+        <div className="bg-white rounded-3xl border border-[var(--border-main)] shadow-sm overflow-hidden">
+          <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
+            <p className="text-[10px] font-black uppercase tracking-widest text-blue-600">Página 1: Detalle de Liquidación (Profesional)</p>
           </div>
           <div className="p-6">
             <div className="flex items-start justify-between mb-6 border-b-2 border-black pb-3">

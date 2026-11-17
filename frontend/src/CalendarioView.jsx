@@ -153,26 +153,26 @@ function CalendarioView({
   };
 
   return (
-    <div className="h-[calc(100vh-140px)] bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-      <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
+    <div className="h-[calc(100vh-140px)] card overflow-hidden flex flex-col">
+      <div className="px-6 py-4 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-secondary)]/50 shrink-0 flex-wrap gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-blue-600 border border-blue-100 dark:border-blue-800/40">
             <CalendarIcon size={18} />
           </div>
           <div>
-            <h3 className="font-bold text-slate-800 text-sm">Calendario de Cirugías</h3>
-            <p className="text-[11px] text-slate-400">Haga clic en un casillero o use el botón para programar</p>
+            <h3 className="font-bold text-[var(--text-main)] text-sm">Calendario de Cirugías</h3>
+            <p className="text-[11px] text-[var(--text-sub)]">Haga clic en un casillero o use el botón para programar</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Selector de Vista: Calendario COAT vs Google Calendar */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-xl border border-[var(--border-main)]">
             <button
               onClick={() => setCalendarViewMode('app')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 calendarViewMode === 'app'
-                  ? 'bg-white text-indigo-600 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
               }`}
             >
               Calendario COAT
@@ -181,8 +181,8 @@ function CalendarioView({
               onClick={() => setCalendarViewMode('google')}
               className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 calendarViewMode === 'google'
-                  ? 'bg-white text-emerald-600 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
               }`}
             >
               <ExternalLink size={12} />
@@ -249,7 +249,7 @@ function CalendarioView({
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
               title="Descargar agenda para importar en Google Calendar"
             >
               <CalendarIcon size={14} className="text-emerald-600" />
@@ -260,7 +260,7 @@ function CalendarioView({
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => onNewSurgery('CIRUGIA')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all cursor-pointer"
                 title="Crear nueva solicitud de cirugía"
               >
                 <PlusCircle size={14} />
@@ -268,7 +268,7 @@ function CalendarioView({
               </button>
               <button
                 onClick={() => onNewSurgery('ESTUDIO')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all cursor-pointer"
                 title="Crear nueva solicitud de estudio bajo anestesia"
               >
                 <PlusCircle size={14} />
@@ -280,14 +280,14 @@ function CalendarioView({
       </div>
       <div className="flex-1 overflow-hidden p-1">
         {calendarViewMode === 'google' ? (
-          <div className="w-full h-full flex flex-col bg-white rounded-xl overflow-hidden border border-slate-200">
-            <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600 font-medium">
+          <div className="w-full h-full flex flex-col bg-[var(--bg-card)] rounded-xl overflow-hidden border border-[var(--border-main)]">
+            <div className="bg-[var(--bg-secondary)] px-4 py-2 border-b border-[var(--border-main)] flex items-center justify-between text-xs text-[var(--text-sub)] font-medium">
               <span>Vista en tiempo real de Google Calendar (Modo solo lectura)</span>
               <a 
                 href={googleCalendarEmbedUrl} 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1"
+                className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
               >
                 Abrir en Google Calendar <ExternalLink size={12} />
               </a>

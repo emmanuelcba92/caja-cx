@@ -1,4 +1,4 @@
-﻿import { shortDoctorName } from './doctorName';
+import { shortDoctorName } from './doctorName';
 
 /**
  * Utility functions for professional name normalization, fuzzy matching,
@@ -115,4 +115,12 @@ export const getShortProfHeader = (fullName) => {
     return shortName.toUpperCase();
   }
   return clean.toUpperCase();
+};
+
+/**
+ * Builds the standard receipt concept text used across Liquidaciones and Recibo Libre.
+ */
+export const buildReceiptConcept = (profName) => {
+  const clean = typeof profName === 'string' ? profName.trim() : '';
+  return clean ? `Honorarios por técnica no convenida por cuenta y orden de ${clean}` : '';
 };

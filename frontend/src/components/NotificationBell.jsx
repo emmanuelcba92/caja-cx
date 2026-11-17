@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db } from '../firebase/config';
+import { db, isTestEnv } from '../firebase/config';
 import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { Bell, Clock, AlertCircle, Stethoscope, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -15,7 +15,7 @@ const NotificationBell = ({ onNavigate }) => {
 
   // Fetch Tasks Count
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || isTestEnv) return;
     const q = query(collection(db, "reminders"), where("completed", "==", false));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setTasksCount(snapshot.docs.length);
@@ -25,6 +25,7 @@ const NotificationBell = ({ onNavigate }) => {
 
   // Fetch Material Statuses
   useEffect(() => {
+    if (isTestEnv) return;
     const q = query(collection(db, "material_requests"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const statuses = {};

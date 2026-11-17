@@ -1,37 +1,60 @@
 {
-    "firestore": {
-        "rules": "firestore.rules"
-    },
-    "hosting": [
+  "hosting": [
+    {
+      "site": "coatcx",
+      "public": "dist",
+      "ignore": [
+        "firebase*.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
         {
-            "target": "live",
-            "public": "dist",
-            "ignore": [
-                "firebase.json",
-                "**/.*",
-                "**/node_modules/**"
-            ],
-            "rewrites": [
-                {
-                    "source": "**",
-                    "destination": "/index.html"
-                }
-            ]
-        },
-        {
-            "target": "test",
-            "public": "dist",
-            "ignore": [
-                "firebase.json",
-                "**/.*",
-                "**/node_modules/**"
-            ],
-            "rewrites": [
-                {
-                    "source": "**",
-                    "destination": "/index.html"
-                }
-            ]
+          "source": "**",
+          "destination": "/index.html"
         }
-    ]
+      ]
+    },
+    {
+      "site": "coat-test",
+      "public": "dist",
+      "ignore": [
+        "firebase*.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "site": "cajacx",
+      "public": "dist",
+      "ignore": [
+        "firebase*.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "auth": { "host": "127.0.0.1", "port": 9099 },
+    "firestore": { "host": "127.0.0.1", "port": 8080 },
+    "storage": { "host": "127.0.0.1", "port": 9199 },
+    "ui": { "enabled": true, "host": "127.0.0.1", "port": 4000 },
+    "singleProjectMode": true
+  }
 }

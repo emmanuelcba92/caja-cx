@@ -1,23 +1,18 @@
 {
   "projects": {
-    "default": "caja-de-cirugia",
-    "test": "cajacx-test"
+    "default": "coatcx",
+    "production": "caja-de-cirugia"
   },
   "targets": {
     "caja-de-cirugia": {
       "hosting": {
+        "test": [
+          "coat-test"
+        ],
         "live": [
           "cajacx"
         ]
       }
-    },
-    "cajacx-test": {
-      "hosting": {
-        "test": [
-          "cajacx-test"
-        ]
-      }
     }
-  },
-  "etags": {}
+  }
 }

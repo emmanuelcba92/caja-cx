@@ -20,31 +20,31 @@ export default function QuirofanoReportModal({ date, surgeries, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
+      <div className="bg-[var(--bg-card)] rounded-[2rem] shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-[var(--border-main)]">
         
         {/* Cabecera modal (No imprimible) */}
-        <div className="print:hidden px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="print:hidden px-6 py-4 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-secondary)]/60">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+            <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-xl border border-blue-100 dark:border-blue-800/40">
               <Printer size={20} />
             </div>
             <div>
-              <h3 className="font-bold text-slate-800 text-base">Grilla Quirúrgica para Quirófano</h3>
-              <p className="text-xs text-slate-500 capitalize">{formatDateLabel(date)} • {daySurgeries.length} cirugía(s) programada(s)</p>
+              <h3 className="font-bold text-[var(--text-main)] text-base">Grilla Quirúrgica para Quirófano</h3>
+              <p className="text-xs text-[var(--text-sub)] capitalize">{formatDateLabel(date)} • {daySurgeries.length} cirugía(s) programada(s)</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 active:scale-95 transition-all"
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 active:scale-95 transition-all"
             >
               <Printer size={16} />
               <span>Imprimir / Guardar PDF</span>
             </button>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all"
+              className="px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--hover-main)] text-[var(--text-main)] border border-[var(--border-main)] rounded-xl text-xs font-bold transition-all"
             >
               Cerrar
             </button>

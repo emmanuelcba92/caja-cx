@@ -3,6 +3,7 @@ import { Briefcase, Award, Printer, Download, FileSpreadsheet } from 'lucide-rea
 import { formatMoney } from '../CajaView';
 import apiService from '../services/apiService';
 import { getCanonicalProf, getShortProfHeader, isIgnoredProf } from '../utils/profUtils';
+import { loadFirestoreLiquidations } from '../utils/liquidationSync';
 
 const saveAs = (blob, filename) => {
   const url = URL.createObjectURL(blob);
@@ -19,26 +20,36 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [deductions, setDeductions] = useState([]);
   const [manualLiqs, setManualLiqs] = useState([]);
+  const [loadingCloud, setLoadingCloud] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
+    let active = true;
     const fetchLiquidationData = async () => {
+      setLoadingCloud(true);
       try {
-        const [storedDeductions, storedManualLiqs] = await Promise.all([
-          apiService.getCollection('deducciones'),
-          apiService.getCollection('liquidaciones_manuales')
-        ]);
-        setDeductions(storedDeductions || []);
-        setManualLiqs(storedManualLiqs || []);
+        const { deductions: storedDeductions, manualLiqs: storedManualLiqs } =
+          await loadFirestoreLiquidations({
+            getCollectionFn: (col) => apiService.getCollection(col),
+          });
+        if (active) {
+          setDeductions(storedDeductions);
+          setManualLiqs(storedManualLiqs);
+          setLoadError('');
+        }
       } catch (err) {
-        try {
-          const localDeductions = localStorage.getItem('deducciones_liquidacion');
-          const localManualLiqs = localStorage.getItem('liquidaciones_manuales');
-          if (localDeductions) setDeductions(JSON.parse(localDeductions));
-          if (localManualLiqs) setManualLiqs(JSON.parse(localManualLiqs));
-        } catch {}
+        console.error('Error al cargar información financiera en StaffLiquidacionesView:', err);
+        if (active) {
+          setDeductions([]);
+          setManualLiqs([]);
+          setLoadError('No fue posible obtener información financiera actualizada desde Firestore. Verificá la conexión y los permisos antes de consultar, imprimir o exportar.');
+        }
+      } finally {
+        if (active) setLoadingCloud(false);
       }
     };
     fetchLiquidationData();
+    return () => { active = false; };
   }, []);
 
   const shortProfName = (fullName) => getShortProfHeader(fullName);
@@ -143,6 +154,10 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
   }, [selectedMonth, selectedYear]);
 
   const handleExportExcel = async () => {
+    if (loadingCloud || loadError) {
+      alert(loadError || 'Aguardá a que finalice la carga desde Firestore.');
+      return;
+    }
     if (!matrixData.profs.length) {
       alert('No hay movimientos registrados para este mes.');
       return;
@@ -262,6 +277,10 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
   };
 
   const handlePrint = () => {
+    if (loadingCloud || loadError) {
+      alert(loadError || 'Aguardá a que finalice la carga desde Firestore.');
+      return;
+    }
     if (!matrixData.profs.length) {
       alert('No hay movimientos registrados para imprimir.');
       return;
@@ -309,18 +328,18 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* HEADER CARD CON SELECTORES Y ACCIONES */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+      <div className="card p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
         <div className="flex items-center gap-5">
-          <div className="w-14 h-14 bg-teal-600 rounded-2xl shadow-lg shadow-teal-600/20 flex items-center justify-center text-white shrink-0">
+          <div className="w-14 h-14 bg-blue-600 rounded-2xl shadow-lg shadow-blue-600/20 flex items-center justify-center text-white shrink-0">
             <Briefcase size={28} />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase leading-none mb-1.5">Staff Médico</h2>
+            <h2 className="text-2xl font-black text-[var(--text-main)] tracking-tight uppercase leading-none mb-1.5">Staff Médico</h2>
             <div className="flex items-center gap-3">
-              <span className="px-2.5 py-0.5 bg-teal-50 text-teal-700 rounded-md text-[10px] font-black uppercase tracking-widest border border-teal-200">
+              <span className="px-2.5 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 rounded-md text-[10px] font-black uppercase tracking-widest border border-blue-200 dark:border-blue-800/40">
                 Control Operativo
               </span>
-              <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs">
+              <div className="flex items-center gap-1.5 text-[var(--text-sub)] font-bold text-xs">
                 <Award size={14} />
                 <span>{matrixData.profs.length} Profesionales con liquidación</span>
               </div>
@@ -328,11 +347,11 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+        <div className="flex flex-wrap items-center gap-3 bg-[var(--bg-secondary)] p-2.5 rounded-2xl border border-[var(--border-main)]">
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-            className="bg-white border border-slate-200 text-slate-700 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-teal-500 font-black text-xs uppercase tracking-widest shadow-sm cursor-pointer"
+            className="bg-[var(--bg-card)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 font-black text-xs uppercase tracking-widest shadow-sm cursor-pointer"
           >
             {[...Array(12)].map((_, i) => (
               <option key={i} value={i + 1}>
@@ -344,19 +363,20 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-            className="bg-white border border-slate-200 text-slate-700 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-teal-500 font-black text-xs uppercase tracking-widest shadow-sm cursor-pointer"
+            className="bg-[var(--bg-card)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 font-black text-xs uppercase tracking-widest shadow-sm cursor-pointer"
           >
             {[2024, 2025, 2026, 2027, 2028].map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
 
-          <div className="hidden md:block w-px h-7 bg-slate-200 mx-1"></div>
+          <div className="hidden md:block w-px h-7 bg-[var(--border-main)] mx-1"></div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="h-10 px-4 flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs transition-all border border-slate-200 shadow-sm active:scale-95 cursor-pointer"
+              disabled={loadingCloud || Boolean(loadError)}
+              className="h-10 px-4 flex items-center justify-center gap-2 bg-[var(--bg-card)] hover:bg-[var(--hover-main)] text-[var(--text-main)] rounded-xl font-bold text-xs transition-all border border-[var(--border-main)] shadow-sm active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               title="Imprimir o guardar como PDF"
             >
               <Printer size={16} />
@@ -364,7 +384,8 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
             </button>
             <button
               onClick={handleExportExcel}
-              className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2 active:scale-95 cursor-pointer"
+              disabled={loadingCloud || Boolean(loadError)}
+              className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download size={16} />
               <span>Excel</span>
@@ -374,20 +395,30 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
       </div>
 
       {/* TABLA MATRIZ DE HONORARIOS MENSUAL */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+      <div className="card overflow-hidden">
+        <div className="px-6 py-4 border-b border-[var(--border-main)] bg-[var(--bg-secondary)]/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <FileSpreadsheet size={18} className="text-teal-600" />
-            <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">
+            <FileSpreadsheet size={18} className="text-blue-600" />
+            <h3 className="font-bold text-[var(--text-main)] text-sm uppercase tracking-wider">
               HONORARIOS CX • {monthName.toUpperCase()} {selectedYear}
             </h3>
           </div>
-          <span className="text-xs text-slate-400 font-medium">
+          <span className="text-xs text-[var(--text-sub)] font-medium">
             {matrixData.dates.length} días con actividad
           </span>
         </div>
 
-        {matrixData.profs.length === 0 ? (
+        {loadError ? (
+          <div className="p-6">
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl px-4 py-4 text-xs font-bold">
+              {loadError}
+            </div>
+          </div>
+        ) : loadingCloud ? (
+          <div className="py-16 text-center text-slate-400 text-sm">
+            Cargando información financiera actualizada...
+          </div>
+        ) : matrixData.profs.length === 0 ? (
           <div className="py-16 text-center text-slate-400 text-sm">
             No se registraron liquidaciones a profesionales en {monthName} de {selectedYear}.
           </div>
@@ -395,44 +426,44 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
           <div className="overflow-x-auto">
             <table className="w-full text-[11px] border-collapse">
               <thead>
-                <tr className="bg-slate-100 border-b border-slate-300 text-slate-700">
-                  <th className="border-r border-slate-300 px-3 py-2.5 font-black uppercase text-center w-24">
+                <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border-main)] text-[var(--text-main)]">
+                  <th className="border-r border-[var(--border-main)] px-3 py-2.5 font-black uppercase text-center w-24">
                     FECHA
                   </th>
                   {matrixData.profs.map(prof => (
-                    <th key={prof} className="border-r border-slate-300 px-3 py-2.5 font-black uppercase text-center whitespace-nowrap">
+                    <th key={prof} className="border-r border-[var(--border-main)] px-3 py-2.5 font-black uppercase text-center whitespace-nowrap">
                       {shortProfName(prof)}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-[var(--border-main)]">
                 {matrixData.dates.map(date => {
                   const [y, m, da] = date.split('-');
                   return (
-                    <tr key={date} className="hover:bg-teal-50/40 transition-colors">
-                      <td className="border-r border-slate-200 px-3 py-2 font-bold text-slate-700 text-center bg-slate-50/50">
+                    <tr key={date} className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors">
+                      <td className="border-r border-[var(--border-main)] px-3 py-2 font-bold text-[var(--text-main)] text-center bg-[var(--bg-secondary)]/50">
                         {da}/{m}
                       </td>
                       {matrixData.profs.map(prof => {
                         const cell = matrixData.matrix[date]?.[prof];
                         return (
-                          <td key={prof} className="border-r border-slate-200 px-3 py-2 text-center whitespace-nowrap">
+                          <td key={prof} className="border-r border-[var(--border-main)] px-3 py-2 text-center whitespace-nowrap">
                             {cell ? (
                               <div className="flex flex-col items-center justify-center leading-tight">
                                 {cell.ARS > 0 && (
-                                  <span className="font-medium text-slate-800">
+                                  <span className="font-medium text-[var(--text-main)]">
                                     ${formatMoney(cell.ARS)}
                                   </span>
                                 )}
                                 {cell.USD > 0 && (
-                                  <span className="font-bold text-blue-700">
+                                  <span className="font-bold text-blue-600">
                                     U$S {formatMoney(cell.USD)}
                                   </span>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-slate-300">—</span>
+                              <span className="text-slate-300 dark:text-slate-600">—</span>
                             )}
                           </td>
                         );
@@ -442,27 +473,27 @@ export default function StaffLiquidacionesView({ history = [], professionals = [
                 })}
               </tbody>
               <tfoot>
-                <tr className="bg-slate-200 border-t-2 border-slate-400 font-bold">
-                  <td className="border-r border-slate-300 px-3 py-2.5 font-black uppercase text-center text-slate-800">
+                <tr className="bg-[var(--bg-secondary)] border-t-2 border-[var(--border-main)] font-bold">
+                  <td className="border-r border-[var(--border-main)] px-3 py-2.5 font-black uppercase text-center text-[var(--text-main)]">
                     TOTALES ARS
                   </td>
                   {matrixData.profs.map(prof => {
                     const tot = matrixData.totals[prof]?.ARS || 0;
                     return (
-                      <td key={prof} className="border-r border-slate-300 px-3 py-2.5 text-center font-black text-slate-900 whitespace-nowrap">
+                      <td key={prof} className="border-r border-[var(--border-main)] px-3 py-2.5 text-center font-black text-[var(--text-main)] whitespace-nowrap">
                         {tot > 0 ? `$ ${formatMoney(tot)}` : '—'}
                       </td>
                     );
                   })}
                 </tr>
-                <tr className="bg-slate-200 border-t border-slate-300 font-bold">
-                  <td className="border-r border-slate-300 px-3 py-2.5 font-black uppercase text-center text-slate-800">
+                <tr className="bg-[var(--bg-secondary)] border-t border-[var(--border-main)] font-bold">
+                  <td className="border-r border-[var(--border-main)] px-3 py-2.5 font-black uppercase text-center text-[var(--text-main)]">
                     TOTALES USD
                   </td>
                   {matrixData.profs.map(prof => {
                     const tot = matrixData.totals[prof]?.USD || 0;
                     return (
-                      <td key={prof} className="border-r border-slate-300 px-3 py-2.5 text-center font-black text-blue-800 whitespace-nowrap">
+                      <td key={prof} className="border-r border-[var(--border-main)] px-3 py-2.5 text-center font-black text-blue-600 whitespace-nowrap">
                         {tot > 0 ? `U$S ${formatMoney(tot)}` : '—'}
                       </td>
                     );

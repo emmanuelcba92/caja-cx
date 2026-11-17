@@ -260,18 +260,18 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Users className="text-indigo-600" />
+          <h2 className="text-2xl font-extrabold text-[var(--text-main)] flex items-center gap-2.5">
+            <Users className="text-blue-600" />
             Profesionales
           </h2>
-          <p className="text-sm text-slate-500 mt-1">Gestioná el registro de médicos y especialistas de la clínica.</p>
+          <p className="text-sm text-[var(--text-sub)] mt-1">Gestioná el registro de médicos y especialistas de la clínica.</p>
         </div>
         <button
           disabled={isSaving || isLoading}
           onClick={() => handleOpenModal()}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
         >
           <UserPlus size={18} />
           Nuevo Profesional
@@ -284,67 +284,67 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
       {/* Search & Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="md:col-span-2 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
             placeholder="Buscar por nombre, especialidad, MP o ME..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            className="w-full pl-10 pr-4 py-3 bg-[var(--bg-card)] border border-[var(--border-main)] text-[var(--text-main)] rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-xs"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="bg-indigo-50 rounded-xl px-4 py-2.5 border border-indigo-100 flex items-center justify-between">
-          <span className="text-sm font-semibold text-indigo-700">Total registrados:</span>
-          <span className="text-lg font-bold text-indigo-800">{professionals.length}</span>
+        <div className="bg-blue-50 dark:bg-blue-950/20 rounded-2xl px-4 py-3 border border-blue-200 dark:border-blue-800/40 flex items-center justify-between">
+          <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">Total registrados:</span>
+          <span className="text-lg font-bold text-blue-800 dark:text-blue-200">{professionals.length}</span>
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-[var(--bg-secondary)]/70 border-b border-[var(--border-main)]">
               <tr>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Nombre</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Especialidad</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Matrículas</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider text-right">Acciones</th>
+                <th className="px-6 py-4 text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Nombre</th>
+                <th className="px-6 py-4 text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Especialidad</th>
+                <th className="px-6 py-4 text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Matrículas</th>
+                <th className="px-6 py-4 text-xs font-black text-[var(--text-sub)] uppercase tracking-wider text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[var(--border-main)]">
               {filteredProfessionals.length > 0 ? (
                 filteredProfessionals.map((prof) => (
-                  <tr key={prof.id} className="hover:bg-slate-50 transition-colors group">
+                  <tr key={prof.id} className="hover:bg-[var(--hover-main)] transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         {prof.firma ? (
                           <img 
                             src={prof.firma} 
                             alt={getFullName(prof)} 
-                            className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                            className="w-9 h-9 rounded-full object-cover border border-[var(--border-main)]"
                             onError={(e) => { e.target.src = 'https://ui-avatars.com/api/?name=' + getFullName(prof); }}
                           />
                         ) : (
-                          <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                          <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center font-bold text-sm">
                             {(prof.apellido || prof.nombre || '?').charAt(0)}
                           </div>
                         )}
                         <div className="flex flex-col">
-                          <span className="font-semibold text-slate-700">{getFullName(prof)}</span>
+                          <span className="font-semibold text-[var(--text-main)]">{getFullName(prof)}</span>
                           {prof.firma && <span className="text-[10px] text-slate-400 italic">Con firma digital</span>}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--bg-secondary)] text-[var(--text-sub)] text-xs font-bold">
                         <GraduationCap size={14} />
                         {prof.especialidad}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-xs space-y-1">
-                        <p className="text-slate-700"><span className="text-slate-400 font-medium">MP:</span> {prof.mp}</p>
-                        {prof.me && <p className="text-slate-700"><span className="text-slate-400 font-medium">ME:</span> {prof.me}</p>}
+                        <p className="text-[var(--text-main)]"><span className="text-slate-400 font-medium">MP:</span> {prof.mp}</p>
+                        {prof.me && <p className="text-[var(--text-main)]"><span className="text-slate-400 font-medium">ME:</span> {prof.me}</p>}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -352,14 +352,14 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
                         <button
           disabled={isSaving || isLoading}
                           onClick={() => handleOpenModal(prof)}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
                         >
                           <Pencil size={18} />
                         </button>
                         <button
           disabled={isSaving || isLoading}
                           onClick={() => handleDelete(prof.id)}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
                         >
                           <Trash2 size={18} />
                         </button>
@@ -375,7 +375,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
                       <p className="text-sm font-medium">No se encontraron profesionales</p>
                       <button 
                         onClick={() => handleOpenModal()}
-                        className="mt-2 text-indigo-600 text-xs font-bold hover:underline"
+                        className="mt-2 text-blue-600 text-xs font-bold hover:underline"
                       >
                         Agregar el primero
                       </button>
@@ -391,13 +391,13 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                {isEditing ? <Pencil size={18} className="text-indigo-600" /> : <UserPlus size={18} className="text-indigo-600" />}
+          <div className="bg-[var(--bg-card)] border border-[var(--border-main)] rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-secondary)]/50">
+              <h3 className="font-bold text-[var(--text-main)] flex items-center gap-2">
+                {isEditing ? <Pencil size={18} className="text-blue-600" /> : <UserPlus size={18} className="text-blue-600" />}
                 {isEditing ? 'Editar Profesional' : 'Nuevo Profesional'}
               </h3>
-              <button onClick={handleCloseModal} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+              <button onClick={handleCloseModal} className="p-1.5 hover:bg-[var(--hover-main)] rounded-full transition-colors">
                 <X size={20} className="text-slate-400" />
               </button>
             </div>
@@ -405,7 +405,7 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <fieldset disabled={isSaving} className="space-y-4">
               {error && (
-                <div className="p-3 rounded-lg bg-rose-50 text-rose-700 text-xs font-medium border border-rose-200 flex items-center gap-2">
+                <div className="p-3 rounded-xl bg-rose-50 text-rose-700 text-xs font-medium border border-rose-200 flex items-center gap-2">
                   <AlertCircle size={14} />
                   {error}
                 </div>
@@ -413,9 +413,9 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">Prefijo</label>
+                  <label className="block text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Prefijo</label>
                   <select
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-[var(--bg-secondary)] text-[var(--text-main)]"
                     value={formData.prefijo}
                     onChange={e => setFormData(prev => ({ ...prev, prefijo: e.target.value }))}
                   >
@@ -423,20 +423,20 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">Nombre</label>
+                  <label className="block text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Nombre</label>
                   <input
                     type="text"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="Juan"
                     value={formData.nombrePila}
                     onChange={e => setFormData(prev => ({ ...prev, nombrePila: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">Apellido *</label>
+                  <label className="block text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Apellido *</label>
                   <input
                     type="text"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="Pérez"
                     value={formData.apellido}
                     onChange={e => setFormData(prev => ({ ...prev, apellido: e.target.value }))}
@@ -445,10 +445,10 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">Email Profesional</label>
+                <label className="block text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Email Profesional</label>
                 <input
                   type="email"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                   placeholder="ejemplo@clinica.com"
                   value={formData.email}
                   onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
@@ -457,9 +457,9 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">Especialidad</label>
+                  <label className="block text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Especialidad</label>
                   <select
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-[var(--bg-secondary)] text-[var(--text-main)]"
                     value={formData.especialidad}
                     onChange={e => setFormData(prev => ({ ...prev, especialidad: e.target.value }))}
                   >
@@ -467,31 +467,31 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">Firma</label>
+                  <label className="block text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Firma</label>
                   <input
                     type="file"
                     accept="image/*"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
                     onChange={handleFileChange}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">Matrícula Prof. (MP)</label>
+                  <label className="block text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Matrícula Prof. (MP)</label>
                   <input
                     type="text"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="Ej: 12345"
                     value={formData.mp}
                     onChange={e => setFormData(prev => ({ ...prev, mp: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">Matrícula Esp. (ME)</label>
+                  <label className="block text-xs font-black text-[var(--text-sub)] uppercase tracking-wider">Matrícula Esp. (ME)</label>
                   <input
                     type="text"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] text-[var(--text-main)] focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="Ej: 54321"
                     value={formData.me}
                     onChange={e => setFormData(prev => ({ ...prev, me: e.target.value }))}
@@ -504,14 +504,14 @@ function ProfesionalesView({ professionals: professionalsProp, setProfessionals:
           disabled={isSaving || isLoading}
                   type="button"
                   onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 transition-all"
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--border-main)] text-[var(--text-sub)] font-bold hover:bg-[var(--hover-main)] transition-all"
                 >
                   Cancelar
                 </button>
                 <button
           disabled={isSaving || isLoading}
                   type="submit"
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
                 >
                   <Check size={18} />
                   {isSaving ? 'Guardando…' : (isEditing ? 'Guardar Cambios' : 'Crear')}

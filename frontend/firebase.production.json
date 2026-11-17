@@ -1,0 +1,38 @@
+{
+  "hosting": [
+    {
+      "site": "coat-test",
+      "public": "dist",
+      "ignore": [
+        "firebase*.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "site": "cajacx",
+      "public": "dist",
+      "ignore": [
+        "firebase*.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.production.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

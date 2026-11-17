@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase/config';
+import { db, isTestEnv } from '../firebase/config';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Trash2, Save, X, StickyNote, Pencil, Search, CheckCircle, Circle, Clock, Hash } from 'lucide-react';
 import toast from 'react-hot-toast';
+import apiService from '../services/apiService';
 
 const NotesView = () => {
   const { currentUser } = useAuth();
@@ -20,6 +21,11 @@ const NotesView = () => {
   // Fetch Notes
   const fetchNotes = async () => {
     if (!currentUser?.uid) return;
+    if (isTestEnv) {
+      const localNotes = await apiService.getCollection('notes');
+      setNotes(localNotes || []);
+      return;
+    }
     setLoading(true);
     try {
       const q = query(
@@ -66,7 +72,13 @@ const NotesView = () => {
         updatedAt: new Date(),
       };
 
-      if (currentNote) {
+      if (isTestEnv) {
+        if (currentNote) {
+          await apiService.updateDocument('notes', currentNote.id, { ...noteData, updatedAt: new Date().toISOString() });
+        } else {
+          await apiService.addDocument('notes', { ...noteData, isRead: false, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString() });
+        }
+      } else if (currentNote) {
         await updateDoc(doc(db, "notes", currentNote.id), noteData);
       } else {
         await addDoc(collection(db, "notes"), {
@@ -91,7 +103,11 @@ const NotesView = () => {
   const handleDelete = async (id) => {
     if (!window.confirm("¿Eliminar esta nota?")) return;
     try {
-      await deleteDoc(doc(db, "notes", id));
+      if (isTestEnv) {
+        await apiService.deleteDocument('notes', id);
+      } else {
+        await deleteDoc(doc(db, "notes", id));
+      }
       if (currentNote?.id === id) {
         setIsEditing(false);
         setCurrentNote(null);
@@ -137,14 +153,16 @@ const NotesView = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="card p-6 flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Notas</h2>
-          <p className="text-xs text-slate-400 font-medium mt-1">{notes.length} notas personales</p>
+          <h2 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-[var(--text-main)] to-blue-600 bg-clip-text text-transparent">
+            Notas
+          </h2>
+          <p className="text-xs text-[var(--text-sub)] font-medium mt-1">{notes.length} notas personales</p>
         </div>
         <button
           onClick={handleNew}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-500/20"
+          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-blue-500/20"
         >
           <Plus size={16} /> Nueva Nota
         </button>
@@ -152,11 +170,11 @@ const NotesView = () => {
 
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
         <input
           type="text"
           placeholder="Buscar notas..."
-          className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-10 pr-4 py-3 bg-[var(--bg-card)] border border-[var(--border-main)] text-[var(--text-main)] rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
         />
@@ -164,9 +182,9 @@ const NotesView = () => {
 
       {/* Editor */}
       {isEditing && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+        <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">
+            <h3 className="text-sm font-black text-[var(--text-main)] uppercase tracking-widest">
               {currentNote ? 'Editar Nota' : 'Nueva Nota'}
             </h3>
             <button onClick={() => setIsEditing(false)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
@@ -176,20 +194,20 @@ const NotesView = () => {
           <input
             type="text"
             placeholder="Título de la nota"
-            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={title}
             onChange={e => setTitle(e.target.value)}
           />
           <textarea
             placeholder="Escribí tu nota acá..."
-            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[200px] resize-y"
+            className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[200px] resize-y"
             value={content}
             onChange={e => setContent(e.target.value)}
           />
           <div className="flex gap-3">
             <button
               onClick={() => setIsEditing(false)}
-              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50"
+              className="flex-1 py-2.5 rounded-xl border border-[var(--border-main)] text-[var(--text-sub)] font-bold text-sm hover:bg-[var(--hover-main)]"
             >
               Cancelar
             </button>
@@ -206,9 +224,9 @@ const NotesView = () => {
 
       {/* Notes List */}
       {filteredNotes.length === 0 ? (
-        <div className="text-center py-16">
+        <div className="card text-center py-16">
           <StickyNote size={48} className="text-slate-300 mx-auto mb-4" />
-          <p className="text-slate-500 font-medium">
+          <p className="text-[var(--text-sub)] font-medium">
             {searchTerm ? 'No se encontraron notas' : 'No hay notas aún'}
           </p>
         </div>
@@ -217,15 +235,15 @@ const NotesView = () => {
           {filteredNotes.map(note => (
             <div
               key={note.id}
-              className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md transition-all group cursor-pointer"
+              className="card p-5 hover:shadow-md hover:border-blue-400 transition-all group cursor-pointer"
               onClick={() => handleEdit(note)}
             >
               <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">
-                    <StickyNote size={14} />
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center">
+                    <StickyNote size={16} />
                   </div>
-                  <h4 className="font-bold text-slate-800 text-sm truncate">{note.title}</h4>
+                  <h4 className="font-bold text-[var(--text-main)] text-sm truncate">{note.title}</h4>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDelete(note.id); }}
@@ -236,7 +254,7 @@ const NotesView = () => {
               </div>
 
               {note.content && (
-                <p className="text-xs text-slate-500 line-clamp-3 mb-3">{note.content}</p>
+                <p className="text-xs text-[var(--text-sub)] line-clamp-3 mb-3">{note.content}</p>
               )}
 
               <div className="flex items-center gap-2 text-[10px] text-slate-400">

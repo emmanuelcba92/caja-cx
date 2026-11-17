@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, CheckCircle2, AlertCircle, X, Download, Users, Stethoscope, ClipboardList, DollarSign, MessageSquare, Link2, Trash2 } from 'lucide-react';
+import { Upload, FileText, CheckCircle2, AlertCircle, X, Download, Users, Stethoscope, ClipboardList, DollarSign, MessageSquare, Link2, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
-import apiService from '../services/apiService';
+import { useAuth } from '../context/AuthContext';
 
 const SECTION_ICONS = {
   ordenes_internacion: ClipboardList,
@@ -285,12 +285,24 @@ function mapDeduction(ded) {
   };
 }
 
-export default function DataImporter({ onDataImported }) {
+export default function DataImporter({ onDataImported, userRole: propUserRole }) {
+  const auth = useAuth();
+  const effectiveRole = String(propUserRole ?? auth?.userRole ?? '').trim().toLowerCase();
+  const isAdminUser = effectiveRole === 'admin' || Boolean(auth?.isSuperAdmin);
   const fileInputRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
   const [selectedSections, setSelectedSections] = useState({});
+
+  if (!isAdminUser) {
+    return (
+      <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-3 text-rose-700 text-xs font-bold">
+        <ShieldAlert size={16} className="shrink-0" />
+        <span>Acceso restringido: solo el rol ADMIN puede acceder al importador de datos.</span>
+      </div>
+    );
+  }
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -533,57 +545,12 @@ export default function DataImporter({ onDataImported }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleClearAll = async () => {
-    if (!window.confirm('Esto eliminará TODOS los datos (usuarios, profesionales, cirugías, caja). ¿Continuar?')) return;
-
-    setImporting(true);
-    toast.loading('Eliminando datos...', { id: 'clear' });
-
-    try {
-      const localStorageKeys = [
-        'surgeries_proto', 'caja_proto', 'cajaDiariaEntries',
-        'professionals_proto', 'obras_sociales_proto', 'users_proto',
-        'current_user_proto', 'daily_comments_proto', 'deducciones_liquidacion',
-        'os_code_presupuesto', 'restrict_calendar_drag'
-      ];
-      localStorageKeys.forEach(k => localStorage.removeItem(k));
-
-      const apiCollections = [
-        'users', 'profesionales', 'pacientes',
-        'ordenes_internacion', 'pedidos_medicos',
-        'caja', 'daily_comments', 'deducciones',
-        'recibos_libres', 'reminders', 'notes',
-        'liquidaciones', 'authorized_emails',
-        'consentimientos', 'consent_mappings',
-        'material_requests', 'audit_logs'
-      ];
-      for (const col of apiCollections) {
-        try { await apiService.clearCollection(col); } catch {}
-      }
-
-      localStorage.setItem('data_cleared', 'true');
-
-      toast.success('Todos los datos eliminados. Recargando...', { id: 'clear' });
-      setTimeout(() => window.location.reload(), 1000);
-    } catch (err) {
-      toast.error('Error al eliminar: ' + err.message, { id: 'clear' });
-      setImporting(false);
-    }
-  };
-
   const sectionKeys = preview ? Object.keys(preview.summary) : [];
 
   return (
     <div className="space-y-4">
       {!preview && !result && (
         <div>
-          <button
-            onClick={handleClearAll}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs font-bold hover:bg-rose-100 transition-all mb-4"
-          >
-            <Trash2 size={14} />
-            Limpiar todos los datos de prueba
-          </button>
           <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-200">
             <p className="text-xs text-blue-700 font-semibold mb-1">Profesionales incluidos ({PROFESIONALES_BASE.length})</p>
             <p className="text-[10px] text-blue-500">

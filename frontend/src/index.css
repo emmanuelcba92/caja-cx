@@ -1,4 +1,105 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg-page: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-secondary: #f1f5f9;
+  --text-main: #0f172a;
+  --text-sub: #475569;
+  --border-main: #e2e8f0;
+  --hover-main: rgba(37, 99, 235, 0.05);
+}
+
+.dark {
+  --bg-page: #020617;
+  --bg-card: #0f172a;
+  --bg-secondary: #1e293b;
+  --text-main: #f8fafc;
+  --text-sub: #94a3b8;
+  --border-main: #1e293b;
+  --hover-main: rgba(59, 130, 246, 0.15);
+}
+
+body {
+  background-color: var(--bg-page);
+  color: var(--text-main);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.btn-primary {
+  @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-2xl transition-all duration-200 active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-50;
+}
+
+.input-field {
+  @apply w-full px-4 py-3 border-2 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all duration-300 font-bold;
+  background-color: var(--bg-card);
+  border-color: var(--border-main);
+  color: var(--text-main);
+}
+
+.input-field::placeholder {
+  color: var(--text-sub);
+  opacity: 0.5;
+}
+
+.card {
+  @apply rounded-3xl border shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden transition-all duration-300;
+  background-color: var(--bg-card);
+  border-color: var(--border-main);
+}
+
+.glass {
+  @apply backdrop-blur-md;
+  background-color: rgba(255, 255, 255, 0.85);
+}
+
+.dark .glass {
+  background-color: rgba(15, 23, 42, 0.85);
+}
+
+.nav-rail-item {
+  @apply flex flex-col items-center justify-center gap-1 p-2.5 cursor-pointer transition-colors duration-200 rounded-2xl mx-2;
+  color: var(--text-sub);
+}
+
+.nav-rail-item:hover {
+  background-color: var(--hover-main);
+}
+
+.header {
+  @apply h-16 border-b sticky top-0 z-40 px-4 md:px-8 flex items-center justify-between transition-colors duration-300;
+  background-color: var(--bg-card);
+  border-color: var(--border-main);
+}
+
+.border-main {
+  border-color: var(--border-main);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-800 rounded-full;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
 @media print {
   @page {
@@ -25,26 +126,28 @@
 }
 
 .fc {
-  --fc-border-color: #e2e8f0;
-  --fc-button-bg-color: #4f46e5;
-  --fc-button-border-color: #4f46e5;
-  --fc-button-hover-bg-color: #4338ca;
-  --fc-button-hover-border-color: #4338ca;
-  --fc-button-active-bg-color: #3730a3;
-  --fc-button-active-border-color: #3730a3;
-  --fc-today-bg-color: #f0f9ff;
+  --fc-border-color: var(--border-main);
+  --fc-button-bg-color: #2563eb;
+  --fc-button-border-color: #2563eb;
+  --fc-button-hover-bg-color: #1d4ed8;
+  --fc-button-hover-border-color: #1d4ed8;
+  --fc-button-active-bg-color: #1e40af;
+  --fc-button-active-border-color: #1e40af;
+  --fc-today-bg-color: rgba(37, 99, 235, 0.06);
   --fc-page-bg-color: transparent;
-  --fc-neutral-bg-color: #f8fafc;
+  --fc-neutral-bg-color: var(--bg-secondary);
   --fc-event-border-color: transparent;
 }
 
 .fc .fc-button {
   font-size: 11px;
-  font-weight: 700;
-  padding: 6px 12px;
-  border-radius: 8px;
-  text-transform: none;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  font-weight: 800;
+  padding: 7px 14px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+  transition: all 0.2s ease;
 }
 
 .fc .fc-button-primary:not(:disabled).fc-button-active,
@@ -60,34 +163,36 @@
 
 .fc .fc-toolbar-title {
   font-size: 16px;
-  font-weight: 700;
-  color: #1e293b;
+  font-weight: 800;
+  color: var(--text-main);
 }
 
 .fc .fc-timegrid-slot {
   height: 2.5rem;
-  border-color: #f1f5f9;
+  border-color: var(--border-main);
 }
 
 .fc .fc-timegrid-slot-lane {
-  border-color: #f1f5f9;
+  border-color: var(--border-main);
 }
 
 .fc .fc-timegrid-axis {
-  color: #94a3b8;
+  color: var(--text-sub);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .fc .fc-col-header-cell {
   padding: 8px 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-sub);
 }
 
 .fc .fc-day-today {
-  background-color: #eff6ff !important;
+  background-color: rgba(37, 99, 235, 0.06) !important;
 }
 
 .fc .fc-day-today .fc-daygrid-day-number {
@@ -97,30 +202,30 @@
 
 .fc .fc-daygrid-day-number {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 4px 8px;
-  color: #334155;
+  color: var(--text-main);
 }
 
 .fc .fc-event {
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 0;
 }
 
 .fc .fc-daygrid-event {
-  border-radius: 4px;
-  padding: 1px 4px;
+  border-radius: 6px;
+  padding: 2px 5px;
   font-size: 11px;
 }
 
 .fc .fc-timegrid-event {
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .fc .fc-highlight {
-  background-color: #e0e7ff;
-  border-radius: 4px;
+  background-color: rgba(37, 99, 235, 0.12);
+  border-radius: 6px;
 }
 
 .fc .fc-now-indicator-line {
@@ -134,11 +239,11 @@
 }
 
 .fc .fc-scrollgrid {
-  border-color: #e2e8f0;
+  border-color: var(--border-main);
 }
 
 .fc .fc-scrollgrid td, .fc .fc-scrollgrid th {
-  border-color: #e2e8f0;
+  border-color: var(--border-main);
 }
 
 .fc .fc-timegrid-now-indicator-container {

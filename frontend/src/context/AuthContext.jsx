@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, db, isLocalEnv } from '../firebase/config';
+import { auth, db, isLocalEnv, isPreviewMode } from '../firebase/config';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -14,6 +14,7 @@ import {
 } from 'firebase/auth';
 import { collection, addDoc, query, where, getDocs, getDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { getRolePermissions, seedDefaultRoles } from '../services/roleService';
+import apiService from '../services/apiService';
 
 const AuthContext = createContext();
 
@@ -32,7 +33,8 @@ export const AuthProvider = ({ children }) => {
 
   // Emails de super-admin (acceso total)
   const SUPER_ADMIN_EMAILS = ["emmanuel.ag92@gmail.com", "egomez@coat.com.ar"];
-  const isSuperAdminEmail = (email) => SUPER_ADMIN_EMAILS.includes(email);
+  const isSuperAdminEmail = (email) =>
+    SUPER_ADMIN_EMAILS.includes(String(email || '').trim().toLowerCase());
 
   // Login con email/password
   const login = async (email, password) => {
@@ -45,6 +47,11 @@ export const AuthProvider = ({ children }) => {
     sessionStorage.removeItem('session_start_time');
     setViewingUid(null);
     setCatalogOwnerUid(null);
+    if (isPreviewMode) {
+      sessionStorage.removeItem('coat_preview_mode');
+      window.location.href = '/?preview=0';
+      return Promise.resolve();
+    }
     return signOut(auth);
   };
 
@@ -132,6 +139,37 @@ export const AuthProvider = ({ children }) => {
 
   // Efecto principal de autenticación
   useEffect(() => {
+    if (isPreviewMode) {
+      const previewUser = {
+        uid: 'preview-local-admin',
+        email: 'preview@coat.local',
+        displayName: 'Admin (Vista Previa)',
+        nombre: 'Admin (Vista Previa)',
+        providerData: [{ providerId: 'password' }]
+      };
+      setCurrentUser(previewUser);
+      setViewingUid(previewUser.uid);
+      setCatalogOwnerUid(previewUser.uid);
+      setUserRole('admin');
+      setIsAuthorized(true);
+      setPermissions({
+        can_view_admin: true,
+        can_manage_users: true,
+        can_view_shared_catalog: true,
+        can_view_ordenes: true,
+        can_share_ordenes: true,
+        can_view_stats: true,
+        can_delete_data: true,
+        can_edit_data: true,
+        can_edit_own: true,
+        can_delete_own: true,
+        readonly_caja: false,
+        is_ephemeral: false
+      });
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
         if (user) {
@@ -195,31 +233,41 @@ export const AuthProvider = ({ children }) => {
               is_ephemeral: false
             };
           } else {
-            // Buscar email en authorized_emails
+            // Buscar email en authorized_emails (compatible con docId = uid, docId = email exacto, o legacy con '_')
             try {
               let authRecord = null;
+              let resolvedDocId = null;
+              const cleanEmail = user.email ? user.email.toLowerCase().trim() : '';
 
-              const authQuery = query(
-                collection(db, "authorized_emails"),
-                where("email", "==", user.email)
-              );
-              let authSnap = await getDocs(authQuery);
-
-              if (authSnap.empty && user.email) {
-                const lowerQuery = query(
-                  collection(db, "authorized_emails"),
-                  where("email", "==", user.email.toLowerCase().trim())
-                );
-                authSnap = await getDocs(lowerQuery);
+              if (user.uid) {
+                const uidSnap = await getDoc(doc(db, "authorized_emails", user.uid));
+                if (uidSnap.exists()) {
+                  authRecord = uidSnap.data();
+                  resolvedDocId = uidSnap.id;
+                }
               }
 
-              if (!authSnap.empty) {
-                authRecord = authSnap.docs[0].data();
-              } else if (user.email) {
-                const docId = user.email.toLowerCase().trim().replace(/[.@]/g, '_');
-                const docSnap = await getDoc(doc(db, "authorized_emails", docId));
-                if (docSnap.exists()) {
-                  authRecord = docSnap.data();
+              if (!authRecord && cleanEmail) {
+                const emailSnap = await getDoc(doc(db, "authorized_emails", cleanEmail));
+                if (emailSnap.exists()) {
+                  authRecord = emailSnap.data();
+                  resolvedDocId = emailSnap.id;
+                }
+              }
+
+              if (!authRecord && cleanEmail) {
+                try {
+                  const lowerQuery = query(
+                    collection(db, "authorized_emails"),
+                    where("email", "==", cleanEmail)
+                  );
+                  const authSnap = await getDocs(lowerQuery);
+                  if (!authSnap.empty) {
+                    authRecord = authSnap.docs[0].data();
+                    resolvedDocId = authSnap.docs[0].id;
+                  }
+                } catch {
+                  // Usuario no autorizado para listar authorized_emails
                 }
               }
 
@@ -228,7 +276,7 @@ export const AuthProvider = ({ children }) => {
 
                 // Auto-corrección si el rol fue guardado erróneamente como 'medico' por el bug anterior
                 const isEstudiosKeyword = 
-                  (user.email && user.email.toLowerCase().includes('estudio')) || 
+                  (cleanEmail && cleanEmail.includes('estudio')) || 
                   (authRecord.username && authRecord.username.toLowerCase().includes('estudio')) ||
                   (authRecord.profesionalName && authRecord.profesionalName.toLowerCase().includes('estudio'));
 
@@ -236,8 +284,8 @@ export const AuthProvider = ({ children }) => {
                   console.log("[Auth] Auto-corrigiendo rol a secre_estudios para:", user.email);
                   role = 'secre_estudios';
                   try {
-                    const docId = (authRecord.email || user.email).toLowerCase().trim().replace(/[.@]/g, '_');
-                    await setDoc(doc(db, "authorized_emails", docId), { role: 'secre_estudios' }, { merge: true });
+                    const targetDocId = resolvedDocId || cleanEmail;
+                    await setDoc(doc(db, "authorized_emails", targetDocId), { role: 'secre_estudios' }, { merge: true });
                   } catch (corrErr) {
                     console.warn("[Auth] No se pudo persistir auto-corrección de rol:", corrErr);
                   }
@@ -262,6 +310,7 @@ export const AuthProvider = ({ children }) => {
 
           setUserRole(role);
           setPermissions(userPermissions);
+          apiService.setReadOnlyMode(role === 'consulta');
 
           // Cargar cuentas compartidas
           await fetchSharedAccounts(user.email);
@@ -277,6 +326,7 @@ export const AuthProvider = ({ children }) => {
           setIsAuthorized(false);
           setUserRole('user');
           setPermissions({});
+          apiService.setReadOnlyMode(false);
           setSharedAccounts([]);
           setLinkedProfesionalName(null);
         }
@@ -301,6 +351,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthorized,
     isSuperAdmin: currentUser ? isSuperAdminEmail(currentUser.email) : false,
+    isConsulta: userRole === 'consulta',
     userRole,
     permissions,
     login,

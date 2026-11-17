@@ -1,3 +1,8 @@
+// ISOLATION-BLOCKED: script de mantenimiento bloqueado (Etapa 1). Apunta a PRODUCCION (caja-de-cirugia).
+// No se elimina, pero NO puede ejecutarse desde el rediseño. Rehabilitarlo requiere autorizacion explicita,
+// reemplazar su configuracion por la del entorno aislado y retirar este bloqueo.
+throw new Error('[ISOLATION-BLOCKED] Script de mantenimiento bloqueado: apunta a produccion. Ver DESPLIEGUE.md.');
+
 // =====================================================
 // SCRIPT PARA ACTUALIZAR PROFESIONALES CON MP/ME
 // =====================================================

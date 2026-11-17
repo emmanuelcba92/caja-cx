@@ -363,7 +363,7 @@ export const printCajaDay = (selectedDate, dateEntries, dailyComment = '', total
   }, 400);
 };
 
-export default function HistorialCajaView({ history, setHistory, currentUser, professionals }) {
+export default function HistorialCajaView({ history, setHistory, currentUser, professionals, isReadOnly = false }) {
   const [view, setView] = useState('years');
   const [selectedYear, setSelectedYear] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(null);
@@ -440,6 +440,7 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
   }, [selectedDate]);
 
   const saveDailyComment = async () => {
+    if (isReadOnly) return;
     const commentDate = normalizeDate(selectedDate);
     if (!commentDate) return;
     const comentario = dailyComment.trim();
@@ -493,19 +494,21 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
   const handleEditChange = (field, value) => { setEditForm(prev => ({ ...prev, [field]: value })); };
   
   const handleEditSave = async () => {
+    if (isReadOnly) return;
     try {
-      if (editId) {
-        await apiService.setDocument('caja', String(editId), editForm);
-      }
+      if (editId === null || editId === undefined || editId === '') throw new Error('No se identificó el movimiento a editar.');
+      await apiService.updateDocument('caja', String(editId), editForm);
+      setHistory(prev => prev.map(h => String(h.id) === String(editId) ? { ...h, ...editForm } : h));
+      setEditId(null);
+      setEditForm({});
     } catch (err) {
       console.error("Error updating document in Firestore:", err);
+      alert(`No se pudo guardar la edición${err.code ? ` (${err.code})` : ''}: ${err.message || 'Intentá nuevamente.'}`);
     }
-    setHistory(prev => prev.map(h => String(h.id) === String(editId) ? { ...h, ...editForm } : h));
-    setEditId(null);
-    setEditForm({});
   };
 
   const handleDelete = async (id) => {
+    if (isReadOnly) return;
     if (!window.confirm('¿Eliminar este registro permanentemente?')) return;
     try {
       if (id) {
@@ -519,6 +522,7 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
   };
 
   const handleDeleteDay = async () => {
+    if (isReadOnly) return;
     if (!selectedDate) return;
     if (!window.confirm(`¿ELIMINAR TODOS los registros del día ${selectedDate}?`)) return;
     if (!window.confirm('¿De verdad? Esta acción no se puede deshacer.')) return;
@@ -543,6 +547,7 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
   };
 
   const handleCreateEntry = async () => {
+    if (isReadOnly) return;
     if (!newEntry.paciente || !selectedDate) return alert("Complete el nombre del paciente.");
     const entryData = {
       ...newEntry,
@@ -651,28 +656,30 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
-        <div className="flex items-center gap-2">
-          <History size={18} className="text-indigo-500" />
-          <h3 className="font-bold text-slate-700">Historial de Caja</h3>
+    <div className="card overflow-hidden">
+      <div className="px-6 py-4 border-b border-[var(--border-main)] flex flex-wrap items-center justify-between gap-3 bg-[var(--bg-secondary)]/50">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 flex items-center justify-center">
+            <History size={18} />
+          </div>
+          <h3 className="font-bold text-[var(--text-main)]">Historial de Caja</h3>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleBackup} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-indigo-600 transition-all"><Download size={14} /> Backup</button>
+          <button onClick={handleBackup} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-main)] text-xs font-bold text-[var(--text-sub)] hover:text-blue-600 hover:border-blue-300 transition-all"><Download size={14} /> Backup</button>
           
-          <button onClick={() => setShowRangeModal(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:text-emerald-600 hover:border-emerald-200 transition-all" title="Exportar un Excel por cada día dentro de un rango">
+          <button onClick={() => setShowRangeModal(true)} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-main)] text-xs font-bold text-[var(--text-sub)] hover:text-emerald-600 hover:border-emerald-300 transition-all" title="Exportar un Excel por cada día dentro de un rango">
             <Download size={14} className="text-emerald-600" /> Rango Fechas
           </button>
 
           {view === 'table' && (
             <>
-              <button onClick={handleExportExcel} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition-all"><Download size={14} /> Excel</button>
-              <button onClick={handlePrint} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-all"><Printer size={14} /> Imprimir</button>
-              <button onClick={() => { if (!isAdmin) setShowPinModal(true); else setShowAddModal(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-blue-600 transition-all"><Plus size={14} /> Agregar</button>
+              <button onClick={handleExportExcel} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-all"><Download size={14} /> Excel</button>
+              <button onClick={handlePrint} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 text-xs font-bold text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition-all"><Printer size={14} /> Imprimir</button>
+              <button onClick={() => { if (!isAdmin) setShowPinModal(true); else setShowAddModal(true); }} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-main)] text-xs font-bold text-[var(--text-sub)] hover:text-blue-600 transition-all"><Plus size={14} /> Agregar</button>
             </>
           )}
           {view !== 'years' && (
-            <button onClick={navigateBack} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-500 hover:text-slate-700 transition-all"><ChevronLeft size={14} /> Volver</button>
+            <button onClick={navigateBack} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-main)] text-xs font-bold text-[var(--text-sub)] hover:text-[var(--text-main)] transition-all"><ChevronLeft size={14} /> Volver</button>
           )}
         </div>
       </div>
@@ -680,18 +687,18 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
       {/* RANGE EXPORT MODAL */}
       {showRangeModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isExportingRange && setShowRangeModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--border-main)] rounded-[2rem] shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-main)] mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center">
                   <Download size={18} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-800 text-sm">Exportar Rango de Fechas</h3>
-                  <p className="text-[11px] text-slate-500">Descarga un archivo Excel individual por cada día</p>
+                  <h3 className="font-bold text-[var(--text-main)] text-sm">Exportar Rango de Fechas</h3>
+                  <p className="text-[11px] text-[var(--text-sub)]">Descarga un archivo Excel individual por cada día</p>
                 </div>
               </div>
-              <button onClick={() => !isExportingRange && setShowRangeModal(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+              <button onClick={() => !isExportingRange && setShowRangeModal(false)} className="p-1.5 hover:bg-[var(--hover-main)] rounded-full text-slate-400">
                 <X size={18} />
               </button>
             </div>
@@ -699,27 +706,27 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Fecha Desde</label>
+                  <label className="block text-[10px] font-bold text-[var(--text-sub)] uppercase tracking-wider mb-1">Fecha Desde</label>
                   <input
                     type="date"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-xs font-bold text-[var(--text-main)] outline-none focus:ring-2 focus:ring-emerald-500"
                     value={rangeStart}
                     onChange={e => setRangeStart(e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Fecha Hasta</label>
+                  <label className="block text-[10px] font-bold text-[var(--text-sub)] uppercase tracking-wider mb-1">Fecha Hasta</label>
                   <input
                     type="date"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-xs font-bold text-[var(--text-main)] outline-none focus:ring-2 focus:ring-emerald-500"
                     value={rangeEnd}
                     onChange={e => setRangeEnd(e.target.value)}
                   />
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
-                <p className="font-bold text-slate-700">Formato del Excel:</p>
+              <div className="p-3.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-main)] text-[11px] text-[var(--text-sub)] space-y-1">
+                <p className="font-bold text-[var(--text-main)]">Formato del Excel:</p>
                 <p>• Incluye logo institucional de COAT</p>
                 <p>• Desglose completo de profesionales (Prof 1, 2, 3) y anestesia</p>
                 <p>• Retenciones COAT ARS y USD con totales</p>
@@ -730,7 +737,7 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
                   type="button"
                   onClick={() => setShowRangeModal(false)}
                   disabled={isExportingRange}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+                  className="flex-1 py-2.5 bg-[var(--bg-secondary)] hover:bg-slate-200 dark:hover:bg-slate-700 text-[var(--text-sub)] text-xs font-bold rounded-xl transition-all disabled:opacity-50"
                 >
                   Cancelar
                 </button>
@@ -752,13 +759,13 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
       {/* PIN MODAL */}
       {showPinModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => { setShowPinModal(false); setPinInput(''); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 text-center" onClick={e => e.stopPropagation()}>
-            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-6"><Shield size={32} className="text-slate-500" /></div>
-            <h3 className="text-lg font-bold text-slate-800 mb-6">Modo Administrador</h3>
-            <input type="password" className="w-full text-center text-2xl tracking-[0.3em] font-bold py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 mb-6" placeholder="••••" maxLength={8} value={pinInput} onChange={e => setPinInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (() => { if (['546287','0511','1105'].includes(pinInput.trim())) { setIsAdmin(true); setShowPinModal(false); setPinInput(''); } else { alert("PIN Incorrecto"); setPinInput(''); } })()} autoFocus />
+          <div className="bg-[var(--bg-card)] border border-[var(--border-main)] rounded-[2rem] shadow-2xl w-full max-w-sm p-8 text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/20 rounded-2xl flex items-center justify-center mx-auto mb-6"><Shield size={32} className="text-blue-600" /></div>
+            <h3 className="text-lg font-bold text-[var(--text-main)] mb-6">Modo Administrador</h3>
+            <input type="password" className="w-full text-center text-2xl tracking-[0.3em] font-bold py-3 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-main)] text-[var(--text-main)] outline-none focus:ring-2 focus:ring-blue-500 mb-6" placeholder="••••" maxLength={8} value={pinInput} onChange={e => setPinInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (() => { if (['546287','0511','1105'].includes(pinInput.trim())) { setIsAdmin(true); setShowPinModal(false); setPinInput(''); } else { alert("PIN Incorrecto"); setPinInput(''); } })()} autoFocus />
             <div className="flex gap-3">
-              <button onClick={() => { setShowPinModal(false); setPinInput(''); }} className="flex-1 py-3 text-slate-500 font-bold text-xs uppercase rounded-lg">Cancelar</button>
-              <button onClick={() => { if (['546287','0511','1105'].includes(pinInput.trim())) { setIsAdmin(true); setShowPinModal(false); setPinInput(''); } else { alert("PIN Incorrecto"); setPinInput(''); } }} className="flex-1 py-3 bg-indigo-600 text-white font-bold text-xs uppercase rounded-lg">Desbloquear</button>
+              <button onClick={() => { setShowPinModal(false); setPinInput(''); }} className="flex-1 py-3 text-[var(--text-sub)] font-bold text-xs uppercase rounded-xl bg-[var(--bg-secondary)]">Cancelar</button>
+              <button onClick={() => { if (['546287','0511','1105'].includes(pinInput.trim())) { setIsAdmin(true); setShowPinModal(false); setPinInput(''); } else { alert("PIN Incorrecto"); setPinInput(''); } }} className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase rounded-xl shadow-md">Desbloquear</button>
             </div>
           </div>
         </div>
@@ -767,43 +774,43 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
       {/* ADD ENTRY MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-slate-800 mb-4">Agregar entrada a {selectedDate}</h3>
+          <div className="bg-[var(--bg-card)] border border-[var(--border-main)] rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-[var(--text-main)] mb-4">Agregar entrada a {selectedDate}</h3>
             <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Paciente</label>
-                <input className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none" value={newEntry.paciente||''} onChange={e => setNewEntry({...newEntry, paciente: e.target.value})} placeholder="Nombre" /></div>
-              <div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">DNI</label>
-                <input className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none" value={newEntry.dni||''} onChange={e => setNewEntry({...newEntry, dni: e.target.value})} /></div>
-              <div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Obra Social</label>
-                <input className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none" value={newEntry.obra_social||''} onChange={e => setNewEntry({...newEntry, obra_social: e.target.value})} /></div>
+              <div className="col-span-2"><label className="text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1 block">Paciente</label>
+                <input className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.paciente||''} onChange={e => setNewEntry({...newEntry, paciente: e.target.value})} placeholder="Nombre" /></div>
+              <div><label className="text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1 block">DNI</label>
+                <input className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.dni||''} onChange={e => setNewEntry({...newEntry, dni: e.target.value})} /></div>
+              <div><label className="text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1 block">Obra Social</label>
+                <input className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.obra_social||''} onChange={e => setNewEntry({...newEntry, obra_social: e.target.value})} /></div>
               <div><label className="text-[10px] font-bold text-emerald-600 uppercase mb-1 block">Pesos $</label>
-                <input type="number" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none" value={newEntry.pesos||''} onChange={e => setNewEntry({...newEntry, pesos: e.target.value})} /></div>
+                <input type="number" className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.pesos||''} onChange={e => setNewEntry({...newEntry, pesos: e.target.value})} /></div>
               <div><label className="text-[10px] font-bold text-blue-600 uppercase mb-1 block">USD</label>
-                <input type="number" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none" value={newEntry.dolares||''} onChange={e => setNewEntry({...newEntry, dolares: e.target.value})} /></div>
-              <div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Prof. 1</label>
-                <select className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none bg-white" value={newEntry.prof_1||''} onChange={e => setNewEntry({...newEntry, prof_1: e.target.value})}>
+                <input type="number" className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.dolares||''} onChange={e => setNewEntry({...newEntry, dolares: e.target.value})} /></div>
+              <div><label className="text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1 block">Prof. 1</label>
+                <select className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.prof_1||''} onChange={e => setNewEntry({...newEntry, prof_1: e.target.value})}>
                   <option value="">Seleccionar...</option>
                   {orlProfs.map(p => <option key={p} value={p}>{p}</option>)}
                 </select></div>
-              <div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Prof. 2</label>
-                <select className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none bg-white" value={newEntry.prof_2||''} onChange={e => setNewEntry({...newEntry, prof_2: e.target.value})}>
+              <div><label className="text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1 block">Prof. 2</label>
+                <select className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.prof_2||''} onChange={e => setNewEntry({...newEntry, prof_2: e.target.value})}>
                   <option value="">Seleccionar...</option>
                   {orlProfs.map(p => <option key={p} value={p}>{p}</option>)}
                 </select></div>
-              <div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Liq. P1 $</label>
-                <input type="number" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none" value={newEntry.liq_prof_1||''} onChange={e => setNewEntry({...newEntry, liq_prof_1: e.target.value})} /></div>
-              <div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Liq. P2 $</label>
-                <input type="number" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none" value={newEntry.liq_prof_2||''} onChange={e => setNewEntry({...newEntry, liq_prof_2: e.target.value})} /></div>
+              <div><label className="text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1 block">Liq. P1 $</label>
+                <input type="number" className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.liq_prof_1||''} onChange={e => setNewEntry({...newEntry, liq_prof_1: e.target.value})} /></div>
+              <div><label className="text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1 block">Liq. P2 $</label>
+                <input type="number" className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.liq_prof_2||''} onChange={e => setNewEntry({...newEntry, liq_prof_2: e.target.value})} /></div>
               <div><label className="text-[10px] font-bold text-purple-600 uppercase mb-1 block">Anestesista</label>
-                <select className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none bg-white" value={newEntry.anestesista||''} onChange={e => setNewEntry({...newEntry, anestesista: e.target.value})}>
+                <select className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.anestesista||''} onChange={e => setNewEntry({...newEntry, anestesista: e.target.value})}>
                   <option value="">No requiere</option>
                   {anestesistas.map(p => <option key={p} value={p}>{p}</option>)}
                 </select></div>
-              <div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Liq. Anest.</label>
-                <input type="number" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm outline-none" value={newEntry.liq_anestesista||''} onChange={e => setNewEntry({...newEntry, liq_anestesista: e.target.value})} /></div>
+              <div><label className="text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1 block">Liq. Anest.</label>
+                <input type="number" className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-sm outline-none" value={newEntry.liq_anestesista||''} onChange={e => setNewEntry({...newEntry, liq_anestesista: e.target.value})} /></div>
               <div className="col-span-2 flex gap-3 mt-2">
-                <button onClick={handleCreateEntry} className="flex-1 py-3 bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl shadow-md hover:bg-indigo-700"><Save size={16} className="inline mr-1" /> Guardar</button>
-                <button onClick={() => setShowAddModal(false)} className="px-6 py-3 bg-slate-100 text-slate-600 font-bold text-xs uppercase rounded-xl hover:bg-slate-200">Cancelar</button>
+                <button onClick={handleCreateEntry} className="flex-1 py-3 bg-blue-600 text-white font-bold text-xs uppercase rounded-xl shadow-md hover:bg-blue-700"><Save size={16} className="inline mr-1" /> Guardar</button>
+                <button onClick={() => setShowAddModal(false)} className="px-6 py-3 bg-[var(--bg-secondary)] text-[var(--text-sub)] font-bold text-xs uppercase rounded-xl hover:bg-slate-200">Cancelar</button>
               </div>
             </div>
           </div>
@@ -813,25 +820,25 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
       <div className="p-6">
         {view === 'years' && (
           <div className="space-y-4">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Totales Generales</h4>
+            <h4 className="text-xs font-bold text-[var(--text-sub)] uppercase tracking-widest mb-4">Totales Generales</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100"><p className="text-[10px] font-bold text-emerald-600 uppercase">Recaudado $</p><p className="text-xl font-bold text-emerald-700">$ {formatMoney(allTotals.pesos)}</p></div>
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100"><p className="text-[10px] font-bold text-blue-600 uppercase">Recaudado USD</p><p className="text-xl font-bold text-blue-700">U$D {formatMoney(allTotals.dolares)}</p></div>
-              <div className="bg-orange-50 rounded-xl p-4 border border-orange-100"><p className="text-[10px] font-bold text-orange-600 uppercase">COAT ARS</p><p className="text-xl font-bold text-orange-700">$ {formatMoney(allTotals.coat_pesos)}</p></div>
-              <div className="bg-purple-50 rounded-xl p-4 border border-purple-100"><p className="text-[10px] font-bold text-purple-600 uppercase">COAT USD</p><p className="text-xl font-bold text-purple-700">U$D {formatMoney(allTotals.coat_dolares)}</p></div>
+              <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/40"><p className="text-[10px] font-bold text-emerald-600 uppercase">Recaudado $</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">$ {formatMoney(allTotals.pesos)}</p></div>
+              <div className="bg-blue-50 dark:bg-blue-950/20 rounded-2xl p-4 border border-blue-100 dark:border-blue-900/40"><p className="text-[10px] font-bold text-blue-600 uppercase">Recaudado USD</p><p className="text-xl font-bold text-blue-700 dark:text-blue-400">U$D {formatMoney(allTotals.dolares)}</p></div>
+              <div className="bg-orange-50 dark:bg-orange-950/20 rounded-2xl p-4 border border-orange-100 dark:border-orange-900/40"><p className="text-[10px] font-bold text-orange-600 uppercase">COAT ARS</p><p className="text-xl font-bold text-orange-700 dark:text-orange-400">$ {formatMoney(allTotals.coat_pesos)}</p></div>
+              <div className="bg-purple-50 dark:bg-purple-950/20 rounded-2xl p-4 border border-purple-100 dark:border-purple-900/40"><p className="text-[10px] font-bold text-purple-600 uppercase">COAT USD</p><p className="text-xl font-bold text-purple-700 dark:text-purple-400">U$D {formatMoney(allTotals.coat_dolares)}</p></div>
             </div>
             <div className="flex gap-4 items-end mb-4">
-              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Exportar rango</label>
-                <input type="date" className="px-3 py-2 rounded-lg border border-slate-300 text-xs outline-none" value={rangeStart} onChange={e => setRangeStart(e.target.value)} /></div>
-              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">hasta</label>
-                <input type="date" className="px-3 py-2 rounded-lg border border-slate-300 text-xs outline-none" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} /></div>
-              <button onClick={handleExportRange} disabled={isExportingRange} className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50"><Download size={14} className="inline mr-1" />Exportar rango</button>
+              <div><label className="block text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1">Exportar rango</label>
+                <input type="date" className="px-3.5 py-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-xs outline-none" value={rangeStart} onChange={e => setRangeStart(e.target.value)} /></div>
+              <div><label className="block text-[10px] font-bold text-[var(--text-sub)] uppercase mb-1">hasta</label>
+                <input type="date" className="px-3.5 py-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-[var(--text-main)] text-xs outline-none" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} /></div>
+              <button onClick={handleExportRange} disabled={isExportingRange} className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50"><Download size={14} className="inline mr-1" />Exportar rango</button>
             </div>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Años</h4>
+            <h4 className="text-xs font-bold text-[var(--text-sub)] uppercase tracking-widest mb-4">Años</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {getYears().map(y => (
-                <button key={y} onClick={() => { setSelectedYear(y); setView('months'); }} className="p-6 bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all text-center">
-                  <p className="text-2xl font-bold text-slate-800">{y}</p><p className="text-xs text-slate-500 mt-1">{history.filter(h => h.fecha?.startsWith(y)).length} registros</p></button>
+                <button key={y} onClick={() => { setSelectedYear(y); setView('months'); }} className="p-6 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] hover:border-blue-400 hover:shadow-md transition-all text-center">
+                  <p className="text-2xl font-bold text-[var(--text-main)]">{y}</p><p className="text-xs text-[var(--text-sub)] mt-1">{history.filter(h => h.fecha?.startsWith(y)).length} registros</p></button>
               ))}
               {getYears().length === 0 && <p className="col-span-full text-center text-slate-400 py-12">No hay registros en el historial.</p>}
             </div>
@@ -840,11 +847,11 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
 
         {view === 'months' && selectedYear && (
           <div className="space-y-4">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{selectedYear}</h4>
+            <h4 className="text-xs font-bold text-[var(--text-sub)] uppercase tracking-widest mb-4">{selectedYear}</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {getMonths(selectedYear).map(m => (
-                <button key={m} onClick={() => { setSelectedMonth(m); setView('days'); }} className="p-6 bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all text-center">
-                  <p className="text-lg font-bold text-slate-800">{MONTHS[m]}</p><p className="text-xs text-slate-500 mt-1">{history.filter(h => h.fecha?.startsWith(`${selectedYear}-${String(m+1).padStart(2,'0')}`)).length} registros</p></button>
+                <button key={m} onClick={() => { setSelectedMonth(m); setView('days'); }} className="p-6 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] hover:border-blue-400 hover:shadow-md transition-all text-center">
+                  <p className="text-lg font-bold text-[var(--text-main)]">{MONTHS[m]}</p><p className="text-xs text-[var(--text-sub)] mt-1">{history.filter(h => h.fecha?.startsWith(`${selectedYear}-${String(m+1).padStart(2,'0')}`)).length} registros</p></button>
               ))}
             </div>
           </div>
@@ -852,15 +859,15 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
 
         {view === 'days' && selectedYear !== null && selectedMonth !== null && (
           <div className="space-y-4">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{MONTHS[selectedMonth]} {selectedYear}</h4>
+            <h4 className="text-xs font-bold text-[var(--text-sub)] uppercase tracking-widest mb-4">{MONTHS[selectedMonth]} {selectedYear}</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {getDays(selectedYear, selectedMonth).map(d => {
                 const dayEntries = history.filter(h => h.fecha === d);
                 const dayTotals = dayEntries.reduce((a, h) => { a.coat_pesos += parseFloat(h.coat_pesos)||0; a.coat_dolares += parseFloat(h.coat_dolares)||0; return a; }, { coat_pesos: 0, coat_dolares: 0 });
                 return (
-                  <button key={d} onClick={() => { setSelectedDate(d); setView('table'); }} className="p-4 bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all text-left">
-                    <p className="font-bold text-slate-800">{d.split('-').reverse().join('/')}</p>
-                    <p className="text-xs text-slate-500">{dayEntries.length} ops</p>
+                  <button key={d} onClick={() => { setSelectedDate(d); setView('table'); }} className="p-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] hover:border-blue-400 hover:shadow-md transition-all text-left">
+                    <p className="font-bold text-[var(--text-main)]">{d.split('-').reverse().join('/')}</p>
+                    <p className="text-xs text-[var(--text-sub)]">{dayEntries.length} ops</p>
                     <p className="text-xs text-emerald-600 font-bold">$ {formatMoney(dayTotals.coat_pesos)}</p>
                     {dayTotals.coat_dolares > 0 && <p className="text-xs text-blue-600 font-bold">U$D {formatMoney(dayTotals.coat_dolares)}</p>}
                   </button>
@@ -873,7 +880,7 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
         {view === 'table' && selectedDate && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-slate-700">{selectedDate.split('-').reverse().join('/')}</h4>
+              <h4 className="text-sm font-bold text-[var(--text-main)]">{selectedDate.split('-').reverse().join('/')}</h4>
               <div className="flex items-center gap-4 text-sm">
                 <div className="text-right"><p className="text-[10px] font-bold text-orange-500 uppercase">COAT ARS</p><p className="font-bold text-orange-700">$ {formatMoney(totals.coat_pesos)}</p></div>
                 <div className="text-right"><p className="text-[10px] font-bold text-blue-500 uppercase">COAT USD</p><p className="font-bold text-blue-700">U$D {formatMoney(totals.coat_dolares)}</p></div>
@@ -881,16 +888,16 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
             </div>
 
             {/* DAILY COMMENT */}
-            <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
-              <div className="flex items-center gap-2 mb-2"><MessageSquare size={16} className="text-amber-600" /><span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Comentario del día</span></div>
-              {isEditingComment ? (
-                <div className="flex gap-2"><input className="flex-1 px-3 py-2 rounded-lg border border-amber-300 text-sm outline-none" value={dailyComment} onChange={e => setDailyComment(e.target.value)} autoFocus />
-                  <button onClick={saveDailyComment} className="px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700"><Save size={14} className="inline mr-1" />Guardar</button>
+            <div className="bg-amber-50 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-900/40 p-4">
+              <div className="flex items-center gap-2 mb-2"><MessageSquare size={16} className="text-amber-600" /><span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">Comentario del día</span></div>
+              {isEditingComment && !isReadOnly ? (
+                <div className="flex gap-2"><input className="flex-1 px-3 py-2 rounded-xl border border-amber-300 bg-white dark:bg-slate-900 text-sm outline-none" value={dailyComment} onChange={e => setDailyComment(e.target.value)} autoFocus />
+                  <button onClick={saveDailyComment} className="px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-xl hover:bg-amber-700"><Save size={14} className="inline mr-1" />Guardar</button>
                   <button onClick={() => setIsEditingComment(false)} className="px-3 py-2 text-slate-500"><X size={16} /></button></div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <p className="flex-1 text-sm text-slate-700 italic">{dailyComment || 'Sin comentario'}</p>
-                  <button onClick={() => setIsEditingComment(true)} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-100 rounded-lg hover:bg-amber-200"><Edit2 size={14} className="inline mr-1" />Editar</button>
+                  <p className="flex-1 text-sm text-[var(--text-main)] italic">{dailyComment || 'Sin comentario'}</p>
+                  {!isReadOnly && <button onClick={() => setIsEditingComment(true)} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-100 rounded-xl hover:bg-amber-200"><Edit2 size={14} className="inline mr-1" />Editar</button>}
                 </div>
               )}
             </div>
@@ -898,7 +905,7 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr className="bg-[var(--bg-secondary)]/70 text-[var(--text-sub)] text-[11px] font-bold uppercase tracking-wider border-b border-[var(--border-main)]">
                     <th className="px-4 py-3">Paciente</th>
                     <th className="px-4 py-3">DNI</th>
                     <th className="px-4 py-3">OS</th>
@@ -911,10 +918,10 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
                     <th className="px-4 py-3 text-center">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[var(--border-main)]">
                   {dateEntries.map(h => (
                     editId === h.id ? (
-                      <tr key={h.id} className="bg-blue-50">
+                      <tr key={h.id} className="bg-blue-50/70 dark:bg-blue-950/20">
                         <td className="px-4 py-2"><input className="w-full px-2 py-1 rounded border border-slate-300 text-xs outline-none" value={editForm.paciente||''} onChange={e => handleEditChange('paciente', e.target.value)} /></td>
                         <td className="px-4 py-2"><input className="w-full px-2 py-1 rounded border border-slate-300 text-xs outline-none" value={editForm.dni||''} onChange={e => handleEditChange('dni', e.target.value)} /></td>
                         <td className="px-4 py-2"><input className="w-full px-2 py-1 rounded border border-slate-300 text-xs outline-none" value={editForm.obra_social||''} onChange={e => handleEditChange('obra_social', e.target.value)} /></td>
@@ -933,26 +940,26 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
                         </div></td>
                       </tr>
                     ) : (
-                      <tr key={h.id} className="hover:bg-slate-50 transition-all">
-                        <td className="px-4 py-3 font-semibold text-slate-800">
+                      <tr key={h.id} className="hover:bg-[var(--hover-main)] transition-all">
+                        <td className="px-4 py-3 font-semibold text-[var(--text-main)]">
                           <div>{h.paciente}</div>
                           {h.creadoPor && h.creadoPor !== 'unknown' && (
-                            <div className="text-[10px] text-slate-400 font-normal mt-0.5">
-                              Cargó: <span className="text-slate-600 font-semibold">{h.creadoPor}</span>
+                            <div className="text-[10px] text-[var(--text-sub)] font-normal mt-0.5">
+                              Cargó: <span className="text-[var(--text-main)] font-semibold">{h.creadoPor}</span>
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-slate-500 text-sm">{h.dni || '-'}</td>
-                        <td className="px-4 py-3 text-slate-500 text-sm">{h.obra_social || '-'}</td>
+                        <td className="px-4 py-3 text-[var(--text-sub)] text-sm">{h.dni || '-'}</td>
+                        <td className="px-4 py-3 text-[var(--text-sub)] text-sm">{h.obra_social || '-'}</td>
                         <td className="px-4 py-3 text-right text-emerald-600 font-bold tabular-nums">{h.pesos > 0 ? '$ ' + formatMoney(h.pesos) : '-'}</td>
                         <td className="px-4 py-3 text-right text-blue-600 font-bold tabular-nums">{h.dolares > 0 ? 'U$D ' + formatMoney(h.dolares) : '-'}</td>
-                        <td className="px-4 py-3 text-xs text-slate-600">{[h.prof_1, h.prof_2, h.prof_3].filter(Boolean).join(', ') || '-'}</td>
-                        <td className="px-4 py-3 text-right font-bold tabular-nums">{h.liq_prof_1 > 0 ? '$ ' + formatMoney(h.liq_prof_1) : '-'}</td>
+                        <td className="px-4 py-3 text-xs text-[var(--text-sub)]">{[h.prof_1, h.prof_2, h.prof_3].filter(Boolean).join(', ') || '-'}</td>
+                        <td className="px-4 py-3 text-right font-bold tabular-nums text-[var(--text-main)]">{h.liq_prof_1 > 0 ? '$ ' + formatMoney(h.liq_prof_1) : '-'}</td>
                         <td className="px-4 py-3 text-right text-orange-600 font-bold tabular-nums">$ {formatMoney(h.coat_pesos)}</td>
                         <td className="px-4 py-3 text-right text-purple-600 font-bold tabular-nums">{h.coat_dolares > 0 ? 'U$D ' + formatMoney(h.coat_dolares) : '-'}</td>
-                        <td className="px-4 py-3 text-center">{(h.creadoPor === currentUser?.nombre || isAdmin) && (<div className="flex gap-1 justify-center">
-                          <button onClick={() => handleEditClick(h)} className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50"><Edit2 size={14} /></button>
-                          <button onClick={() => handleDelete(h.id)} className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>
+                        <td className="px-4 py-3 text-center">{!isReadOnly && (h.creadoPor === currentUser?.nombre || isAdmin) && (<div className="flex gap-1 justify-center">
+                          <button onClick={() => handleEditClick(h)} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"><Edit2 size={14} /></button>
+                          <button onClick={() => handleDelete(h.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>
                         </div>)}</td>
                       </tr>
                     )
@@ -965,16 +972,16 @@ export default function HistorialCajaView({ history, setHistory, currentUser, pr
               <div className="py-12 text-center text-slate-400 text-sm">No hay registros para esta fecha.</div>
             )}
 
-            {isAdmin && (
-              <div className="flex gap-3 pt-4 border-t border-slate-200">
-                <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700"><Plus size={14} /> Agregar entrada</button>
-                <button onClick={handleDeleteDay} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700"><Trash2 size={14} /> Eliminar día</button>
-                <button onClick={() => { setIsAdmin(false); setEditId(null); }} className="flex items-center gap-2 px-4 py-2 bg-slate-600 text-white text-xs font-bold rounded-lg hover:bg-slate-700"><LockIcon size={14} /> Salir Admin</button>
+            {!isReadOnly && isAdmin && (
+              <div className="flex gap-3 pt-4 border-t border-[var(--border-main)]">
+                <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700"><Plus size={14} /> Agregar entrada</button>
+                <button onClick={handleDeleteDay} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700"><Trash2 size={14} /> Eliminar día</button>
+                <button onClick={() => { setIsAdmin(false); setEditId(null); }} className="flex items-center gap-2 px-4 py-2 bg-slate-600 text-white text-xs font-bold rounded-xl hover:bg-slate-700"><LockIcon size={14} /> Salir Admin</button>
               </div>
             )}
 
-            {!isAdmin && (
-              <button onClick={() => setShowPinModal(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200 border border-slate-200"><Shield size={14} /> Admin</button>
+            {!isReadOnly && !isAdmin && (
+              <button onClick={() => setShowPinModal(true)} className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] text-[var(--text-sub)] text-xs font-bold rounded-xl hover:bg-slate-200 border border-[var(--border-main)]"><Shield size={14} /> Admin</button>
             )}
           </div>
         )}

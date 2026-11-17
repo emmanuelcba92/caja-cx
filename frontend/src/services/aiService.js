@@ -2,7 +2,10 @@
  * AI Service - Google Gemini integration for auto-filling orders from email text
  */
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+import { EXTERNAL_SERVICES_ENABLED } from '../firebase/envGuard';
+
+// AISLAMIENTO ETAPA 1: Gemini deshabilitado en modo pruebas (no se envía texto a servicios externos).
+const GEMINI_API_KEY = EXTERNAL_SERVICES_ENABLED ? import.meta.env.VITE_GEMINI_API_KEY : undefined;
 const GEMINI_MODELS = [
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
@@ -21,6 +24,9 @@ const makeUrl = (model) => `https://generativelanguage.googleapis.com/v1beta/mod
  * @returns {Promise<Object>} Parsed order data matching the form fields
  */
 export async function parseEmailToOrder(emailText, profesionalesList = []) {
+    if (!EXTERNAL_SERVICES_ENABLED) {
+        throw new Error('Gemini deshabilitado en modo pruebas (aislamiento Etapa 1).');
+    }
     if (!GEMINI_API_KEY) {
         throw new Error('API key de Gemini no configurada. Contacte al administrador.');
     }

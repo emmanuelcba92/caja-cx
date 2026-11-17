@@ -1,9 +1,14 @@
+// ISOLATION-BLOCKED: script de mantenimiento bloqueado (Etapa 1). Apunta a PRODUCCION (caja-de-cirugia).
+// No se elimina, pero NO puede ejecutarse desde el rediseño. Rehabilitarlo requiere autorizacion explicita,
+// reemplazar su configuracion por la del entorno aislado y retirar este bloqueo.
+throw new Error('[ISOLATION-BLOCKED] Script de mantenimiento bloqueado: apunta a produccion. Ver DESPLIEGUE.md.');
+
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { getStorage, ref, listAll, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyCc1dRzrs8sg9naeCLMBjZMPMS1tMjIF3w",
+    apiKey: "<APIKEY-PRODUCCION-REDACTADA>",
     authDomain: "caja-de-cirugia.firebaseapp.com",
     projectId: "caja-de-cirugia",
     storageBucket: "caja-de-cirugia.firebasestorage.app",

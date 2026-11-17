@@ -5,11 +5,26 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
+let _readOnlyRole = false;
+
 /**
  * Servicio de abstracción para Firestore.
  * Reemplaza las llamadas directas a localStorage por operaciones en la nube.
  */
 const apiService = {
+  setReadOnlyMode(flag) {
+    _readOnlyRole = !!flag;
+  },
+
+  isReadOnlyMode() {
+    return _readOnlyRole;
+  },
+
+  _assertWritable(operation) {
+    if (_readOnlyRole) {
+      throw new Error(`[CONSULTA] Operación "${operation}" bloqueada: el rol CONSULTA es de solo lectura.`);
+    }
+  },
   /**
    * Obtener todos los documentos de una colección
    */
@@ -61,6 +76,7 @@ const apiService = {
    * Agregar un documento nuevo
    */
   async addDocument(collectionName, data) {
+    this._assertWritable(`addDocument(${collectionName})`);
     if (isTestEnv) {
       return this._addLocalDocument(collectionName, data);
     }
@@ -82,6 +98,7 @@ const apiService = {
    * Actualizar un documento existente
    */
   async updateDocument(collectionName, docId, data) {
+    this._assertWritable(`updateDocument(${collectionName}/${docId})`);
     if (isTestEnv) {
       return this._updateLocalDocument(collectionName, docId, data);
     }
@@ -103,6 +120,7 @@ const apiService = {
    * Eliminar un documento
    */
   async deleteDocument(collectionName, docId) {
+    this._assertWritable(`deleteDocument(${collectionName}/${docId})`);
     if (isTestEnv) {
       return this._deleteLocalDocument(collectionName, docId);
     }
@@ -120,6 +138,7 @@ const apiService = {
    * Establecer un documento (crea o reemplaza)
    */
   async setDocument(collectionName, docId, data) {
+    this._assertWritable(`setDocument(${collectionName}/${docId})`);
     if (isTestEnv) {
       return this._addLocalDocument(collectionName, { ...data, id: docId });
     }
@@ -139,7 +158,13 @@ const apiService = {
   /**
    * Escuchar cambios en tiempo real
    */
-  onCollectionSnapshot(collectionName, callback, filters = []) {
+  onCollectionSnapshot(collectionName, callback, filters = [], onError = null) {
+    if (isTestEnv) {
+      const localItems = this._getLocalCollection(collectionName);
+      callback(localItems);
+      return () => {};
+    }
+
     let q = collection(db, collectionName);
     
     if (filters.length > 0) {
@@ -147,13 +172,20 @@ const apiService = {
       q = query(q, ...constraints);
     }
 
-    return onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      }));
-      callback(data);
-    });
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({
+          ...doc.data(),
+          id: doc.id
+        }));
+        callback(data);
+      },
+      (error) => {
+        console.error(`Error in snapshot listener for ${collectionName}:`, error);
+        if (typeof onError === 'function') onError(error);
+      }
+    );
   },
 
   // ========== MÉTODOS LOCALE (localStorage) ==========
@@ -197,6 +229,7 @@ const apiService = {
    * Eliminar todos los documentos de una colección (BLOQUEADO EN PRUEBAS)
    */
   async clearCollection(collectionName) {
+    this._assertWritable(`clearCollection(${collectionName})`);
     const isProtected = import.meta.env.VITE_BLOCK_DELETES === 'true' || 
                         window.location.hostname.includes('test') ||
                         window.location.hostname.includes('cxtest');
@@ -231,6 +264,10 @@ const apiService = {
    * Subir archivo a Firebase Storage
    */
   async uploadFile(path, file) {
+    this._assertWritable(`uploadFile(${path})`);
+    if (isTestEnv) {
+      return URL.createObjectURL(file);
+    }
     if (!storage) {
       throw new Error("Firebase Storage no está configurado.");
     }

@@ -148,25 +148,25 @@ export default function WhatsAppModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto animate-fadeIn">
       <div 
-        className="relative w-full max-w-sm sm:max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[94vh] flex flex-col animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-sm sm:max-w-md bg-[var(--bg-card)] rounded-[2rem] shadow-2xl border border-[var(--border-main)] overflow-hidden my-auto max-h-[94vh] flex flex-col animate-in zoom-in-95 duration-150"
       >
         
         {/* Modal Header */}
-        <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-white border-b border-slate-100 flex items-center justify-between shrink-0 sticky top-0 z-10">
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-[var(--bg-card)] border-b border-[var(--border-main)] flex items-center justify-between shrink-0 sticky top-0 z-10">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
               <MessageSquare size={18} className="text-white fill-white/20" />
             </div>
             <div>
-              <h3 className="text-xs sm:text-sm font-black text-slate-800 tracking-tight uppercase leading-none">Enviar WhatsApp</h3>
+              <h3 className="text-xs sm:text-sm font-black text-[var(--text-main)] tracking-tight uppercase leading-none">Enviar WhatsApp</h3>
               <p className="text-[9px] text-emerald-600 font-black uppercase tracking-wider mt-0.5">Gestión de Turnos y Mensajes</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-[var(--hover-main)] rounded-xl transition-all cursor-pointer"
             title="Cerrar"
           >
             <X size={18} />
@@ -174,12 +174,12 @@ export default function WhatsAppModal({
         </div>
 
         {/* Modal Body - Scrollable */}
-        <div className="p-3.5 sm:p-5 space-y-3 sm:space-y-4 bg-white overflow-y-auto flex-1 custom-scrollbar">
+        <div className="p-3.5 sm:p-5 space-y-3 sm:space-y-4 bg-[var(--bg-card)] overflow-y-auto flex-1 custom-scrollbar">
           
           {/* Patient Header Section */}
-          <div className="text-center space-y-0.5 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paciente</p>
-            <h2 className="text-sm sm:text-base font-black text-slate-900 tracking-tight uppercase">
+          <div className="text-center space-y-0.5 bg-[var(--bg-secondary)]/80 p-3 rounded-2xl border border-[var(--border-main)]">
+            <p className="text-[10px] font-black text-[var(--text-sub)] uppercase tracking-widest">Paciente</p>
+            <h2 className="text-sm sm:text-base font-black text-[var(--text-main)] tracking-tight uppercase">
               {surgery.paciente || surgery.nombre || 'PACIENTE'}
             </h2>
             
@@ -206,11 +206,11 @@ export default function WhatsAppModal({
           </div>
 
           {/* SECCIÓN HORARIO DE INGRESO Y ORDEN */}
-          <div className="p-3.5 bg-gradient-to-br from-amber-50/70 to-indigo-50/40 rounded-2xl border border-amber-200/80 space-y-2.5">
+          <div className="p-3.5 bg-gradient-to-br from-amber-50/70 to-blue-50/40 dark:from-amber-950/20 dark:to-blue-950/20 rounded-2xl border border-amber-200/80 dark:border-amber-900/40 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Clock size={15} className="text-amber-600" />
-                <span className="text-xs font-black text-slate-800 uppercase tracking-tight">
+                <span className="text-xs font-black text-[var(--text-main)] uppercase tracking-tight">
                   Horario de Ingreso
                 </span>
               </div>
@@ -220,16 +220,16 @@ export default function WhatsAppModal({
                   value={horaIngreso}
                   onChange={e => handleApplyHoraIngreso(e.target.value)}
                   placeholder="07:10"
-                  className="w-16 px-2 py-0.5 text-center text-xs font-black text-amber-900 bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none shadow-2xs"
+                  className="w-16 px-2 py-0.5 text-center text-xs font-black text-amber-900 dark:text-amber-200 bg-[var(--bg-card)] border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none shadow-2xs"
                   title="Horario de ingreso del paciente"
                 />
-                <span className="text-[11px] font-bold text-slate-500">hs</span>
+                <span className="text-[11px] font-bold text-[var(--text-sub)]">hs</span>
               </div>
             </div>
 
             {/* Quick Chips for Horario */}
             <div>
-              <p className="text-[10px] font-bold text-slate-500 mb-1">Horarios frecuentes de ingreso:</p>
+              <p className="text-[10px] font-bold text-[var(--text-sub)] mb-1">Horarios frecuentes de ingreso:</p>
               <div className="flex flex-wrap gap-1">
                 {COMMON_INGRESOS.map(timeStr => {
                   const isSelected = horaIngreso === timeStr;
@@ -241,7 +241,7 @@ export default function WhatsAppModal({
                       className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
                         isSelected
                           ? 'bg-amber-500 text-white shadow-xs scale-105'
-                          : 'bg-white text-slate-700 border border-slate-200 hover:border-amber-300 hover:bg-amber-50/50'
+                          : 'bg-[var(--bg-card)] text-[var(--text-main)] border border-[var(--border-main)] hover:border-amber-300 hover:bg-amber-50/50'
                       }`}
                     >
                       {timeStr} hs
@@ -253,8 +253,8 @@ export default function WhatsAppModal({
 
             {/* Quick Chips for Orden / Turno */}
             <div className="pt-1 border-t border-amber-200/50 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 shrink-0">
-                <ListOrdered size={13} className="text-indigo-600" />
+              <div className="flex items-center gap-1 text-[10px] font-bold text-[var(--text-sub)] shrink-0">
+                <ListOrdered size={13} className="text-blue-600" />
                 <span>Orden:</span>
               </div>
               <div className="flex flex-wrap gap-1 justify-end flex-1">
@@ -267,8 +267,8 @@ export default function WhatsAppModal({
                       onClick={() => handleApplyOrden(ordStr)}
                       className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-indigo-50'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-[var(--bg-card)] text-[var(--text-sub)] border border-[var(--border-main)] hover:bg-blue-50'
                       }`}
                     >
                       {ordStr}
@@ -286,7 +286,7 @@ export default function WhatsAppModal({
             <button
               type="button"
               onClick={() => handleCopyText(tplPaciente, 'paciente')}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-black text-xs uppercase tracking-wider shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-xs uppercase tracking-wider shadow-md shadow-blue-600/20 transition-all cursor-pointer"
             >
               {copiedType === 'paciente' ? (
                 <Check size={16} className="text-white shrink-0" />

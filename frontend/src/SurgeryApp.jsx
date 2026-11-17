@@ -48,15 +48,23 @@ import {
   Check,
   MessageCircle,
   MessageSquare,
-  Pin
+  Pin,
+  Sun,
+  Moon
 } from 'lucide-react';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { firebaseConfig } from './firebase/config';
+import { deleteApp } from 'firebase/app';
+import presupuestoCodigosService, {
+  readLocalCodeRules,
+  analyzeLocalImport,
+} from './services/presupuestoCodigosService';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { createIsolatedSecondaryAuth, isPreviewMode } from './firebase/config';
 import CajaView from './CajaView';
 import ProfesionalesView from './ProfesionalesView';
 import CalendarioView from './CalendarioView';
 import PrintConsole from './components/PrintConsole';
+import PresupuestoModal from './components/PresupuestoModal';
+import { getPresupuestoPermissions } from './utils/presupuestoSurgeryMapper';
 import ConsentimientosAdmin from './components/ConsentimientosAdmin';
 import PacientesView from './components/PacientesView';
 import ReciboLibreView from './components/ReciboLibreView';
@@ -71,7 +79,7 @@ import WhatsAppModal from './components/WhatsAppModal';
 import WhatsAppTemplatesAdmin from './components/WhatsAppTemplatesAdmin';
 import { SURGICAL_TEMPLATES } from './data/surgicalTemplates';
 import { DEFAULT_OBRAS_SOCIALES } from './data/obrasSociales';
-import { getCodeName, expandCodes, searchCodes, CLINICAL_NOMENCLADOR, MODULOS_SM, CODIGOS_IOSFA, ESTUDIOS_BAJO_ANESTESIA } from './data/clinicalCodes';
+import { getCodeName, expandCodes, searchCodes, CLINICAL_NOMENCLADOR, MODULOS_SM, CODIGOS_IOSFA, CODIGOS_SANCOR, ESTUDIOS_BAJO_ANESTESIA } from './data/clinicalCodes';
 import { SEED_USERS, SEED_SURGERIES, SEED_PROFESSIONALS } from './data/seedData';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -86,27 +94,30 @@ const StudyPricingFields = ({ data, setData, codes = [] }) => {
 
   if (isParticular) {
     return (
-      <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
-        <label className="block text-[11px] font-bold text-purple-900 uppercase">Valor total del estudio *</label>
+      <div className="p-4 bg-blue-500/5 border-2 border-blue-500/20 rounded-2xl space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="block text-[10px] font-black text-blue-600 uppercase tracking-widest">Presupuesto Particular — Valor total del estudio *</label>
+          <span className="px-2 py-0.5 rounded-lg bg-blue-600/10 text-blue-600 text-[10px] font-black uppercase tracking-wider">Presupuesto</span>
+        </div>
         <input
           required
           inputMode="decimal"
           placeholder="Ej: 580000"
           value={data.valorParticularEstudio || ''}
           onChange={e => setData(prev => ({ ...prev, valorParticularEstudio: e.target.value, conveniosEstudios: {} }))}
-          className="w-full px-3 py-2 rounded-lg border border-purple-300 focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold"
+          className="w-full px-4 py-2.5 rounded-xl border-2 border-blue-500/30 bg-[var(--bg-card)] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none text-sm font-black text-[var(--text-main)] transition-all"
         />
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs font-bold text-purple-900 cursor-pointer">
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <label className="flex items-center gap-2 text-xs font-black text-[var(--text-main)] cursor-pointer select-none">
             <input
               type="checkbox"
               checked={!!data.incluyeIva}
               onChange={e => setData(prev => ({ ...prev, incluyeIva: e.target.checked }))}
-              className="w-4 h-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+              className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
             />
-            IVA
+            Incluir IVA en el presupuesto
           </label>
-          <span className="text-[11px] text-purple-700">En la orden: <strong>{formatCurrencyARS(data.valorParticularEstudio) || '$0,00.'}</strong></span>
+          <span className="text-xs text-[var(--text-sub)] font-medium">En la orden: <strong className="text-blue-600 font-black">{formatCurrencyARS(data.valorParticularEstudio) || '$0,00.'}</strong></span>
         </div>
       </div>
     );
@@ -128,17 +139,24 @@ const StudyPricingFields = ({ data, setData, codes = [] }) => {
   }));
 
   return (
-    <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2.5">
-      <p className="text-[11px] font-bold text-purple-900 uppercase">Convenios y valores</p>
-      <p className="text-[10px] text-purple-700">Marque solo las prácticas no convenidas e ingrese su valor.</p>
-      {items.length === 0 ? <p className="text-xs text-slate-500">Seleccione un estudio para cargar sus valores.</p> : items.map(({ key, label }) => {
+    <div className="p-4 bg-blue-500/5 border-2 border-blue-500/20 rounded-2xl space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Presupuesto y Convenios del Estudio</p>
+          <p className="text-[11px] text-[var(--text-sub)] font-medium">Desmarque las prácticas no convenidas e ingrese su valor de presupuesto.</p>
+        </div>
+        <span className="px-2.5 py-1 rounded-lg bg-blue-600/10 text-blue-600 text-[10px] font-black uppercase tracking-wider shrink-0">Convenios / Presupuesto</span>
+      </div>
+      {items.length === 0 ? <p className="text-xs text-[var(--text-sub)] italic">Seleccione un estudio para configurar sus convenios y valores.</p> : items.map(({ key, label }) => {
         const config = (data.conveniosEstudios || {})[key] || { convenido: true, valor: '' };
         const convenido = config.convenido !== false;
-        return <div key={key} className="flex flex-wrap items-center gap-2 bg-white border border-purple-100 rounded-lg p-2">
-          <span className="text-xs font-semibold text-slate-700 flex-1">{label}</span>
-          <label className="flex items-center gap-1 text-[11px] font-bold text-emerald-700"><input type="checkbox" checked={convenido} onChange={e => update(key, { convenido: e.target.checked, valor: e.target.checked ? '' : config.valor })} /> Convenido</label>
-          {!convenido && <input inputMode="decimal" placeholder="Valor" value={config.valor || ''} onChange={e => update(key, { convenido: false, valor: e.target.value })} className="w-28 px-2 py-1 border border-amber-300 rounded text-xs font-bold" />}
-          {!convenido && <span className="text-[10px] text-amber-700">{formatCurrencyARS(config.valor)}</span>}
+        return <div key={key} className="flex flex-wrap items-center gap-2.5 bg-[var(--bg-card)] border border-[var(--border-main)] rounded-xl p-2.5 shadow-2xs">
+          <span className="text-xs font-bold text-[var(--text-main)] flex-1">{label}</span>
+          <label className="flex items-center gap-1.5 text-[11px] font-black text-emerald-600 cursor-pointer select-none px-2 py-1 rounded-lg bg-emerald-500/10">
+            <input type="checkbox" className="rounded text-emerald-600" checked={convenido} onChange={e => update(key, { convenido: e.target.checked, valor: e.target.checked ? '' : config.valor })} /> Convenido
+          </label>
+          {!convenido && <input inputMode="decimal" placeholder="Valor $" value={config.valor || ''} onChange={e => update(key, { convenido: false, valor: e.target.value })} className="w-32 px-3 py-1.5 border-2 border-amber-400/60 bg-amber-500/5 rounded-xl text-xs font-black text-[var(--text-main)] outline-none focus:border-amber-500" />}
+          {!convenido && <span className="text-[11px] font-black text-amber-600">{formatCurrencyARS(config.valor)}</span>}
         </div>;
       })}
     </div>
@@ -287,12 +305,12 @@ const CardInlineField = ({ label, value, placeholder, isUppercase = false, isSal
   };
 
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all ${
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all ${
       isSala 
-        ? 'bg-amber-50/80 border-amber-300 text-amber-950 focus-within:ring-2 focus-within:ring-amber-400 focus-within:bg-white shadow-2xs' 
-        : 'bg-slate-50 border-slate-200 text-slate-700 focus-within:ring-2 focus-within:ring-indigo-300 focus-within:bg-white shadow-2xs'
+        ? 'bg-amber-500/10 border-amber-400/40 text-amber-900 dark:text-amber-300 focus-within:ring-2 focus-within:ring-amber-400 focus-within:bg-[var(--bg-card)] shadow-2xs' 
+        : 'bg-[var(--bg-secondary)] border-[var(--border-main)] text-[var(--text-main)] focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500 focus-within:bg-[var(--bg-card)] shadow-2xs'
     }`}>
-      <span className={`font-black uppercase select-none shrink-0 ${isSala ? 'text-[11px] text-amber-800' : 'text-[10px] text-slate-500'}`}>
+      <span className={`font-black uppercase select-none shrink-0 ${isSala ? 'text-[10px] text-amber-700 dark:text-amber-400 tracking-wider' : 'text-[10px] text-[var(--text-sub)] tracking-wider'}`}>
         {label}:
       </span>
       <input
@@ -304,8 +322,8 @@ const CardInlineField = ({ label, value, placeholder, isUppercase = false, isSal
         placeholder={placeholder}
         className={`bg-transparent outline-none border-none p-0 min-w-[70px] max-w-[130px] font-black ${
           isSala 
-            ? 'text-[13px] text-amber-950 uppercase tracking-wide placeholder:text-amber-300 font-extrabold' 
-            : 'text-xs text-slate-800 placeholder:text-slate-400'
+            ? 'text-[12px] text-amber-950 dark:text-amber-200 uppercase tracking-wide placeholder:text-amber-400/60 font-extrabold' 
+            : 'text-xs text-[var(--text-main)] placeholder:text-slate-400'
         }`}
         title={`Click para editar ${label}`}
       />
@@ -315,12 +333,12 @@ const CardInlineField = ({ label, value, placeholder, isUppercase = false, isSal
 };
 
 const STATUS = {
-  SOLICITADA: { label: 'Solicitada', color: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
-  CODIFICADA: { label: 'Codificada', color: 'bg-blue-100 text-blue-700 border-blue-200', dot: 'bg-blue-500' },
-  ENVIADA: { label: 'Enviada', color: 'bg-purple-100 text-purple-700 border-purple-200', dot: 'bg-purple-500' },
-  AUTORIZADA: { label: 'Autorizada', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
-  RECHAZADA: { label: 'Rechazada', color: 'bg-rose-100 text-rose-700 border-rose-200', dot: 'bg-rose-500' },
-  CANCELADA: { label: 'Cancelada', color: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-500' },
+  SOLICITADA: { label: 'Solicitada', color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20', dot: 'bg-amber-500' },
+  CODIFICADA: { label: 'Codificada', color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20', dot: 'bg-blue-600' },
+  ENVIADA: { label: 'Enviada', color: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20', dot: 'bg-indigo-500' },
+  AUTORIZADA: { label: 'Autorizada', color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20', dot: 'bg-emerald-500' },
+  RECHAZADA: { label: 'Rechazada', color: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20', dot: 'bg-rose-500' },
+  CANCELADA: { label: 'Cancelada', color: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20', dot: 'bg-slate-500' },
 };
 
 const ROLES = {
@@ -330,6 +348,7 @@ const ROLES = {
   SECRE_ESTUDIOS: 'Secre Estudios',
   ADMIN: 'Admin',
   RESIDENTE: 'Residente',
+  CONSULTA: 'Consulta',
 };
 
 function HelpTooltip({ children, content }) {
@@ -338,7 +357,7 @@ function HelpTooltip({ children, content }) {
     <div className="relative">
       <button
         type="button"
-        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+        className="p-1.5 text-[var(--text-sub)] hover:text-blue-600 hover:bg-blue-500/10 rounded-full transition-colors"
         aria-label="Ayuda campos"
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={() => setIsOpen(false)}
@@ -346,9 +365,9 @@ function HelpTooltip({ children, content }) {
         <HelpCircle size={16} />
       </button>
       {isOpen && createPortal(
-        <div className="fixed z-[100] w-96 bg-white border border-slate-200 rounded-lg shadow-lg p-4">
-          <h4 className="font-bold text-slate-800 mb-3">{children}</h4>
-          <div className="space-y-2 text-sm text-slate-600">{content}</div>
+        <div className="fixed z-[100] w-96 bg-[var(--bg-card)] border border-[var(--border-main)] rounded-2xl shadow-2xl p-5">
+          <h4 className="font-black text-[var(--text-main)] mb-3 text-sm">{children}</h4>
+          <div className="space-y-2 text-xs text-[var(--text-sub)] font-medium">{content}</div>
         </div>,
         document.body
       )}
@@ -378,21 +397,23 @@ const formatMaterialLine = (name, qty) => {
 
 function LoginScreen({ users, onLogin, onNewUser }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="mb-6 flex justify-center">
-            <img src="/coat_logo.png" alt="Logo COAT" className="h-24 w-auto" />
+    <div className="min-h-screen bg-[var(--bg-page)] flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-[var(--bg-card)] rounded-[2.5rem] border border-[var(--border-main)] shadow-2xl p-8 space-y-6">
+        <div className="text-center space-y-3">
+          <div className="flex justify-center">
+            <img src="/coat_logo.png" alt="Logo COAT" className="h-20 w-20 object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-black">Cirugías COAT</h1>
-          <p className="text-slate-500 text-sm mt-1">Seleccioná tu usuario para continuar</p>
+          <div>
+            <h1 className="text-3xl font-black tracking-tight text-[var(--text-main)]">Cirugías COAT</h1>
+            <p className="text-[var(--text-sub)] text-sm font-medium mt-1">Seleccioná tu usuario para continuar</p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h2 className="font-bold text-slate-700 text-sm flex items-center gap-2">
-              <UsersIcon size={16} className="text-indigo-500" />
-              Usuarios
+        <div className="rounded-3xl border border-[var(--border-main)] bg-[var(--bg-secondary)]/40 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-[var(--border-main)]">
+            <h2 className="font-black text-[var(--text-sub)] text-[10px] uppercase tracking-widest flex items-center gap-2">
+              <UsersIcon size={14} className="text-blue-600" />
+              Perfiles Disponibles
             </h2>
           </div>
           <div className="p-2 space-y-1">
@@ -400,31 +421,31 @@ function LoginScreen({ users, onLogin, onNewUser }) {
               <button
                 key={u.id}
                 onClick={() => onLogin(u)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-indigo-50 transition-all text-left group"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-blue-600/5 transition-all text-left group"
               >
-                <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold group-hover:bg-indigo-200 transition-colors">
+                <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-black shadow-md shadow-blue-500/20">
                   {u.nombre.charAt(0)}
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold text-slate-700 text-sm">{u.nombre}</p>
-                  <p className="text-[11px] text-slate-500 font-medium">{u.rol}</p>
+                  <p className="font-bold text-[var(--text-main)] text-sm">{u.nombre}</p>
+                  <p className="text-[11px] text-[var(--text-sub)] font-medium">{u.rol}</p>
                 </div>
-                <div className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                  u.rol === ROLES.ADMIN ? 'bg-rose-100 text-rose-600' :
-                  u.rol === ROLES.DIRECTORA ? 'bg-indigo-100 text-indigo-600' :
-                  u.rol === ROLES.SECRE ? 'bg-amber-100 text-amber-600' :
-                  u.rol === ROLES.RESIDENTE ? 'bg-teal-100 text-teal-700' :
-                  'bg-emerald-100 text-emerald-600'
+                <div className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider ${
+                  u.rol === ROLES.ADMIN ? 'bg-rose-500/10 text-rose-600' :
+                  u.rol === ROLES.DIRECTORA ? 'bg-blue-500/10 text-blue-600' :
+                  u.rol === ROLES.SECRE ? 'bg-amber-500/10 text-amber-600' :
+                  u.rol === ROLES.RESIDENTE ? 'bg-teal-500/10 text-teal-700' :
+                  'bg-emerald-500/10 text-emerald-600'
                 }`}>
                   {u.rol}
                 </div>
               </button>
             ))}
           </div>
-          <div className="px-4 py-3 border-t border-slate-100">
+          <div className="px-4 py-3 border-t border-[var(--border-main)]">
             <button
               onClick={onNewUser}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-all text-sm font-semibold"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-[var(--border-main)] text-[var(--text-sub)] hover:border-blue-500 hover:text-blue-600 transition-all text-xs font-black uppercase tracking-wider"
             >
               <UserPlus size={16} />
               Crear nuevo usuario
@@ -454,50 +475,55 @@ function AuditLogPanel() {
   };
 
   const accionColors = {
-    CREAR: 'bg-emerald-100 text-emerald-700',
-    EDITAR: 'bg-blue-100 text-blue-700',
-    ELIMINAR: 'bg-rose-100 text-rose-700',
-    ESTADO: 'bg-purple-100 text-purple-700',
-    CODIFICAR: 'bg-indigo-100 text-indigo-700',
-    MATERIAL: 'bg-amber-100 text-amber-700',
+    CREAR: 'bg-emerald-500/10 text-emerald-600',
+    EDITAR: 'bg-blue-500/10 text-blue-600',
+    ELIMINAR: 'bg-rose-500/10 text-rose-600',
+    ESTADO: 'bg-purple-500/10 text-purple-600',
+    CODIFICAR: 'bg-blue-500/10 text-blue-600',
+    MATERIAL: 'bg-amber-500/10 text-amber-600',
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest">Historial de Auditoría ({filtered.length})</h4>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest">Historial de Auditoría ({filtered.length})</h4>
+          <p className="text-[11px] text-[var(--text-sub)] font-medium mt-0.5">Registros inmutables del sistema</p>
+        </div>
         <div className="flex items-center gap-2">
-          <input className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-slate-400" placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
-          <button onClick={() => setLogs(JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]'))} className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors" title="Actualizar">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input className="pl-8 pr-3 py-2 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] text-xs font-bold text-[var(--text-main)] outline-none focus:border-blue-600 transition-all" placeholder="Buscar en auditoría..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <button onClick={() => setLogs(JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]'))} className="p-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-blue-600/10 hover:text-blue-600 transition-colors border border-[var(--border-main)]" title="Actualizar">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
           </button>
         </div>
       </div>
-      <p className="text-[10px] text-slate-400 mb-3">Registros inmutables — no se pueden eliminar</p>
       {filtered.length === 0 ? (
-        <p className="py-8 text-center text-slate-400 text-xs">No hay registros de auditoría.</p>
+        <p className="py-12 text-center text-[var(--text-sub)] text-xs font-bold uppercase tracking-widest">No hay registros de auditoría.</p>
       ) : (
-        <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[500px] overflow-y-auto">
+        <div className="border border-[var(--border-main)] rounded-2xl overflow-hidden max-h-[500px] overflow-y-auto">
           <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-slate-50 z-10">
-              <tr className="border-b border-slate-200">
-                <th className="text-left px-4 py-2 font-bold text-slate-500">Fecha</th>
-                <th className="text-left px-4 py-2 font-bold text-slate-500">Usuario</th>
-                <th className="text-left px-4 py-2 font-bold text-slate-500">Acción</th>
-                <th className="text-left px-4 py-2 font-bold text-slate-500">Detalle</th>
+            <thead className="sticky top-0 bg-[var(--bg-secondary)] z-10">
+              <tr className="border-b border-[var(--border-main)] text-[10px] uppercase tracking-widest text-[var(--text-sub)]">
+                <th className="text-left px-4 py-3 font-black">Fecha</th>
+                <th className="text-left px-4 py-3 font-black">Usuario</th>
+                <th className="text-left px-4 py-3 font-black">Acción</th>
+                <th className="text-left px-4 py-3 font-black">Detalle</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-[var(--border-main)]">
               {filtered.map((l) => (
-                <tr key={l.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDate(l.fecha)}</td>
-                  <td className="px-4 py-2 font-bold text-slate-700">{l.usuario}</td>
-                  <td className="px-4 py-2">
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${accionColors[l.accion] || 'bg-slate-100 text-slate-600'}`}>
+                <tr key={l.id} className="hover:bg-blue-600/5 transition-colors">
+                  <td className="px-4 py-2.5 text-[var(--text-sub)] font-medium whitespace-nowrap">{formatDate(l.fecha)}</td>
+                  <td className="px-4 py-2.5 font-bold text-[var(--text-main)]">{l.usuario}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${accionColors[l.accion] || 'bg-slate-500/10 text-slate-600'}`}>
                       {l.accion}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-slate-600">{l.detalle}</td>
+                  <td className="px-4 py-2.5 text-[var(--text-sub)] font-medium">{l.detalle}</td>
                 </tr>
               ))}
             </tbody>
@@ -717,10 +743,16 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
   const [newOS, setNewOS] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const isAdmin = userRole === ROLES.ADMIN;
   const [selectedOSForCodes, setSelectedOSForCodes] = useState('');
-  const [osCodePresupuesto, setOsCodePresupuesto] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('os_code_presupuesto') || '{}'); } catch { return {}; }
-  });
+  const [osCodePresupuesto, setOsCodePresupuesto] = useState({});
+  const [codigosConfigVersion, setCodigosConfigVersion] = useState(0);
+  const [codigosLoading, setCodigosLoading] = useState(true);
+  const [codigosSavingKey, setCodigosSavingKey] = useState(null);
+  const [codigosError, setCodigosError] = useState('');
+  const [codigosSuccess, setCodigosSuccess] = useState('');
+  const [importPreview, setImportPreview] = useState(null);
+  const [isImportingCodigos, setIsImportingCodigos] = useState(false);
   const [restrictCalendarDrag, setRestrictCalendarDrag] = useState(() => {
     try { return localStorage.getItem('restrict_calendar_drag') !== 'false'; } catch { return true; }
   });
@@ -731,18 +763,105 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
     try { return localStorage.getItem('enable_system_notifications') !== 'false'; } catch { return true; }
   });
 
-  useEffect(() => { localStorage.setItem('os_code_presupuesto', JSON.stringify(osCodePresupuesto)); }, [osCodePresupuesto]);
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = presupuestoCodigosService.subscribeSharedConfig(
+      (config) => {
+        if (!active) return;
+        setOsCodePresupuesto(config?.rules || {});
+        setCodigosConfigVersion(Number(config?.version) || 0);
+        setCodigosLoading(false);
+        setCodigosError('');
+      },
+      (err) => {
+        if (!active) return;
+        console.error('[PresupuestoCodigos] Error suscribiendo configuración compartida:', err);
+        setCodigosLoading(false);
+        setCodigosError('No se pudo cargar la configuración compartida desde Firestore.');
+      }
+    );
+    return () => {
+      active = false;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
   useEffect(() => { localStorage.setItem('restrict_calendar_drag', JSON.stringify(restrictCalendarDrag)); }, [restrictCalendarDrag]);
   useEffect(() => { localStorage.setItem('enable_google_calendar_sync', JSON.stringify(enableGoogleCalendarSync)); }, [enableGoogleCalendarSync]);
   useEffect(() => { localStorage.setItem('enable_system_notifications', JSON.stringify(enableNotifications)); }, [enableNotifications]);
 
-  const toggleCodePresupuesto = (os, code) => {
-    setOsCodePresupuesto(prev => {
-      const key = `${os}||${code}`;
-      const next = { ...prev };
-      if (next[key]) delete next[key]; else next[key] = true;
-      return next;
+  const localCodeRules = useMemo(
+    () => (isAdmin ? readLocalCodeRules() : {}),
+    [isAdmin, adminSubTab]
+  );
+  const localCodeRulesCount = Object.keys(localCodeRules).length;
+
+  const toggleCodePresupuesto = async (os, code) => {
+    if (!isAdmin) {
+      setCodigosError('Solo el rol Administrador puede modificar las reglas de presupuesto.');
+      return;
+    }
+    const key = `${os}||${code}`;
+    setCodigosError('');
+    setCodigosSuccess('');
+    setCodigosSavingKey(key);
+    try {
+      const updated = await presupuestoCodigosService.toggleCodeRule({
+        obraSocial: os,
+        code,
+        expectedVersion: codigosConfigVersion,
+        user: { email: currentUser },
+      });
+      setOsCodePresupuesto(updated.rules || {});
+      setCodigosConfigVersion(updated.version);
+    } catch (err) {
+      setCodigosError(err?.message || 'No se pudo actualizar la regla en Firestore.');
+    } finally {
+      setCodigosSavingKey(null);
+    }
+  };
+
+  const handlePrepareLocalImport = () => {
+    if (!isAdmin) return;
+    setCodigosError('');
+    setCodigosSuccess('');
+    const localRules = readLocalCodeRules();
+    const summary = analyzeLocalImport(localRules, osCodePresupuesto);
+    if (summary.localCount === 0) {
+      setCodigosError('No hay reglas guardadas en este navegador para importar.');
+      return;
+    }
+    setImportPreview({
+      localRules,
+      summary,
+      mode: 'merge',
     });
+  };
+
+  const handleConfirmLocalImport = async () => {
+    if (!isAdmin || !importPreview) return;
+    setCodigosError('');
+    setCodigosSuccess('');
+    setIsImportingCodigos(true);
+    try {
+      const res = await presupuestoCodigosService.importLocalRules({
+        localRules: importPreview.localRules,
+        expectedVersion: codigosConfigVersion,
+        mode: importPreview.mode,
+        confirmOverwrite: true,
+        user: { email: currentUser },
+      });
+      setOsCodePresupuesto(res.rules || {});
+      setCodigosConfigVersion(res.version);
+      setImportPreview(null);
+      setCodigosSuccess(
+        `Importación completada (versión compartida ${res.version}). Se conservaron los datos locales de este navegador.`
+      );
+    } catch (err) {
+      setCodigosError(err?.message || 'Error al importar la configuración local. La configuración remota no fue modificada.');
+    } finally {
+      setIsImportingCodigos(false);
+    }
   };
 
   const isMedico = userRole === ROLES.MEDICO;
@@ -753,6 +872,7 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
     if (r === ROLES.SECRE) return 'secre';
     if (r === ROLES.SECRE_ESTUDIOS) return 'secre_estudios';
     if (r === ROLES.RESIDENTE) return 'residente';
+    if (r === ROLES.CONSULTA) return 'consulta';
     return 'medico';
   };
 
@@ -778,23 +898,26 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
     let secondaryApp = null;
     try {
       // 1. Crear en Firebase Authentication usando una app secundaria para no cerrar la sesión del admin
-      const secondaryAppName = `SecondaryAuth_${Date.now()}`;
-      secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
-      const secondaryAuth = getAuth(secondaryApp);
+      if (!isPreviewMode) {
+        const secondaryAppName = `SecondaryAuth_${Date.now()}`;
+        const isolatedSecondary = createIsolatedSecondaryAuth(secondaryAppName);
+        secondaryApp = isolatedSecondary.app;
+        const secondaryAuth = isolatedSecondary.auth;
 
-      try {
-        await createUserWithEmailAndPassword(secondaryAuth, effectiveEmail, newPassword);
-        await signOut(secondaryAuth);
-      } catch (authErr) {
-        if (authErr.code === 'auth/email-already-in-use') {
-          console.warn('El usuario ya existe en Firebase Auth, procediendo a vincular/actualizar permisos.');
-        } else {
-          throw authErr;
+        try {
+          await createUserWithEmailAndPassword(secondaryAuth, effectiveEmail, newPassword);
+          await signOut(secondaryAuth);
+        } catch (authErr) {
+          if (authErr.code === 'auth/email-already-in-use') {
+            console.warn('El usuario ya existe en Firebase Auth, procediendo a vincular/actualizar permisos.');
+          } else {
+            throw authErr;
+          }
         }
       }
 
-      // 2. Guardar en Firestore authorized_emails
-      const docId = effectiveEmail.replace(/[.@]/g, '_');
+      // 2. Guardar en Firestore authorized_emails (usando el email exacto en minúsculas como docId para compatibilidad directa con firestore.rules)
+      const docId = effectiveEmail;
       const profObj = professionals.find(p => String(p.id) === String(newProfessionalId));
       const profName = profObj ? profObj.nombre : (trimmedInput.includes('@') ? cleanUser : trimmedInput);
 
@@ -845,7 +968,7 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
     if (!editNombre.trim()) { setError('Ingrese un nombre'); return; }
     if (!editingUser) return;
     try {
-      const docId = editingUser.id || (editingUser.email ? editingUser.email.replace(/[.@]/g, '_') : null);
+      const docId = editingUser.id || (editingUser.email ? editingUser.email.toLowerCase().trim() : null);
       const profObj = professionals.find(p => String(p.id) === String(editProfessionalId));
       const profName = profObj ? profObj.nombre : editNombre.trim();
 
@@ -883,7 +1006,7 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
     }
     if (window.confirm(`¿Eliminar al usuario ${targetUser.nombre || targetUser.email}? Ya no podrá acceder al sistema.`)) {
       try {
-        const docId = targetUser.id || targetUser.email?.replace(/[.@]/g, '_');
+        const docId = targetUser.id || targetUser.email?.toLowerCase().trim();
         if (docId) {
           await apiService.deleteDocument('authorized_emails', docId);
         }
@@ -898,61 +1021,61 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
 
   const content = (
     <>
-      <div className="p-6 overflow-y-auto space-y-6">
+      <div className="p-6 md:p-8 overflow-y-auto space-y-6">
         {error && (
-          <div className="p-3 rounded-lg bg-rose-50 text-rose-700 text-xs font-medium border border-rose-200">
+          <div className="p-4 rounded-2xl bg-rose-500/10 text-rose-600 text-xs font-bold border border-rose-500/20">
             {error}
           </div>
         )}
 
         {successMsg && (
-          <div className="p-3 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
+          <div className="p-4 rounded-2xl bg-emerald-500/10 text-emerald-600 text-xs font-bold border border-emerald-500/20">
             {successMsg}
           </div>
         )}
 
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+        <div className="flex flex-wrap gap-1.5 bg-[var(--bg-secondary)] p-1.5 rounded-2xl border border-[var(--border-main)]">
              <button onClick={() => setAdminSubTab('usuarios')}
-               className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                 adminSubTab === 'usuarios' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+               className={`flex-1 min-w-[110px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                 adminSubTab === 'usuarios' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
                }`}
              >
                Usuarios
              </button>
               <button onClick={() => setAdminSubTab('profesionales')}
-                className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  adminSubTab === 'profesionales' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                className={`flex-1 min-w-[110px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                  adminSubTab === 'profesionales' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
                 }`}
               >
                 Profesionales
               </button>
               <button onClick={() => setAdminSubTab('obrasSociales')}
-                className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  adminSubTab === 'obrasSociales' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                className={`flex-1 min-w-[110px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                  adminSubTab === 'obrasSociales' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
                 }`}
               >
                 Obras Sociales
               </button>
           {!isMedico && (
             <button onClick={() => setAdminSubTab('codigosOS')}
-              className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                adminSubTab === 'codigosOS' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 min-w-[130px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                adminSubTab === 'codigosOS' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
               }`}
             >
-              Códigos por OS
+              Códigos / Presupuestos
             </button>
           )}
           <button onClick={() => setAdminSubTab('historial')}
-            className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              adminSubTab === 'historial' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            className={`flex-1 min-w-[100px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+              adminSubTab === 'historial' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
             }`}
           >
             Historial
           </button>
           {!isMedico && (
             <button onClick={() => setAdminSubTab('consentimientos')}
-              className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                adminSubTab === 'consentimientos' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 min-w-[130px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                adminSubTab === 'consentimientos' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
               }`}
             >
               Consentimientos
@@ -960,8 +1083,8 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
           )}
           {!isMedico && (
             <button onClick={() => setAdminSubTab('mensajesWA')}
-              className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                adminSubTab === 'mensajesWA' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 min-w-[130px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                adminSubTab === 'mensajesWA' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
               }`}
             >
               Mensajes WhatsApp
@@ -969,17 +1092,17 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
           )}
           {!isMedico && (
             <button onClick={() => setAdminSubTab('config')}
-              className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                adminSubTab === 'config' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 min-w-[115px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                adminSubTab === 'config' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
               }`}
             >
               Configuración
             </button>
           )}
-          {!isMedico && (
+          {isAdmin && (
             <button onClick={() => setAdminSubTab('importar')}
-              className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                adminSubTab === 'importar' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 min-w-[100px] px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                adminSubTab === 'importar' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
               }`}
             >
               Importar
@@ -989,11 +1112,11 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
 
         {adminSubTab === 'usuarios' && (
         <>
-        <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200/80 space-y-3">
-          <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest">Crear nuevo usuario</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="bg-[var(--bg-secondary)]/60 p-5 rounded-3xl border border-[var(--border-main)] space-y-4">
+          <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest">Crear nuevo usuario</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <input
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm bg-white"
+              className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-main)] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all text-sm font-bold bg-[var(--bg-card)] text-[var(--text-main)]"
               placeholder="Usuario o Email (ej: juan o juan@coat.com.ar)"
               value={newNombre}
               onChange={e => setNewNombre(e.target.value)}
@@ -1002,7 +1125,7 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
-                className="w-full px-3 py-2 pr-9 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm bg-white"
+                className="w-full px-4 py-2.5 pr-9 rounded-xl border border-[var(--border-main)] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all text-sm font-bold bg-[var(--bg-card)] text-[var(--text-main)]"
                 placeholder="Contraseña (mínimo 6 caracteres)"
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
@@ -1012,16 +1135,16 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>
-          <div className="flex flex-wrap sm:flex-nowrap gap-2">
+          <div className="flex flex-wrap sm:flex-nowrap gap-3">
             <select
-              className="flex-1 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm bg-white"
+              className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--border-main)] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all text-sm font-bold bg-[var(--bg-card)] text-[var(--text-main)]"
               value={newRol}
               onChange={e => setNewRol(e.target.value)}
               disabled={isSubmittingUser}
@@ -1029,7 +1152,7 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
               {Object.values(ROLES).map(r => <option key={r} value={r}>{r}</option>)}
             </select>
             <select
-              className="flex-1 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm bg-white"
+              className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--border-main)] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all text-sm font-bold bg-[var(--bg-card)] text-[var(--text-main)]"
               value={newProfessionalId || ''}
               onChange={e => setNewProfessionalId(e.target.value || null)}
               disabled={isSubmittingUser}
@@ -1040,43 +1163,43 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
             <button
               onClick={handleCreate}
               disabled={isSubmittingUser}
-              className="px-5 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-md flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50"
+              className="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-wider hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
             >
               {isSubmittingUser ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
               {isSubmittingUser ? 'Guardando...' : 'Crear Usuario'}
             </button>
           </div>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-[var(--text-sub)] font-medium">
             * El usuario podrá iniciar sesión con su nombre de usuario o su correo y la contraseña asignada aquí.
           </p>
         </div>
 
         <div>
-          <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest mb-3">Usuarios existentes ({users.length})</h4>
+          <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Usuarios existentes ({users.length})</h4>
           <div className="space-y-2">
             {users.map(u => (
-              <div key={u.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                u.id === currentUser.id || u.email === currentUser?.email ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-slate-200'
+              <div key={u.id} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
+                u.id === currentUser.id || u.email === currentUser?.email ? 'bg-blue-500/5 border-blue-500/30' : 'bg-[var(--bg-card)] border-[var(--border-main)]'
               }`}>
                 {editingUser?.id === u.id ? (
                   <div className="flex-1 flex items-center gap-2">
                     <div className="flex-1 space-y-1">
                       <input
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                        className="w-full px-3 py-1.5 rounded-xl border border-[var(--border-main)] focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold bg-[var(--bg-card)]"
                         value={editNombre}
                         onChange={e => setEditNombre(e.target.value)}
                         autoFocus
                       />
                       <div className="flex gap-1">
                         <select
-                          className="flex-1 px-2 py-1 rounded-lg border border-slate-300 text-[10px]"
+                          className="flex-1 px-2 py-1 rounded-lg border border-[var(--border-main)] text-[10px] font-bold bg-[var(--bg-card)]"
                           value={editRol}
                           onChange={e => setEditRol(e.target.value)}
                         >
                           {Object.values(ROLES).map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                         <select
-                          className="flex-1 px-2 py-1 rounded-lg border border-slate-300 text-[10px]"
+                          className="flex-1 px-2 py-1 rounded-lg border border-[var(--border-main)] text-[10px] font-bold bg-[var(--bg-card)]"
                           value={editProfessionalId || ''}
                           onChange={e => setEditProfessionalId(e.target.value || null)}
                         >
@@ -1085,53 +1208,53 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
                         </select>
                       </div>
                     </div>
-                    <button onClick={handleSaveEdit} className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors" title="Guardar cambios">
+                    <button onClick={handleSaveEdit} className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors" title="Guardar cambios">
                       <CheckCircle2 size={16} />
                     </button>
-                    <button onClick={() => setEditingUser(null)} className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors" title="Cancelar">
+                    <button onClick={() => setEditingUser(null)} className="p-2 rounded-xl bg-[var(--bg-secondary)] text-[var(--text-sub)] hover:bg-slate-200 transition-colors" title="Cancelar">
                       <XCircle size={16} />
                     </button>
                   </div>
                 ) : (
                   <>
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">
+                    <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-sm">
                       {getCleanUsername(u.nombre || u.email || 'U').charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-semibold text-slate-700 text-sm truncate">
+                        <p className="font-bold text-[var(--text-main)] text-sm truncate">
                           {getCleanUsername(u.nombre || u.email)}
                         </p>
                         {(u.id === currentUser?.id || u.email === currentUser?.email) && (
-                          <span className="text-[10px] text-indigo-500 font-semibold">(vos)</span>
+                          <span className="text-[10px] text-blue-600 font-black uppercase">(vos)</span>
                         )}
                       </div>
                       {u.email && (
-                        <p className="text-[11px] text-slate-400 truncate">
+                        <p className="text-[11px] text-[var(--text-sub)] truncate">
                           {u.email}
                         </p>
                       )}
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-                      u.rol === ROLES.ADMIN ? 'bg-rose-100 text-rose-600' :
-                      u.rol === ROLES.DIRECTORA ? 'bg-indigo-100 text-indigo-600' :
-                      u.rol === ROLES.SECRE ? 'bg-amber-100 text-amber-600' :
-                      u.rol === ROLES.SECRE_ESTUDIOS ? 'bg-purple-100 text-purple-700' :
-                      u.rol === ROLES.RESIDENTE ? 'bg-teal-100 text-teal-700' :
-                      'bg-emerald-100 text-emerald-600'
+                    <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider shrink-0 ${
+                      u.rol === ROLES.ADMIN ? 'bg-rose-500/10 text-rose-600' :
+                      u.rol === ROLES.DIRECTORA ? 'bg-blue-500/10 text-blue-600' :
+                      u.rol === ROLES.SECRE ? 'bg-amber-500/10 text-amber-600' :
+                      u.rol === ROLES.SECRE_ESTUDIOS ? 'bg-purple-500/10 text-purple-700' :
+                      u.rol === ROLES.RESIDENTE ? 'bg-teal-500/10 text-teal-700' :
+                      'bg-emerald-500/10 text-emerald-600'
                     }`}>
                       {u.rol}
                     </span>
                     <button
                       onClick={() => { setEditingUser(u); setEditNombre(u.nombre || u.profesionalName || ''); setEditRol(u.rol); setEditProfessionalId(u.professionalId || null); }}
-                      className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                      className="p-2 rounded-xl bg-[var(--bg-secondary)] text-[var(--text-sub)] hover:bg-blue-500/10 hover:text-blue-600 transition-colors"
                       title="Editar rol / datos"
                     >
                       <Pencil size={14} />
                     </button>
                     <button
                       onClick={() => handleDelete(u)}
-                      className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                      className="p-2 rounded-xl bg-[var(--bg-secondary)] text-[var(--text-sub)] hover:bg-rose-500/10 hover:text-rose-600 transition-colors"
                       title="Eliminar usuario"
                     >
                       <Trash2 size={14} />
@@ -1146,11 +1269,11 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
         )}
 
          {adminSubTab === 'obrasSociales' && (
-           <div>
-             <h4 className="text-xs font-black text-emerald-600 uppercase tracking-widest mb-3">Obras Sociales ({obrasSociales.length})</h4>
-             <div className="flex gap-2 mb-3">
+           <div className="space-y-4">
+             <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest">Obras Sociales ({obrasSociales.length})</h4>
+             <div className="flex gap-2">
                <input
-                 className="flex-1 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm"
+                 className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] focus:bg-[var(--bg-card)] focus:border-blue-600 outline-none transition-all text-sm font-bold text-[var(--text-main)]"
                  placeholder="Agregar obra social..."
                  value={newOS}
                  onChange={e => setNewOS(e.target.value)}
@@ -1162,18 +1285,18 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
                </datalist>
                <button
                  onClick={() => { if (newOS.trim()) { setObrasSociales([...obrasSociales, newOS.trim()]); setNewOS(''); } }}
-                 className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all shadow-md"
+                 className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-wider hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 flex items-center gap-1.5"
                >
                  <PlusCircle size={14} /> Agregar
                </button>
              </div>
              <div className="flex flex-wrap gap-2">
                {obrasSociales.map(os => (
-                 <div key={os} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-600">
+                 <div key={os} className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-main)] text-xs font-bold text-[var(--text-main)]">
                    {os}
                    <button
                      onClick={() => { if (window.confirm(`¿Eliminar "${os}"?`)) setObrasSociales(obrasSociales.filter(o => o !== os)); }}
-                     className="p-0.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                     className="p-0.5 text-[var(--text-sub)] hover:text-rose-500 rounded transition-all"
                    >
                      <XCircle size={14} />
                    </button>
@@ -1186,42 +1309,159 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
            <ProfesionalesView professionals={professionals} setProfessionals={setProfessionals} />
          )}
 
-        {adminSubTab === 'codigosOS' && !isMedico && (
-        <div>
-          <h4 className="text-xs font-black text-purple-600 uppercase tracking-widest mb-3">Códigos Quirúrgicos por Obra Social</h4>
-          <p className="text-[10px] text-slate-400 mb-3">Marque los códigos que requieren presupuesto para cada obra social</p>
-          <div className="mb-4">
-            <select className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-bold outline-none focus:ring-2 focus:ring-purple-500" value={selectedOSForCodes} onChange={e => setSelectedOSForCodes(e.target.value)}>
-              <option value="">Seleccionar obra social...</option>
+        {adminSubTab === 'codigosOS' && !isMedico && (() => {
+          const renderToggle = (code) => {
+            const key = `${selectedOSForCodes}||${code}`;
+            const isActive = Boolean(osCodePresupuesto[key]);
+            const isSaving = codigosSavingKey === key;
+            return (
+              <button
+                type="button"
+                disabled={!isAdmin || codigosLoading || Boolean(codigosSavingKey)}
+                onClick={() => toggleCodePresupuesto(selectedOSForCodes, code)}
+                title={!isAdmin ? 'Solo lectura: solo ADMIN puede modificar reglas' : 'Alternar si requiere presupuesto'}
+                className={`px-3.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${
+                  isActive
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-400 shadow-2xs'
+                    : 'bg-[var(--bg-secondary)] border-[var(--border-main)] text-[var(--text-sub)] hover:border-blue-500/40'
+                } ${!isAdmin || codigosLoading || Boolean(codigosSavingKey) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                {isSaving ? 'Guardando...' : isActive ? 'SI • PRESUPUESTO' : 'NO'}
+              </button>
+            );
+          };
+
+          return (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest">Códigos Quirúrgicos y Presupuestos por Obra Social</h4>
+              <p className="text-[11px] text-[var(--text-sub)] font-medium mt-0.5">
+                Configuración compartida en Firestore ({Object.keys(osCodePresupuesto).length} reglas activas{codigosConfigVersion > 0 ? ` • v${codigosConfigVersion}` : ''})
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!isAdmin && (
+                <span className="px-3 py-1 rounded-xl bg-slate-500/10 text-[var(--text-sub)] border border-[var(--border-main)] text-[10px] font-black uppercase tracking-widest">
+                  Solo lectura (solo ADMIN edita)
+                </span>
+              )}
+              <span className="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-600 border border-amber-500/20 text-[10px] font-black uppercase tracking-widest">Reglas de Presupuestos</span>
+            </div>
+          </div>
+
+          {codigosError && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 text-xs font-bold">
+              {codigosError}
+            </div>
+          )}
+          {codigosSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 text-xs font-bold">
+              {codigosSuccess}
+            </div>
+          )}
+
+          {isAdmin && localCodeRulesCount > 0 && (
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-black text-amber-700 dark:text-amber-400">
+                    Configuración local detectada en este navegador ({localCodeRulesCount} reglas en localStorage)
+                  </p>
+                  <p className="text-[11px] text-[var(--text-sub)] mt-0.5">
+                    La fuente de verdad compartida es Firestore. Podés importar tus reglas locales de forma explícita cuando lo desees (los datos locales se conservarán).
+                  </p>
+                </div>
+                {!importPreview && (
+                  <button
+                    type="button"
+                    disabled={codigosLoading || isImportingCodigos}
+                    onClick={handlePrepareLocalImport}
+                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                  >
+                    Importar configuración local
+                  </button>
+                )}
+              </div>
+
+              {importPreview && (
+                <div className="p-3.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border-main)] space-y-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-bold">
+                    <div>Reglas locales a importar: {importPreview.summary.localCount}</div>
+                    <div>Nuevas en Firestore: {importPreview.summary.newKeys.length}</div>
+                    <div>Superpuestas / ya en Firestore: {importPreview.summary.overlappingKeys.length} (remotas totales: {importPreview.summary.remoteCount})</div>
+                  </div>
+                  {importPreview.summary.hasConflicts && (
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 font-bold text-[11px]">
+                      Advertencia: ya existen {importPreview.summary.remoteCount} reglas en Firestore ({importPreview.summary.overlappingKeys.length} coinciden con las locales y {importPreview.summary.remoteOnlyKeys.length} solo están en Firestore). Confirmá explícitamente cómo proceder.
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-4 text-[11px] font-bold">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="import-codigos-mode"
+                        checked={importPreview.mode === 'merge'}
+                        onChange={() => setImportPreview(prev => ({ ...prev, mode: 'merge' }))}
+                      />
+                      Combinar (agregar nuevas y conservar las remotas existentes)
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="import-codigos-mode"
+                        checked={importPreview.mode === 'replace'}
+                        onChange={() => setImportPreview(prev => ({ ...prev, mode: 'replace' }))}
+                      />
+                      Reemplazar configuración remota con la local
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={isImportingCodigos}
+                      onClick={handleConfirmLocalImport}
+                      className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-wider disabled:opacity-50"
+                    >
+                      {isImportingCodigos ? 'Importando...' : 'Confirmar importación'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isImportingCodigos}
+                      onClick={() => setImportPreview(null)}
+                      className="px-3.5 py-1.5 rounded-xl border border-[var(--border-main)] text-[var(--text-sub)] text-[11px] font-black uppercase tracking-wider"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <select className="w-full px-4 py-3 rounded-2xl border-2 border-[var(--border-main)] bg-[var(--bg-secondary)] text-sm font-black text-[var(--text-main)] outline-none focus:border-blue-600 transition-all" value={selectedOSForCodes} onChange={e => setSelectedOSForCodes(e.target.value)}>
+              <option value="">Seleccionar obra social para configurar presupuestos...</option>
               {obrasSociales.map(os => <option key={os} value={os}>{os}</option>)}
             </select>
           </div>
           {selectedOSForCodes && (
-            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[500px] overflow-y-auto">
+            <div className="border border-[var(--border-main)] rounded-2xl overflow-hidden max-h-[500px] overflow-y-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-50 z-10">
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left px-4 py-2 font-bold text-slate-500">Código</th>
-                    <th className="text-left px-4 py-2 font-bold text-slate-500">Nombre</th>
-                    <th className="text-center px-4 py-2 font-bold text-slate-500 w-32">Por Presupuesto</th>
+                <thead className="sticky top-0 bg-[var(--bg-secondary)] z-10">
+                  <tr className="border-b border-[var(--border-main)] text-[10px] uppercase tracking-widest text-[var(--text-sub)]">
+                    <th className="text-left px-4 py-3 font-black">Código</th>
+                    <th className="text-left px-4 py-3 font-black">Práctica / Módulo</th>
+                    <th className="text-center px-4 py-3 font-black w-40">¿Requiere Presupuesto?</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-[var(--border-main)]">
                   {!selectedOSForCodes.toUpperCase().includes('IOSFA') && CLINICAL_NOMENCLADOR.map(c => (
-                    <tr key={c.code} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-2 font-bold text-indigo-700">{c.code}</td>
-                      <td className="px-4 py-2 text-slate-600">{c.name}</td>
-                      <td className="px-4 py-2 text-center">
-                        <button
-                          onClick={() => toggleCodePresupuesto(selectedOSForCodes, c.code)}
-                          className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all border ${
-                            osCodePresupuesto[`${selectedOSForCodes}||${c.code}`]
-                              ? 'bg-amber-100 border-amber-300 text-amber-700'
-                              : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
-                          }`}
-                        >
-                          {osCodePresupuesto[`${selectedOSForCodes}||${c.code}`] ? 'SI' : 'NO'}
-                        </button>
+                    <tr key={c.code} className="hover:bg-blue-600/5 transition-colors">
+                      <td className="px-4 py-2.5 font-black text-blue-600">{c.code}</td>
+                      <td className="px-4 py-2.5 text-[var(--text-main)] font-medium">{c.name}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        {renderToggle(c.code)}
                       </td>
                     </tr>
                   ))}
@@ -1231,42 +1471,33 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
                       return found ? `${code} ${found.name}` : code;
                     }).join(', ');
                     return (
-                    <tr key={`sm-${m.code}`} className="border-b border-slate-100 last:border-0 bg-purple-50/50 hover:bg-purple-50 transition-colors">
-                      <td className="px-4 py-2 font-bold text-purple-700">{m.code}</td>
-                      <td className="px-4 py-2 text-slate-600 font-medium">
+                    <tr key={`sm-${m.code}`} className="bg-blue-500/5 hover:bg-blue-500/10 transition-colors">
+                      <td className="px-4 py-2.5 font-black text-blue-600">{m.code}</td>
+                      <td className="px-4 py-2.5 text-[var(--text-main)] font-medium">
                         {m.name}
-                        {includedNames && <span className="text-slate-400 font-normal text-[10px] ml-1">({includedNames})</span>}
+                        {includedNames && <span className="text-[var(--text-sub)] font-normal text-[10px] ml-1">({includedNames})</span>}
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        <button
-                          onClick={() => toggleCodePresupuesto(selectedOSForCodes, m.code)}
-                          className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all border ${
-                            osCodePresupuesto[`${selectedOSForCodes}||${m.code}`]
-                              ? 'bg-amber-100 border-amber-300 text-amber-700'
-                              : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
-                          }`}
-                        >
-                          {osCodePresupuesto[`${selectedOSForCodes}||${m.code}`] ? 'SI' : 'NO'}
-                        </button>
+                      <td className="px-4 py-2.5 text-center">
+                        {renderToggle(m.code)}
                       </td>
                     </tr>
                     );
                   })}
                   {selectedOSForCodes.toUpperCase().includes('IOSFA') && CODIGOS_IOSFA.map(c => (
-                    <tr key={`iosfa-${c.code}`} className="border-b border-slate-100 last:border-0 bg-emerald-50/50 hover:bg-emerald-50 transition-colors">
-                      <td className="px-4 py-2 font-bold text-emerald-700">{c.code} <span className="text-emerald-500 font-normal">({c.generalCode})</span></td>
-                      <td className="px-4 py-2 text-slate-600 font-medium">{c.name}</td>
-                      <td className="px-4 py-2 text-center">
-                        <button
-                          onClick={() => toggleCodePresupuesto(selectedOSForCodes, c.code)}
-                          className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all border ${
-                            osCodePresupuesto[`${selectedOSForCodes}||${c.code}`]
-                              ? 'bg-amber-100 border-amber-300 text-amber-700'
-                              : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
-                          }`}
-                        >
-                          {osCodePresupuesto[`${selectedOSForCodes}||${c.code}`] ? 'SI' : 'NO'}
-                        </button>
+                    <tr key={`iosfa-${c.code}`} className="bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors">
+                      <td className="px-4 py-2.5 font-black text-emerald-600">{c.code} <span className="text-emerald-500 font-normal">({c.generalCode})</span></td>
+                      <td className="px-4 py-2.5 text-[var(--text-main)] font-medium">{c.name}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        {renderToggle(c.code)}
+                      </td>
+                    </tr>
+                  ))}
+                  {selectedOSForCodes.toUpperCase().includes('SANCOR') && CODIGOS_SANCOR.map(c => (
+                    <tr key={`sancor-${c.code}`} className="bg-indigo-500/5 hover:bg-indigo-500/10 transition-colors">
+                      <td className="px-4 py-2.5 font-black text-indigo-600">{c.code}</td>
+                      <td className="px-4 py-2.5 text-[var(--text-main)] font-medium">{c.name}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        {renderToggle(c.code)}
                       </td>
                     </tr>
                   ))}
@@ -1275,7 +1506,8 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
             </div>
           )}
         </div>
-        )}
+          );
+        })()}
 
         {adminSubTab === 'historial' && (
         <AuditLogPanel />
@@ -1287,17 +1519,17 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
 
         {adminSubTab === 'config' && !isMedico && (
         <div>
-          <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest mb-4">Configuración del Sistema</h4>
+          <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-4">Configuración del Sistema</h4>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between p-5 bg-[var(--bg-secondary)]/60 rounded-2xl border border-[var(--border-main)]">
               <div>
-                <p className="font-bold text-slate-700 text-sm">Restringir arrastre en calendario</p>
-                <p className="text-xs text-slate-500 mt-0.5">Si está activado, cada médico solo puede mover sus propias cirugías en el calendario. Directora y Admin siempre pueden mover todo.</p>
+                <p className="font-bold text-[var(--text-main)] text-sm">Restringir arrastre en calendario</p>
+                <p className="text-xs text-[var(--text-sub)] mt-0.5">Si está activado, cada médico solo puede mover sus propias cirugías en el calendario. Directora y Admin siempre pueden mover todo.</p>
               </div>
               <button
                 onClick={() => setRestrictCalendarDrag(!restrictCalendarDrag)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  restrictCalendarDrag ? 'bg-indigo-600' : 'bg-slate-300'
+                  restrictCalendarDrag ? 'bg-blue-600' : 'bg-slate-300'
                 }`}
               >
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -1306,13 +1538,13 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
               </button>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between p-5 bg-[var(--bg-secondary)]/60 rounded-2xl border border-[var(--border-main)]">
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="font-bold text-slate-700 text-sm">Sincronización con Google Calendar</p>
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-700">Google Calendar / Gmail</span>
+                  <p className="font-bold text-[var(--text-main)] text-sm">Sincronización con Google Calendar</p>
+                  <span className="px-2 py-0.5 text-[10px] font-black uppercase rounded-lg bg-emerald-500/10 text-emerald-600">Google Calendar / Gmail</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">Permite a los profesionales sincronizar y agregar sus cirugías en 1 clic directamente a su cuenta de Gmail y Google Calendar personal.</p>
+                <p className="text-xs text-[var(--text-sub)] mt-0.5">Permite a los profesionales sincronizar y agregar sus cirugías en 1 clic directamente a su cuenta de Gmail y Google Calendar personal.</p>
               </div>
               <button
                 onClick={() => setEnableGoogleCalendarSync(!enableGoogleCalendarSync)}
@@ -1326,13 +1558,13 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
               </button>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between p-5 bg-[var(--bg-secondary)]/60 rounded-2xl border border-[var(--border-main)]">
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="font-bold text-slate-700 text-sm">Notificaciones del Sistema</p>
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-100 text-blue-700">Alertas y Avisos</span>
+                  <p className="font-bold text-[var(--text-main)] text-sm">Notificaciones del Sistema</p>
+                  <span className="px-2 py-0.5 text-[10px] font-black uppercase rounded-lg bg-blue-500/10 text-blue-600">Alertas y Avisos</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">Activa o desactiva las alertas sonoras y notificaciones emergentes de cirugías nuevas, cambios de estado y recordatorios.</p>
+                <p className="text-xs text-[var(--text-sub)] mt-0.5">Activa o desactiva las alertas sonoras y notificaciones emergentes de cirugías nuevas, cambios de estado y recordatorios.</p>
               </div>
               <button
                 onClick={() => {
@@ -1361,10 +1593,10 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
           </div>
         )}
 
-        {adminSubTab === 'importar' && !isMedico && (
+        {adminSubTab === 'importar' && isAdmin && (
           <div>
             <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Importar datos del sistema anterior</h4>
-            <DataImporter onDataImported={() => window.location.reload()} />
+            <DataImporter onDataImported={() => window.location.reload()} userRole={userRole} />
           </div>
         )}
       </div>
@@ -1373,12 +1605,15 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
 
   if (inline) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <h3 className="font-bold text-slate-700 flex items-center gap-2">
-            <Settings size={18} className="text-indigo-600" />
-            Panel de Administración
-          </h3>
+      <div className="card">
+        <div className="px-6 md:px-8 py-5 border-b border-[var(--border-main)] bg-[var(--bg-secondary)]/40 flex items-center justify-between">
+          <div>
+            <h3 className="font-black text-xl tracking-tight text-[var(--text-main)] flex items-center gap-2.5">
+              <Settings size={20} className="text-blue-600" />
+              Panel de Administración
+            </h3>
+            <p className="text-xs text-[var(--text-sub)] font-medium mt-0.5">Gestión de usuarios, obras sociales, presupuestos y parámetros</p>
+          </div>
         </div>
         {content}
       </div>
@@ -1386,14 +1621,14 @@ function AdminPanel({ users, setUsers, currentUser, onClose, inline, obrasSocial
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center gap-2">
-            <Settings size={20} className="text-indigo-600" />
-            <h3 className="font-bold text-slate-800">Panel de Administración</h3>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+      <div className="bg-[var(--bg-card)] rounded-[2.5rem] border border-[var(--border-main)] shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="px-8 py-5 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-secondary)]/40">
+          <div className="flex items-center gap-2.5">
+            <Settings size={20} className="text-blue-600" />
+            <h3 className="font-black text-lg text-[var(--text-main)]">Panel de Administración</h3>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+          <button onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors">
             <XCircle size={20} className="text-slate-400" />
           </button>
         </div>
@@ -1543,15 +1778,18 @@ function MetricsPanel({ surgeries }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <BarChart3 size={20} className="text-indigo-600" />
-            <h3 className="font-bold text-slate-700 text-lg">Métricas</h3>
+      <div className="card p-6 md:p-8">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div>
+            <h3 className="text-2xl font-black tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-2.5">
+              <BarChart3 size={24} className="text-blue-600" />
+              Métricas Quirúrgicas
+            </h3>
+            <p className="text-xs text-[var(--text-sub)] font-medium mt-0.5">Estadísticas de cirugías, obras sociales y prácticas más solicitadas</p>
           </div>
           <button
             onClick={exportToExcel}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all shadow-md"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-600 text-white text-xs font-black uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
           >
             <FileText size={16} />
             Descargar Excel
@@ -1559,28 +1797,28 @@ function MetricsPanel({ surgeries }) {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-4 mb-8 p-4 bg-slate-50 rounded-xl border border-slate-100">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase">Obra Social</label>
-            <select className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold bg-white outline-none" value={osFilter} onChange={e => setOsFilter(e.target.value)}>
+        <div className="flex flex-wrap gap-4 mb-8 p-5 bg-[var(--bg-secondary)]/60 rounded-2xl border border-[var(--border-main)]">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-[var(--text-sub)] uppercase tracking-widest">Obra Social</label>
+            <select className="px-3.5 py-2 rounded-xl border border-[var(--border-main)] text-xs font-bold bg-[var(--bg-card)] text-[var(--text-main)] outline-none focus:border-blue-600" value={osFilter} onChange={e => setOsFilter(e.target.value)}>
               <option value="">Todas las OS</option>
               {osOptions.map(os => <option key={os} value={os}>{os}</option>)}
             </select>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase">Desde</label>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-[var(--text-sub)] uppercase tracking-widest">Desde</label>
             <input
               type="date"
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold bg-white outline-none"
+              className="px-3.5 py-2 rounded-xl border border-[var(--border-main)] text-xs font-bold bg-[var(--bg-card)] text-[var(--text-main)] outline-none focus:border-blue-600"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase">Hasta</label>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-[var(--text-sub)] uppercase tracking-widest">Hasta</label>
             <input
               type="date"
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold bg-white outline-none"
+              className="px-3.5 py-2 rounded-xl border border-[var(--border-main)] text-xs font-bold bg-[var(--bg-card)] text-[var(--text-main)] outline-none focus:border-blue-600"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
             />
@@ -1588,7 +1826,7 @@ function MetricsPanel({ surgeries }) {
           <div className="flex items-end">
             <button
               onClick={() => { setOsFilter(''); setStartDate(''); setEndDate(''); }}
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 px-2 py-1.5"
+              className="text-xs font-black uppercase tracking-wider text-blue-600 hover:text-blue-700 px-3 py-2 rounded-xl hover:bg-blue-500/10 transition-all"
             >
               Limpiar filtros
             </button>
@@ -1597,47 +1835,47 @@ function MetricsPanel({ surgeries }) {
 
         {/* Monthly chart */}
         <div className="mb-8">
-          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Cirugías por Mes</h4>
-          <div className="space-y-2">
+          <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-widest mb-4">Cirugías por Mes</h4>
+          <div className="space-y-2.5">
             {monthlyData.map((m, i) => (
               <div key={i} className="flex items-center gap-3">
-                <span className="text-xs font-bold text-slate-500 w-20 shrink-0">{m.label}</span>
-                <div className="flex-1 flex items-center gap-1 h-7">
-                  <div className="h-full bg-emerald-400 rounded-l" style={{ width: `${(m.realizadas / maxTotal) * 100}%`, minWidth: m.realizadas > 0 ? '4px' : '0' }} title={`Realizadas: ${m.realizadas}`} />
+                <span className="text-xs font-bold text-[var(--text-sub)] w-20 shrink-0">{m.label}</span>
+                <div className="flex-1 flex items-center gap-1 h-7 bg-[var(--bg-secondary)] rounded-xl p-1 overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-l-lg" style={{ width: `${(m.realizadas / maxTotal) * 100}%`, minWidth: m.realizadas > 0 ? '4px' : '0' }} title={`Realizadas: ${m.realizadas}`} />
                   <div className="h-full bg-amber-400" style={{ width: `${((m.total - m.realizadas - m.canceladas - m.rechazadas) / maxTotal) * 100}%`, minWidth: (m.total - m.realizadas - m.canceladas - m.rechazadas) > 0 ? '4px' : '0' }} title={`En proceso: ${m.total - m.realizadas - m.canceladas - m.rechazadas}`} />
-                  <div className="h-full bg-rose-400" style={{ width: `${(m.rechazadas / maxTotal) * 100}%`, minWidth: m.rechazadas > 0 ? '4px' : '0' }} title={`Rechazadas: ${m.rechazadas}`} />
-                  <div className="h-full bg-slate-400 rounded-r" style={{ width: `${(m.canceladas / maxTotal) * 100}%`, minWidth: m.canceladas > 0 ? '4px' : '0' }} title={`Canceladas: ${m.canceladas}`} />
+                  <div className="h-full bg-rose-500" style={{ width: `${(m.rechazadas / maxTotal) * 100}%`, minWidth: m.rechazadas > 0 ? '4px' : '0' }} title={`Rechazadas: ${m.rechazadas}`} />
+                  <div className="h-full bg-slate-400 rounded-r-lg" style={{ width: `${(m.canceladas / maxTotal) * 100}%`, minWidth: m.canceladas > 0 ? '4px' : '0' }} title={`Canceladas: ${m.canceladas}`} />
                 </div>
-                <span className="text-xs font-bold text-slate-600 w-8 text-right">{m.total}</span>
+                <span className="text-xs font-black text-[var(--text-main)] w-8 text-right">{m.total}</span>
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-4 mt-3 text-[10px] font-bold text-slate-500">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-400 inline-block" /> Realizadas</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-400 inline-block" /> En proceso</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-rose-400 inline-block" /> Rechazadas</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-slate-400 inline-block" /> Canceladas</span>
+          <div className="flex flex-wrap items-center gap-4 mt-4 text-[10px] font-black uppercase tracking-wider text-[var(--text-sub)]">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Realizadas</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> En proceso</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" /> Rechazadas</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400 inline-block" /> Canceladas</span>
           </div>
         </div>
 
         {/* OS filter + Stats */}
-        <div className="mb-6">
+        <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Por Obra Social</h4>
-            <select className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold bg-white outline-none" value={osFilter} onChange={e => setOsFilter(e.target.value)}>
+            <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-widest">Desglose por Obra Social</h4>
+            <select className="px-3 py-1.5 rounded-xl border border-[var(--border-main)] text-xs font-bold bg-[var(--bg-secondary)] text-[var(--text-main)] outline-none" value={osFilter} onChange={e => setOsFilter(e.target.value)}>
               <option value="">Todas las OS</option>
               {osOptions.map(os => <option key={os} value={os}>{os}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {osStats.map(([os, stats]) => (
-              <div key={os} className="bg-slate-50 rounded-xl border border-slate-200 p-4">
-                <p className="font-bold text-slate-700 text-sm mb-2">{os}</p>
+              <div key={os} className="bg-[var(--bg-secondary)]/50 rounded-2xl border border-[var(--border-main)] p-5 hover:border-blue-500/30 transition-all">
+                <p className="font-black text-[var(--text-main)] text-sm mb-3">{os}</p>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div><span className="text-slate-400">Total:</span> <span className="font-bold text-slate-700">{stats.total}</span></div>
-                  <div><span className="text-emerald-500">Realizadas:</span> <span className="font-bold text-emerald-700">{stats.realizadas}</span></div>
-                  <div><span className="text-rose-500">Rechazadas:</span> <span className="font-bold text-rose-700">{stats.rechazadas}</span></div>
-                  <div><span className="text-slate-400">Canceladas:</span> <span className="font-bold text-slate-600">{stats.canceladas}</span></div>
+                  <div><span className="text-[var(--text-sub)] font-medium">Total:</span> <span className="font-black text-[var(--text-main)]">{stats.total}</span></div>
+                  <div><span className="text-emerald-600 font-medium">Realizadas:</span> <span className="font-black text-emerald-600">{stats.realizadas}</span></div>
+                  <div><span className="text-rose-500 font-medium">Rechazadas:</span> <span className="font-black text-rose-600">{stats.rechazadas}</span></div>
+                  <div><span className="text-[var(--text-sub)] font-medium">Canceladas:</span> <span className="font-black text-[var(--text-sub)]">{stats.canceladas}</span></div>
                 </div>
               </div>
             ))}
@@ -1647,24 +1885,24 @@ function MetricsPanel({ surgeries }) {
         {/* Top codes */}
         {topCodes.length > 0 && (
           <div>
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+            <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-widest mb-3">
               Códigos más solicitados {osFilter ? `(${osFilter})` : '(todas las OS)'}
             </h4>
-            <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+            <div className="border border-[var(--border-main)] rounded-2xl overflow-hidden">
               <table className="w-full text-xs">
-                <thead><tr className="border-b border-slate-200">
-                  <th className="text-left px-4 py-2 font-bold text-slate-500">#</th>
-                  <th className="text-left px-4 py-2 font-bold text-slate-500">Código</th>
-                  <th className="text-left px-4 py-2 font-bold text-slate-500">Nombre</th>
-                  <th className="text-right px-4 py-2 font-bold text-slate-500">Pedidos</th>
+                <thead className="bg-[var(--bg-secondary)]"><tr className="border-b border-[var(--border-main)] text-[10px] uppercase tracking-widest text-[var(--text-sub)]">
+                  <th className="text-left px-4 py-3 font-black">#</th>
+                  <th className="text-left px-4 py-3 font-black">Código</th>
+                  <th className="text-left px-4 py-3 font-black">Nombre</th>
+                  <th className="text-right px-4 py-3 font-black">Pedidos</th>
                 </tr></thead>
-                <tbody>
+                <tbody className="divide-y divide-[var(--border-main)]">
                   {topCodes.map((c, i) => (
-                    <tr key={i} className="border-b border-slate-100 last:border-0">
-                      <td className="px-4 py-2 text-slate-400 font-bold">{i + 1}</td>
-                      <td className="px-4 py-2 font-bold text-indigo-700">{c.code}</td>
-                      <td className="px-4 py-2 text-slate-600">{c.name}</td>
-                      <td className="px-4 py-2 text-right font-bold text-slate-700">{c.count}</td>
+                    <tr key={i} className="hover:bg-blue-600/5 transition-colors">
+                      <td className="px-4 py-2.5 text-[var(--text-sub)] font-bold">{i + 1}</td>
+                      <td className="px-4 py-2.5 font-black text-blue-600">{c.code}</td>
+                      <td className="px-4 py-2.5 text-[var(--text-main)] font-medium">{c.name}</td>
+                      <td className="px-4 py-2.5 text-right font-black text-[var(--text-main)]">{c.count}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1683,11 +1921,26 @@ export { MetricsPanel };
 
 export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const { currentUser: authUser, userRole: authRole, isSuperAdmin, logout } = useAuth();
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved === 'dark';
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
   
   // Map Firebase Auth user to legacy format for SurgeryApp compatibility
   const [currentUser, setCurrentUser] = useState(() => {
     if (authUser) {
-      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', 'secre estudios': 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
+      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', 'secre estudios': 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente', consulta: 'Consulta' };
       const rawName = authUser.displayName || getCleanUsername(authUser.email);
       return { id: authUser.uid, nombre: rawName, rol: roleMap[authRole] || 'Admin', email: authUser.email };
     }
@@ -1744,6 +1997,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
   const userRole = currentUser?.rol || null;
   const isSecreEstudios = userRole === ROLES.SECRE_ESTUDIOS;
+  const isConsulta = userRole === ROLES.CONSULTA;
+
+  useEffect(() => {
+    apiService.setReadOnlyMode(isConsulta);
+  }, [isConsulta]);
 
   const [formData, setFormData] = useState({ 
     emailProfesional: '', 
@@ -1784,6 +2042,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const [encargadoFilter, setEncargadoFilter] = useState('Auditadas');
   const [directoraFilter, setDirectoraFilter] = useState('Sin auditar');
   const [currentTab, setCurrentTab] = useState('Solicitud');
+  const [cirugiasSubTab, setCirugiasSubTab] = useState('Solicitud');
   const [searchTerm, setSearchTerm] = useState('');
   const [obraSocialFilter, setObraSocialFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -1801,6 +2060,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const [visibleCount, setVisibleCount] = useState(15);
   const [printSurgery, setPrintSurgery] = useState(null);
   const [printModalData, setPrintModalData] = useState(null);
+  const [presupuestoModalSurgery, setPresupuestoModalSurgery] = useState(null);
   const [editModalData, setEditModalData] = useState(null);
   const [viewMode, setViewMode] = useState('cards');
   const [codeInputs, setCodeInputs] = useState(['', '']);
@@ -1838,20 +2098,89 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const canManageStatus = userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.ADMIN;
   const canCancelOwn = userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.SECRE_ESTUDIOS;
   const isAdmin = userRole === ROLES.ADMIN;
+  const canAccessPresupuestos = useMemo(() => getPresupuestoPermissions(userRole).canView, [userRole]);
+
+  // Subsecciones autorizadas dentro de "Cirugías" según el rol existente
+  const allowedCirugiasSubTabs = useMemo(() => {
+    if (userRole === ROLES.ADMIN) {
+      return [
+        { id: 'Solicitud', label: 'Solicitudes', icon: FileText },
+        { id: 'Auditoría', label: 'Auditoría', icon: ShieldCheck },
+        { id: 'Gestión', label: 'Gestión', icon: ClipboardList },
+      ];
+    }
+    if (userRole === ROLES.DIRECTORA) {
+      return [
+        { id: 'Solicitud', label: 'Solicitudes', icon: FileText },
+        { id: 'Auditoría', label: 'Auditoría', icon: ShieldCheck },
+      ];
+    }
+    if (userRole === ROLES.SECRE || userRole === ROLES.CONSULTA) {
+      return [
+        { id: 'Gestión', label: 'Gestión', icon: ClipboardList },
+      ];
+    }
+    if (userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) {
+      return [
+        { id: 'Solicitud', label: 'Solicitudes', icon: FileText },
+      ];
+    }
+    return [];
+  }, [userRole]);
+
+  const isCirugiasTab = currentTab === 'Solicitud' || currentTab === 'Auditoría' || currentTab === 'Gestión';
+
+  // Sincronizar subsección activa de Cirugías cuando cambia el rol del usuario
+  useEffect(() => {
+    if (allowedCirugiasSubTabs.length === 0) return;
+    const isSubTabValid = allowedCirugiasSubTabs.some(t => t.id === cirugiasSubTab);
+    const effectiveSubTab = isSubTabValid ? cirugiasSubTab : allowedCirugiasSubTabs[0].id;
+    if (effectiveSubTab !== cirugiasSubTab) {
+      setCirugiasSubTab(effectiveSubTab);
+    }
+    if (isCirugiasTab && !allowedCirugiasSubTabs.some(t => t.id === currentTab)) {
+      setCurrentTab(effectiveSubTab);
+    }
+  }, [allowedCirugiasSubTabs, cirugiasSubTab, currentTab, isCirugiasTab]);
+
+  const handleSelectCirugiasSubTab = (subId) => {
+    if (!allowedCirugiasSubTabs.some(t => t.id === subId)) return;
+    setCirugiasSubTab(subId);
+    setCurrentTab(subId);
+    if (subId === 'Auditoría') {
+      setDirectoraFilter('Sin auditar');
+    }
+  };
+
+  const handleSelectCirugiasMain = () => {
+    if (allowedCirugiasSubTabs.length === 0) return;
+    const targetSub = allowedCirugiasSubTabs.some(t => t.id === cirugiasSubTab)
+      ? cirugiasSubTab
+      : allowedCirugiasSubTabs[0].id;
+    setCirugiasSubTab(targetSub);
+    setCurrentTab(targetSub);
+  };
 
   useEffect(() => {
     if (authUser) {
-      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', 'secre estudios': 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente' };
+      const roleMap = { admin: 'Admin', secre: 'Secre', secre_estudios: 'Secre Estudios', 'secre estudios': 'Secre Estudios', medico: 'Medico', direccion_medica: 'Directora', coat: 'Admin', residente: 'Residente', consulta: 'Consulta' };
       const matchingUser = (users || []).find(u => u.email?.toLowerCase() === authUser.email?.toLowerCase());
-      const displayName = matchingUser?.profesionalName || authUser.displayName || getCleanUsername(authUser.email);
+      const matchedProf = (professionals || []).find(p => p.email && p.email.toLowerCase().trim() === authUser.email?.toLowerCase().trim());
+      const displayName = matchingUser?.profesionalName || matchedProf?.nombre || authUser.displayName || getCleanUsername(authUser.email);
       const effectiveRol = (authRole === 'secre_estudios' || authRole === 'secre estudios') 
         ? ROLES.SECRE_ESTUDIOS 
         : (matchingUser?.rol === ROLES.SECRE_ESTUDIOS ? ROLES.SECRE_ESTUDIOS : (roleMap[authRole] || matchingUser?.rol || 'Admin'));
-      setCurrentUser({ id: authUser.uid, nombre: displayName, rol: effectiveRol, email: authUser.email });
+      setCurrentUser({
+        id: authUser.uid,
+        nombre: displayName,
+        rol: effectiveRol,
+        email: authUser.email,
+        professionalId: matchingUser?.professionalId || matchedProf?.id || null
+      });
     } else {
       setCurrentUser(null);
     }
-  }, [authUser, authRole, users]);
+  }, [authUser, authRole, users, professionals]);
 
   useEffect(() => {
     localStorage.setItem('users_proto', JSON.stringify(users));
@@ -1932,6 +2261,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
               prefijo: isTutora ? '' : (p.prefijo || (cleanName.startsWith('Dra') ? 'Dra' : 'Dr')),
               nombrePila: isTutora ? '' : (p.nombreOnly || ''),
               apellido: isTutora ? 'Tutoras' : (p.apellido || ''),
+              email: p.email || (isTutora ? 'tutoras@clinic.com' : ''),
               especialidad: isTutora ? 'Tutoras' : ((p.categoria || p.especialidad) === 'ORL' ? 'Otorrinolaringología' : (p.categoria || p.especialidad || 'Otorrinolaringología')),
               mp: p.mp || (isTutora ? 'MP-TUTORAS' : ''),
               me: p.me || '',
@@ -2013,7 +2343,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
               autorizada: !!orden.autorizada,
               suspendida: !!orden.suspendida,
               aprobacionMaterial: orden.aprobacionMaterial || 'PENDIENTE',
-              creador: orden.createdBy || orden.creador || 'Sistema',
+              createdBy: (orden.createdBy || '').toLowerCase().trim(),
+              creador: orden.creador || orden.createdBy || 'Sistema',
               creadorRol: orden.creadorRol || 'Admin',
               fechaCreacion: orden.createdAt || new Date().toISOString(),
               codigosAuditados: codigos || orden.codigosAuditados || orden.codigos || '',
@@ -2070,7 +2401,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 profesionalName: u.profesionalName || '',
                 email: u.email,
                 rol: roleMap[u.role] || 'Medico',
-                professionalId: null
+                professionalId: u.professionalId || null
               });
             }
           });
@@ -2122,6 +2453,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
   const handleSaveCustomTemplate = async () => {
     const userKey = (currentUser?.email || authUser?.email || '').toLowerCase().trim();
+    const userUid = authUser?.uid || currentUser?.id || '';
     if (!newTemplateName.trim()) {
       alert("Por favor, ingrese un nombre para su plantilla.");
       return;
@@ -2130,6 +2462,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     const codigosArr = codeInputs.filter(c => c && c.trim());
     const newTemplate = {
       name: newTemplateName.trim(),
+      userId: userUid,
       userEmail: userKey,
       diagnostico: formData.justificacion || '',
       anestesia: formData.anestesia || 'General',
@@ -2189,7 +2522,13 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const handleLogin = (user) => {
     setCurrentUser(user);
     setFormData(prev => ({ ...prev, nombreProfesional: user.nombre }));
-    if (user.rol === ROLES.SECRE) setCurrentTab('Gestión');
+    if (user.rol === ROLES.SECRE) {
+      setCirugiasSubTab('Gestión');
+      setCurrentTab('Gestión');
+    } else {
+      setCirugiasSubTab('Solicitud');
+      setCurrentTab('Solicitud');
+    }
   };
 
   const handleLogout = async () => {
@@ -2318,10 +2657,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     const isSecreEstudiosUser = currentUser?.rol === ROLES.SECRE_ESTUDIOS;
     const effectiveTipo = isSecreEstudiosUser ? 'ESTUDIO' : tipo;
     const isEstudio = effectiveTipo === 'ESTUDIO';
+    const ownEmail = (authUser?.email || currentUser?.email || '').toLowerCase().trim();
     setFormData({ 
-      emailProfesional: '', 
+      emailProfesional: (isResidente || isSecreEstudiosUser) ? '' : ownEmail, 
       nombreProfesional: (isResidente || isSecreEstudiosUser) ? '' : (currentUser?.nombre || ''), 
-      professionalId: null,
+      professionalId: (isResidente || isSecreEstudiosUser) ? null : (currentUser?.professionalId || null),
       residente: isResidente ? (currentUser?.nombre || '') : '',
       tipoProcedimiento: isEstudio ? 'ESTUDIO' : 'CIRUGIA',
       estudioBajoAnestesia: isEstudio,
@@ -2652,6 +2992,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     e.preventDefault();
 
     const isSecreEstudiosUser = currentUser?.rol === ROLES.SECRE_ESTUDIOS;
+    const isResidenteUser = currentUser?.rol === ROLES.RESIDENTE;
+    const creatorEmail = (authUser?.email || currentUser?.email || '').toLowerCase().trim();
+    const creatorDisplayName = currentUser?.nombre || creatorEmail || 'Sistema';
+    const effectiveNombreProf = formData.nombreProfesional || ((!isResidenteUser && !isSecreEstudiosUser) ? (currentUser?.nombre || '') : '');
+    const effectiveEmailProf = (
+      formData.emailProfesional ||
+      ((currentUser?.rol === ROLES.MEDICO || currentUser?.rol === ROLES.DIRECTORA) ? creatorEmail : '')
+    ).toLowerCase().trim();
+    const effectiveProfId = formData.professionalId || ((!isResidenteUser && !isSecreEstudiosUser) ? (currentUser?.professionalId || null) : null);
+
     const existingSurgery = isEditing ? surgeries.find(s => s.id === editingId) : null;
     if (isSecreEstudiosUser && existingSurgery && existingSurgery.tipoProcedimiento !== 'ESTUDIO' && !existingSurgery.estudioBajoAnestesia) {
       setError('La Secretaría de Estudios solo puede modificar solicitudes de estudios bajo anestesia.');
@@ -2662,13 +3012,13 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       return;
     }
     
-    if (!formData.professionalId && (!formData.emailProfesional || !formData.nombreProfesional)) {
+    if (!effectiveProfId && (!effectiveEmailProf || !effectiveNombreProf)) {
       setError('Debe seleccionar un profesional o ingresar sus datos manualmente.');
       return;
     }
 
     // Verificar si el usuario que carga es egomez o administradora
-    const userEmail = (currentUser?.email || authUser?.email || '').toLowerCase();
+    const userEmail = creatorEmail;
     const isEgomez = userEmail.includes('egomez') || (currentUser?.nombre || '').toLowerCase().includes('egomez') || currentUser?.rol === ROLES.DIRECTORA || currentUser?.rol === ROLES.ADMIN;
 
     // Estructura de códigos para Firestore
@@ -2768,6 +3118,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       const newSurgery = {
         ...formData,
         id: `ord_${Date.now()}`,
+        nombreProfesional: effectiveNombreProf,
+        emailProfesional: effectiveEmailProf,
+        professionalId: effectiveProfId,
         residente: formData.residente || (currentUser?.rol === ROLES.RESIDENTE ? currentUser.nombre : ''),
         tipoProcedimiento: formData.tipoProcedimiento || 'CIRUGIA',
         estudioBajoAnestesia: formData.tipoProcedimiento === 'ESTUDIO' || !!formData.estudioBajoAnestesia,
@@ -2776,7 +3129,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         estado: isEgomez ? 'CODIFICADA' : 'SOLICITADA',
         codigosAuditados: isEgomez ? (formData.codigos || '') : '',
         aprobacionMaterial: 'PENDIENTE',
-        creador: currentUser.nombre,
+        createdBy: creatorEmail,
+        creador: creatorDisplayName,
         creadorRol: currentUser.rol,
         fechaSolicitud: formData.fechaSolicitud || new Date().toISOString().slice(0, 10),
         fechaCreacion: new Date().toLocaleDateString(),
@@ -2787,7 +3141,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         pinned: false,
       };
       setSurgeries([newSurgery, ...surgeries]);
-      addAuditLog('CREAR', `Solicitud creada para: ${newSurgery.paciente} (${isEgomez ? 'Auditada' : 'Pendiente'})`, currentUser.nombre);
+      addAuditLog('CREAR', `Solicitud creada para: ${newSurgery.paciente} (${isEgomez ? 'Auditada' : 'Pendiente'})`, creatorDisplayName);
 
       // Guardar o sincronizar paciente en la colección 'pacientes'
       if (formData.dni && formData.paciente) {
@@ -2817,9 +3171,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       // Persistir a Firestore en ordenes_internacion
       apiService.addDocument('ordenes_internacion', {
         afiliado: formData.paciente,
-        profesional: formData.nombreProfesional,
-        emailProfesional: formData.emailProfesional,
-        professionalId: formData.professionalId,
+        paciente: formData.paciente,
+        profesional: effectiveNombreProf,
+        nombreProfesional: effectiveNombreProf,
+        emailProfesional: effectiveEmailProf,
+        professionalId: effectiveProfId,
         residente: formData.residente || (currentUser?.rol === ROLES.RESIDENTE ? currentUser.nombre : ''),
         tipoProcedimiento: formData.tipoProcedimiento || 'CIRUGIA',
         estudioBajoAnestesia: formData.tipoProcedimiento === 'ESTUDIO' || !!formData.estudioBajoAnestesia,
@@ -2829,6 +3185,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         dni: formData.dni,
         edad: formData.edad,
         telefono: formData.contactoFamiliar,
+        fechaSolicitud: formData.fechaSolicitud || new Date().toISOString().slice(0, 10),
         fechaCirugia: formData.fecha,
         horaCirugia: assignedHoraInicio,
         horaFin: assignedHoraFin,
@@ -2843,9 +3200,13 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         salaCirugia: formData.habitacion,
         codigosCirugia: codigosArray,
         adjuntos: formData.adjuntos || [],
+        estado: isEgomez ? 'CODIFICADA' : 'SOLICITADA',
+        autorizada: false,
+        enviada: false,
         status: isEgomez ? 'auditada' : 'pendiente',
         auditedAt: isEgomez ? new Date().toISOString() : null,
-        createdBy: currentUser?.email || authUser?.email || currentUser?.nombre,
+        createdBy: creatorEmail,
+        creador: creatorDisplayName,
         creadorRol: currentUser?.rol || 'Admin',
         createdAt: new Date().toISOString()
       }).then(newDocId => {
@@ -3238,49 +3599,84 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
   const isSurgeryCreatedOrAssignedToUser = (s, user) => {
     if (!s || !user) return false;
-    const normalize = (str) => (str || '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/^(dr|dra|lic|dr\(a\))\.?\s+/i, '')
-      .trim();
-
-    const userNom = normalize(user.nombre);
     const userEmail = (user.email || '').toLowerCase().trim();
-    const userClean = normalize(getCleanUsername(user.email || user.nombre || ''));
+    const userRole = user.rol;
 
-    // Lista de identificadores del usuario (nombre, apellido, username)
-    const userTokens = [
-      userNom,
-      userClean,
-      ...userNom.split(/\s+/).filter(t => t.length >= 3),
-      ...userClean.split(/\s+/).filter(t => t.length >= 3)
-    ].filter(Boolean);
-
-    const matchesUser = (fieldVal) => {
-      if (!fieldVal) return false;
-      const normField = normalize(fieldVal);
-      if (!normField) return false;
-      return userTokens.some(tok => normField === tok || normField.includes(tok) || tok.includes(normField));
-    };
-
-    // Comparar residente (máxima prioridad para roles residentes)
-    if (s.residente && matchesUser(s.residente)) return true;
-
-    // Comparar creador / createdBy
-    if (s.creador && matchesUser(s.creador)) return true;
-    if (s.createdBy) {
-      const cb = (s.createdBy || '').toLowerCase().trim();
-      if (userEmail && cb === userEmail) return true;
-      if (matchesUser(cb)) return true;
+    // 1. Identificador directo de profesional (ID canónico)
+    const userProfId = user.professionalId || (professionals || []).find(p => p.email && p.email.toLowerCase().trim() === userEmail)?.id;
+    if (userProfId && s.professionalId) {
+      if (s.professionalId === userProfId) return true;
+      // Si la orden apunta explícitamente a otro profesional y el usuario es médico/directora, no le pertenece
+      if (userRole === ROLES.MEDICO || userRole === ROLES.DIRECTORA) {
+        const emailProf = (s.emailProfesional || '').toLowerCase().trim();
+        if (emailProf && emailProf !== userEmail) return false;
+      }
     }
 
-    // Comparar email profesional
-    const emailProf = (s.emailProfesional || '').toLowerCase().trim();
-    if (emailProf && userEmail && emailProf === userEmail) return true;
+    // 2. Coincidencia exacta por email
+    if (userEmail) {
+      const emailProf = (s.emailProfesional || '').toLowerCase().trim();
+      if (emailProf && emailProf === userEmail) return true;
 
-    // Comparar nombre profesional
-    if (s.nombreProfesional && matchesUser(s.nombreProfesional)) return true;
+      const cb = (s.createdBy || '').toLowerCase().trim();
+      if (cb && cb === userEmail) return true;
+
+      // Si la orden tiene email de otro profesional asignado y el usuario es médico/directora, no le pertenece
+      if (emailProf && emailProf !== userEmail && (userRole === ROLES.MEDICO || userRole === ROLES.DIRECTORA)) {
+        return false;
+      }
+    }
+
+    // 3. Username exacto en createdBy o creador (para registros históricos)
+    const username = (user.username || getCleanUsername(userEmail || user.nombre || '')).toLowerCase().trim();
+    const genericUsernames = new Set(['admin', 'secre', 'sistema', 'usuario', 'user', 'test', 'coat']);
+    if (username && !genericUsernames.has(username)) {
+      const cb = (s.createdBy || '').toLowerCase().trim();
+      if (cb && cb === username) return true;
+      const creador = (s.creador || '').toLowerCase().trim();
+      if (creador && creador === username) return true;
+    }
+
+    // 4. Coincidencia canónica por nombre de profesional (registros históricos o sin email/ID)
+    const extractWords = (str) => {
+      if (!str || typeof str !== 'string') return [];
+      const normalized = str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+      const words = normalized
+        .split(/[^a-z0-9]+/)
+        .filter(w => w.length >= 2);
+      const stopWords = new Set([
+        'dr', 'dra', 'lic', 'med', 'prof', 'doctor', 'doctora',
+        'ficticio', 'ficticia', 'demo', 'prueba', 'pruebas', 'test',
+        'residente', 'admin', 'coat', 'com', 'ar', 'local'
+      ]);
+      return words.filter(w => !stopWords.has(w));
+    };
+
+    const matchesName = (userWords, targetStr) => {
+      if (userWords.length === 0 || !targetStr) return false;
+      const targetWords = extractWords(targetStr);
+      if (targetWords.length === 0) return false;
+
+      const intersection = targetWords.filter(w => userWords.includes(w));
+      if (intersection.length === 0) return false;
+
+      // Si ambos tienen 2+ palabras pero solo 1 coincide, evitar falsos positivos de mismo apellido
+      if (targetWords.length >= 2 && userWords.length >= 2 && intersection.length === 1) {
+        return false;
+      }
+      return true;
+    };
+
+    const userWords = extractWords(user.nombre);
+    if (userWords.length > 0) {
+      if (s.nombreProfesional && matchesName(userWords, s.nombreProfesional)) return true;
+      if (s.profesional && matchesName(userWords, s.profesional)) return true;
+      if (userRole === ROLES.RESIDENTE && s.residente && matchesName(userWords, s.residente)) return true;
+      if (s.creador && matchesName(userWords, s.creador)) return true;
+    }
 
     return false;
   };
@@ -3307,8 +3703,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       } else {
         filtered = surgeries;
       }
-    } else if (userRole === ROLES.ADMIN) {
-      // Admin ve todo en Solicitud y demás apartados
+    } else if (userRole === ROLES.ADMIN || userRole === ROLES.CONSULTA) {
+      // Admin y Consulta ven todo en Solicitud y demás apartados
       if (currentTab === 'Auditoría') {
         if (directoraFilter === 'Sin auditar') filtered = surgeries.filter(s => s.estado === 'SOLICITADA');
         else if (directoraFilter === 'Auditadas') filtered = surgeries.filter(s => s.estado !== 'SOLICITADA');
@@ -3406,7 +3802,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       return s.tipoProcedimiento === 'ESTUDIO' || !!s.estudioBajoAnestesia;
     }
     if (userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.DIRECTORA) {
-      return s.creador === currentUser?.nombre || isSurgeryCreatedOrAssignedToUser(s, currentUser);
+      return isSurgeryCreatedOrAssignedToUser(s, currentUser);
     }
     if (userRole === ROLES.SECRE) return true;
     return false;
@@ -3493,115 +3889,248 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     return <LoginScreen users={users} onLogin={handleLogin} onNewUser={() => setShowNewUserLogin(true)} />;
   }
 
+  // Panel lateral unificado en el orden institucional:
+  // 1. Caja | 2. Cirugías | 3. Calendario | 4. Pacientes | 5. Notas | 6. Métricas | 7. Admin
+  const canAccessCaja = userRole === ROLES.ADMIN || userRole === ROLES.SECRE || userRole === ROLES.CONSULTA;
+  const canAccessCirugias = allowedCirugiasSubTabs.length > 0;
+  const canAccessCalendario =
+    userRole === ROLES.ADMIN ||
+    userRole === ROLES.DIRECTORA ||
+    userRole === ROLES.SECRE ||
+    userRole === ROLES.SECRE_ESTUDIOS ||
+    userRole === ROLES.MEDICO ||
+    userRole === ROLES.RESIDENTE ||
+    userRole === ROLES.CONSULTA;
+  const canAccessPacientes = canAccessCalendario;
+  const canAccessNotas =
+    userRole === ROLES.ADMIN ||
+    userRole === ROLES.DIRECTORA ||
+    userRole === ROLES.SECRE ||
+    userRole === ROLES.MEDICO ||
+    userRole === ROLES.RESIDENTE;
+  // Restricción temporal: Métricas habilitado exclusivamente para los super-admins autorizados
+  const canAccessMetricas = Boolean(isSuperAdmin);
+  const canAccessAdmin = userRole === ROLES.ADMIN;
+
+  useEffect(() => {
+    if (currentTab === 'Métricas' && !canAccessMetricas) {
+      const fallbackTab = allowedCirugiasSubTabs[0]?.id || (canAccessCaja ? 'Caja' : 'Solicitud');
+      setCurrentTab(fallbackTab);
+    }
+  }, [currentTab, canAccessMetricas, allowedCirugiasSubTabs, canAccessCaja]);
+
+  const navItems = [
+    ...(canAccessCaja
+      ? [{ id: 'Caja', label: 'Caja', icon: DollarSign, isActive: currentTab === 'Caja', onClick: () => setCurrentTab('Caja') }]
+      : []),
+    ...(canAccessCirugias
+      ? [{ id: 'Cirugías', label: 'Cirugías', icon: Activity, isActive: isCirugiasTab, onClick: handleSelectCirugiasMain }]
+      : []),
+    ...(canAccessCalendario
+      ? [{ id: 'Calendario', label: 'Calendario', icon: CalendarIcon, isActive: currentTab === 'Calendario', onClick: () => setCurrentTab('Calendario') }]
+      : []),
+    ...(canAccessPacientes
+      ? [{ id: 'Pacientes', label: 'Pacientes', icon: UsersIcon, isActive: currentTab === 'Pacientes', onClick: () => setCurrentTab('Pacientes') }]
+      : []),
+    ...(canAccessNotas
+      ? [{ id: 'Notas', label: 'Notas', icon: MessageSquare, isActive: currentTab === 'Notas', onClick: () => setCurrentTab('Notas') }]
+      : []),
+    ...(canAccessMetricas
+      ? [{ id: 'Métricas', label: 'Métricas', icon: BarChart3, isActive: currentTab === 'Métricas', onClick: () => setCurrentTab('Métricas') }]
+      : []),
+    ...(canAccessAdmin
+      ? [{ id: 'Administración', label: 'Admin', icon: Settings, isActive: currentTab === 'Administración', onClick: () => setCurrentTab('Administración') }]
+      : []),
+  ];
+
+  const cleanUserDisplay = getCleanUsername(currentUser?.nombre || currentUser?.email || 'Usuario');
+
   return (
     <>
-      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 print:hidden">
-      {/* HEADER */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-3">
-              <img src="/coat_logo.png" alt="Logo COAT" className="h-10 w-auto" />
-              <span className="text-lg font-bold tracking-tight text-black">Cirugías COAT</span>
+      <div className={`h-screen flex overflow-hidden font-sans selection:bg-blue-100 selection:text-blue-900 print:hidden ${isDarkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+        {/* Navigation Rail (Material 3 - COAT Informes style) */}
+        <aside className="hidden md:flex w-24 flex-shrink-0 flex-col items-center py-5 glass border-r border-main z-50 h-full overflow-y-auto no-scrollbar">
+          {/* Brand Logo */}
+          <div className="mb-6 flex flex-col items-center">
+            <img src="/coat_logo.png" alt="COAT Logo" className="w-12 h-12 object-contain" />
+          </div>
+
+          {/* Navigation Items */}
+          <nav className="flex-1 flex flex-col gap-1.5 w-full">
+            {navItems.map((item) => {
+              const IconComp = item.icon;
+              const isActive = item.isActive !== undefined ? item.isActive : currentTab === item.id;
+              return (
+                <div
+                  key={item.id}
+                  onClick={item.onClick}
+                  className="nav-rail-item"
+                >
+                  <div className={`p-2 rounded-full transition-all duration-300 ${isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : ''}`}>
+                    <IconComp size={20} />
+                  </div>
+                  <span className={`text-[9px] font-black uppercase tracking-tighter text-center leading-tight ${isActive ? 'text-blue-600' : 'text-[var(--text-sub)]'}`}>
+                    {item.label}
+                  </span>
+                </div>
+              );
+            })}
+          </nav>
+
+          {/* Bottom Actions: User Profile, Theme Toggle & Logout */}
+          <div className="mt-auto flex flex-col items-center gap-3 pt-4 border-t border-main w-full px-2">
+            {/* Avatar & User Info */}
+            <div className="flex flex-col items-center gap-1 group">
+              <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-black shadow-lg shadow-blue-500/20 text-xs">
+                {cleanUserDisplay.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex flex-col items-center text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter leading-tight text-center max-w-full">
+                {cleanUserDisplay.split(' ').slice(0, 2).map((part, idx) => (
+                  <span key={idx} className="truncate w-20">{part}</span>
+                ))}
+              </div>
+              <span className="px-1.5 py-0.5 rounded-md bg-blue-600/10 text-blue-600 text-[8px] font-black uppercase tracking-wider">
+                {currentUser?.rol}
+              </span>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200">
-                <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">
-                  {getCleanUsername(currentUser?.nombre)?.charAt(0)?.toUpperCase()}
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-slate-700 leading-tight">{getCleanUsername(currentUser?.nombre)}</p>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">{currentUser?.rol}</span>
-                </div>
-              </div>
+            <div className="flex items-center justify-center gap-1 w-full">
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2.5 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-slate-500 dark:text-slate-400"
+                title={isDarkMode ? "Modo Claro" : "Modo Oscuro"}
+              >
+                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+
               <button
                 onClick={handleLogout}
-                className="p-2 rounded-lg bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all border border-slate-200"
-                title="Cerrar sesión"
+                className="p-2.5 rounded-2xl hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-slate-400 hover:text-red-500"
+                title="Cerrar Sesión"
               >
                 <LogOut size={18} />
               </button>
             </div>
           </div>
-        </div>
-      </nav>
+        </aside>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-8">
-        {/* TAB BAR */}
-        {(userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN || userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) && (
-          <div className="mb-6 flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm w-fit">
-            {userRole === ROLES.DIRECTORA && (
-              <>
-                <button onClick={() => setCurrentTab('Solicitud')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Solicitud' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Solicitud</button>
-                <button onClick={() => { setCurrentTab('Auditoría'); setDirectoraFilter('Sin auditar'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Auditoría' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Auditoría</button>
-                <button onClick={() => setCurrentTab('Pacientes')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Pacientes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Pacientes</button>
-                <button onClick={() => setCurrentTab('Calendario')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Calendario' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><CalendarIcon size={14} className="inline mr-1" />Calendario</button>
-                <button onClick={() => setCurrentTab('Notas')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Notas' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Notas</button>
-                <button onClick={() => setCurrentTab('Métricas')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Métricas' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><BarChart3 size={14} className="inline mr-1" />Métricas</button>
-              </>
-            )}
-            {userRole === ROLES.ADMIN && (
-              <>
-                <button onClick={() => { setCurrentTab('Solicitud'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Solicitud' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Solicitud</button>
-                <button onClick={() => { setCurrentTab('Auditoría'); setDirectoraFilter('Sin auditar'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Auditoría' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Auditoría</button>
-                <button onClick={() => { setCurrentTab('Gestión'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Gestión' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Gestión</button>
-                <button onClick={() => { setCurrentTab('Pacientes'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Pacientes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Pacientes</button>
-                <button onClick={() => { setCurrentTab('Calendario'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Calendario' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><CalendarIcon size={14} className="inline mr-1" />Calendario</button>
-                <button onClick={() => { setCurrentTab('Caja'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Caja' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><LayoutDashboard size={14} className="inline mr-1" />Caja</button>
-                <button onClick={() => { setCurrentTab('Notas'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Notas' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Notas</button>
-                <button onClick={() => { setCurrentTab('Métricas'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Métricas' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><BarChart3 size={14} className="inline mr-1" />Métricas</button>
-                <button onClick={() => { setCurrentTab('Administración'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Administración' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Administración</button>
-              </>
-            )}
-            {userRole === ROLES.SECRE && (
-              <>
-                <button onClick={() => { setCurrentTab('Gestión'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Gestión' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Gestión</button>
-                <button onClick={() => { setCurrentTab('Pacientes'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Pacientes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Pacientes</button>
-                <button onClick={() => { setCurrentTab('Calendario'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Calendario' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><CalendarIcon size={14} className="inline mr-1" />Calendario</button>
-                <button onClick={() => { setCurrentTab('Caja'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Caja' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><LayoutDashboard size={14} className="inline mr-1" />Caja</button>
-                <button onClick={() => { setCurrentTab('Notas'); }} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Notas' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Notas</button>
-              </>
-            )}
-            {userRole === ROLES.SECRE_ESTUDIOS && (
-              <>
-                <button onClick={() => setCurrentTab('Solicitud')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Solicitud' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Estudios</button>
-                <button onClick={() => setCurrentTab('Pacientes')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Pacientes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Pacientes</button>
-                <button onClick={() => setCurrentTab('Calendario')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Calendario' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><CalendarIcon size={14} className="inline mr-1" />Calendario</button>
-              </>
-            )}
-            {(userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) && (
-              <>
-                <button onClick={() => setCurrentTab('Solicitud')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Solicitud' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Solicitud</button>
-                <button onClick={() => setCurrentTab('Pacientes')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Pacientes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Pacientes</button>
-                <button onClick={() => setCurrentTab('Calendario')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Calendario' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><CalendarIcon size={14} className="inline mr-1" />Calendario</button>
-                <button onClick={() => setCurrentTab('Notas')} className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${currentTab === 'Notas' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Notas</button>
-              </>
-            )}
-          </div>
-        )}
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Sticky Top Header (COAT Informes style) */}
+          <header className="header flex-shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <img src="/coat_logo.png" alt="COAT" className="w-8 h-8 object-contain md:hidden shrink-0" />
+              <div className="flex items-center gap-3 min-w-0">
+                <h1 className="text-lg md:text-xl font-black tracking-tight text-[var(--text-main)] truncate">
+                  {currentTab === 'Solicitud' && (userRole === ROLES.SECRE_ESTUDIOS ? 'Estudios Bajo Anestesia' : 'Solicitudes y Presupuestos')}
+                  {currentTab === 'Auditoría' && 'Auditoría Médica'}
+                  {currentTab === 'Gestión' && 'Gestión Quirúrgica y Presupuestos'}
+                  {currentTab === 'Pacientes' && 'Base de Pacientes'}
+                  {currentTab === 'Calendario' && 'Agenda Quirúrgica'}
+                  {currentTab === 'Caja' && 'Caja y Liquidaciones'}
+                  {currentTab === 'Notas' && 'Notas y Recordatorios'}
+                  {currentTab === 'Métricas' && canAccessMetricas && 'Métricas y Estadísticas'}
+                  {currentTab === 'Administración' && 'Panel de Administración'}
+                </h1>
+                {isPreviewMode && (
+                  <span className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider shrink-0">
+                    <Eye size={12} />
+                    Vista Previa Local • Datos Ficticios
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Quick Actions in Header when on Surgery/Study views */}
+              {canCreate && (currentTab === 'Solicitud' || currentTab === 'Auditoría' || currentTab === 'Gestión') && (
+                <div className="hidden sm:flex items-center gap-2">
+                  {userRole !== ROLES.SECRE_ESTUDIOS && (
+                    <button
+                      onClick={() => handleOpenNewSurgery('CIRUGIA')}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <PlusCircle size={15} />
+                      <span>Nueva Cirugía</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleOpenNewSurgery('ESTUDIO')}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-[var(--bg-secondary)] hover:bg-blue-600/10 text-blue-600 border border-blue-500/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <PlusCircle size={15} />
+                    <span>Nuevo Estudio</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Mobile Theme & Logout */}
+              <div className="flex md:hidden items-center gap-1">
+                <button
+                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  className="p-2 rounded-xl bg-[var(--bg-secondary)] text-[var(--text-sub)]"
+                  title="Cambiar tema"
+                >
+                  {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="p-2 rounded-xl bg-[var(--bg-secondary)] text-rose-500"
+                  title="Cerrar sesión"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Mobile Horizontal Nav Bar */}
+          {navItems.length > 0 && (
+            <div className="md:hidden flex items-center gap-1.5 px-4 py-2 bg-[var(--bg-card)] border-b border-main overflow-x-auto no-scrollbar shrink-0">
+              {navItems.map((item) => {
+                const IconComp = item.icon;
+                const isActive = item.isActive !== undefined ? item.isActive : currentTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={item.onClick}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap transition-all ${
+                      isActive ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-sub)] bg-[var(--bg-secondary)]'
+                    }`}
+                  >
+                    <IconComp size={13} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Scrollable Main Content */}
+          <main className="flex-1 overflow-y-auto p-4 md:p-8">
+            <div className="max-w-7xl mx-auto">
 
         {/* CAJA TAB */}
         {currentTab === 'Caja' && (
-          <CajaView currentUser={currentUser} professionals={professionals} surgeries={surgeries} />
+          <CajaView currentUser={currentUser} professionals={professionals} surgeries={surgeries} isReadOnly={isConsulta} />
         )}
 
         {/* CALENDARIO TAB */}
-        {currentTab === 'Calendario' && (userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN || userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE) && (
+        {currentTab === 'Calendario' && (userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN || userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.CONSULTA) && (
           <CalendarioView 
             surgeries={userRole === ROLES.SECRE_ESTUDIOS ? surgeries.filter(s => s.tipoProcedimiento === 'ESTUDIO' || !!s.estudioBajoAnestesia) : surgeries} 
-            onOpenForm={handleOpenFormFromCalendar}
+            onOpenForm={isConsulta ? undefined : handleOpenFormFromCalendar}
             onNewSurgery={canCreate ? () => handleOpenNewSurgery(userRole === ROLES.SECRE_ESTUDIOS ? 'ESTUDIO' : 'CIRUGIA') : undefined}
-            onEditSurgery={(s) => openEditModal(s)}
-            onDragSurgery={handleDragSurgery}
+            onEditSurgery={isConsulta ? undefined : (s) => openEditModal(s)}
+            onDragSurgery={isConsulta ? undefined : handleDragSurgery}
             currentUser={currentUser}
-            restrictDrag={userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || (userRole === ROLES.MEDICO && restrictCalendarDrag)}
+            restrictDrag={isConsulta || userRole === ROLES.SECRE || userRole === ROLES.SECRE_ESTUDIOS || (userRole === ROLES.MEDICO && restrictCalendarDrag)}
           />
         )}
 
         {/* PACIENTES TAB */}
         {currentTab === 'Pacientes' && (
-          <PacientesView />
+          <PacientesView isReadOnly={isConsulta} />
         )}
 
         {/* NOTAS TAB */}
@@ -3610,7 +4139,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         )}
 
         {/* MÉTRICAS TAB */}
-        {currentTab === 'Métricas' && (userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN) && (
+        {currentTab === 'Métricas' && canAccessMetricas && (
           <MetricsPanel surgeries={surgeries} />
         )}
 
@@ -3632,26 +4161,26 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
             {/* MODAL DE SOLICITUD (NUEVA O EDITAR) */}
             {canCreate && (showCreateModal || isEditing) && createPortal(
               <div 
-                className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+                className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
               >
                 <div 
-                  className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200"
+                  className="bg-[var(--bg-card)] rounded-[2.5rem] shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col border border-[var(--border-main)] animate-in zoom-in-95 duration-200"
                 >
-                  <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-sm">
+                  <div className="bg-[var(--bg-secondary)]/50 px-6 md:px-8 py-5 border-b border-[var(--border-main)] flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
                         <PlusCircle size={20} />
                       </div>
                       <div>
-                        <h3 className="font-bold text-slate-800 text-sm">
+                        <h3 className="font-black text-[var(--text-main)] text-base tracking-tight">
                           {isEditing 
                             ? (formData.tipoProcedimiento === 'ESTUDIO' ? 'Editar Solicitud de Estudio' : 'Editar Solicitud de Cirugía') 
                             : (formData.tipoProcedimiento === 'ESTUDIO' ? 'Nueva Solicitud de Estudio' : 'Nueva Solicitud de Cirugía')}
                         </h3>
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-[11px] text-[var(--text-sub)] font-medium">
                           {isEditing 
                             ? 'Modifique los campos y guarde los cambios' 
-                            : (formData.tipoProcedimiento === 'ESTUDIO' ? 'Complete los datos clínicos para programar el estudio bajo anestesia' : 'Complete los datos clínicos para programar la cirugía')}
+                            : (formData.tipoProcedimiento === 'ESTUDIO' ? 'Complete los datos clínicos y convenios para el estudio bajo anestesia' : 'Complete los datos clínicos y presupuesto para programar la cirugía')}
                         </p>
                       </div>
                       <HelpTooltip content={[
@@ -3801,7 +4330,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                               value={aiText}
                               onChange={(e) => setAiText(e.target.value)}
                               placeholder="Pega aquí el contenido del mail de solicitud de cirugía (médico, paciente, obra social, fecha, diagnósticos, códigos, etc.)..."
-                              className="w-full p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all custom-scrollbar"
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all custom-scrollbar"
                               disabled={aiLoading}
                               autoFocus
                             />
@@ -3987,20 +4516,20 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                   )}
                   
                   <form onSubmit={handleCreateSurgery} className="flex flex-col flex-1 overflow-hidden">
-                    <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
+                    <div className="p-6 md:p-8 space-y-5 overflow-y-auto custom-scrollbar flex-1 bg-[var(--bg-page)]">
                       
                       {/* SECCIÓN 1: PROFESIONAL (Sólo si es residente o admin seleccionando) */}
                       {(userRole === ROLES.RESIDENTE || userRole === ROLES.SECRE_ESTUDIOS || formData.residente || isAdmin) && (
-                        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <div className="bg-[var(--bg-card)] p-5 rounded-2xl border border-[var(--border-main)] shadow-xs space-y-3">
+                          <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-2.5">
                             <div className="flex items-center gap-2">
-                              <User size={16} className="text-indigo-600" />
-                              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                              <User size={16} className="text-blue-600" />
+                              <h4 className="text-xs font-black text-[var(--text-main)] uppercase tracking-widest">
                                 {userRole === ROLES.RESIDENTE || formData.residente ? 'Médico a Cargo (Firma y Sello)' : 'Profesional'}
                               </h4>
                             </div>
                             {(userRole === ROLES.RESIDENTE || formData.residente) && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                              <span className="px-2.5 py-0.5 rounded-xl text-[10px] font-black uppercase bg-teal-500/10 text-teal-700 border border-teal-500/20">
                                 Residente: {formData.residente || currentUser?.nombre}
                               </span>
                             )}
@@ -4052,14 +4581,14 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                       )}
 
                       {/* SECCIÓN 2: DATOS DEL PACIENTE Y COBERTURA */}
-                      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="bg-[var(--bg-card)] p-5 rounded-2xl border border-[var(--border-main)] shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-2.5">
                           <div className="flex items-center gap-2">
-                            <UserCheck size={16} className="text-indigo-600" />
-                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Datos del Paciente</h4>
+                            <UserCheck size={16} className="text-blue-600" />
+                            <h4 className="text-xs font-black text-[var(--text-main)] uppercase tracking-widest">Datos del Paciente y Cobertura</h4>
                           </div>
                           {dniFoundMessage && (
-                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 animate-in fade-in">
+                            <span className="text-[10px] font-black text-emerald-700 bg-emerald-500/10 px-2.5 py-0.5 rounded-xl border border-emerald-500/20 animate-in fade-in">
                               {dniFoundMessage}
                             </span>
                           )}
@@ -4153,33 +4682,33 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                       </div>
 
                       {/* SECCIÓN 3: FECHA Y HORARIO DE CIRUGÍA */}
-                      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="bg-[var(--bg-card)] p-5 rounded-2xl border border-[var(--border-main)] shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-2.5">
                           <div className="flex items-center gap-2">
-                            <CalendarIcon size={16} className="text-indigo-600" />
-                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                            <CalendarIcon size={16} className="text-blue-600" />
+                            <h4 className="text-xs font-black text-[var(--text-main)] uppercase tracking-widest">
                               {formData.tipoProcedimiento === 'ESTUDIO' ? 'Programación de Estudio' : 'Programación de Cirugía'}
                             </h4>
                           </div>
                           {userRole !== ROLES.SECRE_ESTUDIOS ? (
-                            <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
+                            <div className="inline-flex rounded-xl border border-[var(--border-main)] p-1 bg-[var(--bg-secondary)]">
                               <button
                                 type="button"
                                 onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'CIRUGIA', estudioBajoAnestesia: false }))}
-                                className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento !== 'ESTUDIO' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                                className={`px-3 py-1 text-xs font-black uppercase tracking-wider rounded-lg transition-all ${formData.tipoProcedimiento !== 'ESTUDIO' ? 'bg-blue-600 text-white shadow-xs' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`}
                               >
                                 Cirugía
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setFormData(prev => ({ ...prev, tipoProcedimiento: 'ESTUDIO', estudioBajoAnestesia: true }))}
-                                className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${formData.tipoProcedimiento === 'ESTUDIO' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                                className={`px-3 py-1 text-xs font-black uppercase tracking-wider rounded-lg transition-all ${formData.tipoProcedimiento === 'ESTUDIO' ? 'bg-blue-600 text-white shadow-xs' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`}
                               >
                                 Estudio bajo Anestesia
                               </button>
                             </div>
                           ) : (
-                            <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-purple-600 text-white shadow-xs">
+                            <span className="px-3 py-1 text-xs font-black uppercase tracking-wider rounded-lg bg-blue-600 text-white shadow-xs">
                               Estudio bajo Anestesia
                             </span>
                           )}
@@ -4284,11 +4813,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                       </div>
 
                       {/* SECCIÓN 4: DIAGNÓSTICO Y CÓDIGOS */}
-                      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="bg-[var(--bg-card)] p-5 rounded-2xl border border-[var(--border-main)] shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-2.5">
                           <div className="flex items-center gap-2">
-                            <Activity size={16} className="text-indigo-600" />
-                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Detalles Clínicos y Prácticas</h4>
+                            <Activity size={16} className="text-blue-600" />
+                            <h4 className="text-xs font-black text-[var(--text-main)] uppercase tracking-widest">Detalles Clínicos, Prácticas y Presupuesto</h4>
                           </div>
                         </div>
 
@@ -4324,7 +4853,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                            newInputs[idx] = newVal;
                                            setCodeInputs(newInputs);
                                            const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
-                                           const matches = searchCodes(newVal, isSM, formData.tipoProcedimiento || 'CIRUGIA');
+                                           const matches = searchCodes(newVal, isSM, formData.tipoProcedimiento || 'CIRUGIA', formData.obraSocial);
                                            setCodeSuggestions({ ...codeSuggestions, [idx]: matches });
                                            setActiveCodeField(idx);
                                          }}
@@ -4342,7 +4871,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                            setActiveCodeField(idx);
                                            if (val.trim().length >= 2) {
                                              const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
-                                             const matches = searchCodes(val, isSM, formData.tipoProcedimiento || 'CIRUGIA');
+                                             const matches = searchCodes(val, isSM, formData.tipoProcedimiento || 'CIRUGIA', formData.obraSocial);
                                              setCodeSuggestions({ ...codeSuggestions, [idx]: matches });
                                            }
                                          }}
@@ -4396,8 +4925,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                          {(() => {
                                            const isSM = formData.obraSocial?.toUpperCase().includes('SWISS');
                                            const isIOSFA = formData.obraSocial?.toUpperCase().includes('IOSFA');
-                                           const expanded = expandCodes(val.trim(), isSM, isIOSFA);
-                                           return expanded.length > 0 ? expanded[0] : `${val.trim()} — ${getCodeName(val.trim())}`;
+                                           const isSancor = formData.obraSocial?.toUpperCase().includes('SANCOR');
+                                           const expanded = expandCodes(val.trim(), isSM, isIOSFA, isSancor);
+                                           return expanded.length > 0 ? expanded[0] : `${val.trim()} — ${getCodeName(val.trim(), formData.obraSocial)}`;
                                          })()}
                                        </div>
                                      )}
@@ -4434,22 +4964,26 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                             <div>
-                              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Tipo de Anestesia *</label>
+                              <label className="block text-[11px] font-black text-[var(--text-sub)] uppercase tracking-wider mb-1">Tipo de Anestesia *</label>
                               <input 
                                 required 
                                 placeholder="General, Local, Sedación..."
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                                className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--border-main)] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none text-xs font-bold bg-[var(--bg-card)] text-[var(--text-main)]"
                                 value={formData.anestesia} onChange={e => setFormData({...formData, anestesia: e.target.value})}
                               />
                             </div>
                             <div>
-                              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">¿Requiere Presupuesto?</label>
+                              <label className="block text-[11px] font-black text-amber-600 uppercase tracking-wider mb-1">¿Requiere Presupuesto?</label>
                               <select 
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white"
+                                className={`w-full px-3.5 py-2.5 rounded-xl border outline-none text-xs font-black transition-all ${
+                                  formData.requierePresupuesto === 'SI'
+                                    ? 'border-amber-400 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                    : 'border-[var(--border-main)] bg-[var(--bg-card)] text-[var(--text-main)]'
+                                }`}
                                 value={formData.requierePresupuesto} onChange={e => setFormData({...formData, requierePresupuesto: e.target.value})}
                               >
-                                <option value="NO">NO</option>
-                                <option value="SI">SÍ</option>
+                                <option value="NO">NO REQUIERE PRESUPUESTO</option>
+                                <option value="SI">SÍ • REQUIERE PRESUPUESTO</option>
                               </select>
                             </div>
                           </div>
@@ -4457,11 +4991,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                       </div>
 
                       {/* SECCIÓN 5: MATERIALES, NOTAS Y ADJUNTOS */}
-                      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="bg-[var(--bg-card)] p-5 rounded-2xl border border-[var(--border-main)] shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-2.5">
                           <div className="flex items-center gap-2">
-                            <FileText size={16} className="text-indigo-600" />
-                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Materiales y Notas</h4>
+                            <FileText size={16} className="text-blue-600" />
+                            <h4 className="text-xs font-black text-[var(--text-main)] uppercase tracking-widest">Materiales, Notas y Adjuntos</h4>
                           </div>
                           <label className="flex items-center gap-1.5 cursor-pointer">
                             <input
@@ -4589,17 +5123,17 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     </div>
 
                     {/* MODAL FOOTER */}
-                    <div className="bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+                    <div className="bg-[var(--bg-secondary)]/50 px-6 md:px-8 py-4 border-t border-[var(--border-main)] flex items-center justify-end gap-3 shrink-0">
                       <button
                         type="button"
                         onClick={handleCloseCreateModal}
-                        className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-all"
+                        className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-[var(--text-sub)] hover:text-[var(--text-main)] hover:bg-[var(--bg-secondary)] rounded-2xl transition-all"
                       >
                         Cancelar
                       </button>
                       <button 
                         type="submit"
-                        className="px-5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-2 shadow-md bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200"
+                        className="px-6 py-2.5 rounded-2xl font-black uppercase tracking-wider text-xs transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20 bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
                       >
                         <CheckCircle2 size={16} /> {isEditing ? 'Actualizar Solicitud' : 'Guardar Solicitud'}
                       </button>
@@ -4612,117 +5146,161 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
           )}
 
           {currentTab !== 'Caja' && currentTab !== 'Métricas' && currentTab !== 'Calendario' && currentTab !== 'Pacientes' && currentTab !== 'Notas' && (
-          <div className="w-full">
-            {/* TABLA / TARJETAS A ANCHO COMPLETO */}
-            <section className="w-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
-                      <FileText size={20} />
-                    </div>
-                    <h3 className="font-bold text-slate-700">
-                      {userRole === ROLES.SECRE_ESTUDIOS
-                        ? 'Estudios Bajo Anestesia'
-                        : (userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.DIRECTORA) && currentTab === 'Solicitud'
-                          ? 'Mis Solicitudes de Cirugía' 
-                          : (currentTab === 'Auditoría' ? 'Auditoría Médica' : currentTab === 'Gestión' ? 'Gestión de Casos' : 'Solicitudes y Casos')}
-                    </h3>
-                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg ml-2">
-                      <button onClick={() => setViewMode('cards')} className={`p-1.5 rounded-md transition-all ${viewMode === 'cards' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Vista tarjetas"><LayoutGrid size={16} /></button>
-                      <button onClick={() => setViewMode('table')} className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Vista tabla"><Table2 size={16} /></button>
-                    </div>
+          <div className="w-full space-y-6">
+            {/* SUBMENÚ HORIZONTAL DE CIRUGÍAS (mismo patrón visual que Caja) */}
+            {allowedCirugiasSubTabs.length > 1 && (
+              <div className="card p-3 md:p-4">
+                <div className="flex items-center gap-1.5 bg-[var(--bg-secondary)] p-1.5 rounded-2xl border border-[var(--border-main)] w-fit flex-wrap">
+                  {allowedCirugiasSubTabs.map((sub) => {
+                    const SubIcon = sub.icon;
+                    const isSubActive = currentTab === sub.id;
+                    return (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        onClick={() => handleSelectCirugiasSubTab(sub.id)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                          isSubActive
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                            : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
+                        }`}
+                      >
+                        <SubIcon size={15} />
+                        <span>{sub.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-                    {/* Botones Nueva Cirugía / Nuevo Estudio */}
-                    {canCreate && (
-                      <div className="flex items-center gap-1.5 ml-2">
-                        {userRole !== ROLES.SECRE_ESTUDIOS && (
+            {/* TABLA / TARJETAS A ANCHO COMPLETO (COAT Informes Style) */}
+            <section className="w-full card">
+                <div className="px-6 py-5 border-b border-[var(--border-main)] flex flex-col gap-4 bg-[var(--bg-card)]">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="p-2.5 bg-blue-600/10 rounded-2xl text-blue-600">
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-lg tracking-tight text-[var(--text-main)]">
+                          {userRole === ROLES.SECRE_ESTUDIOS
+                            ? 'Estudios Bajo Anestesia'
+                            : (userRole === ROLES.MEDICO || userRole === ROLES.RESIDENTE || userRole === ROLES.DIRECTORA) && currentTab === 'Solicitud'
+                              ? 'Mis Solicitudes de Cirugía' 
+                              : (currentTab === 'Auditoría' ? 'Auditoría Médica' : currentTab === 'Gestión' ? 'Gestión de Casos y Presupuestos' : 'Solicitudes y Casos')}
+                        </h3>
+                        <p className="text-[11px] text-[var(--text-sub)] font-medium">
+                          {getFilteredSurgeries().length} registro(s) en la vista actual
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1 bg-[var(--bg-secondary)] p-1 rounded-xl border border-[var(--border-main)] ml-1">
+                        <button onClick={() => setViewMode('cards')} className={`p-2 rounded-lg transition-all ${viewMode === 'cards' ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`} title="Vista tarjetas"><LayoutGrid size={15} /></button>
+                        <button onClick={() => setViewMode('table')} className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`} title="Vista tabla"><Table2 size={15} /></button>
+                      </div>
+
+                      {/* Botones Nueva Cirugía / Nuevo Estudio (visibles en mobile o barra rápida) */}
+                      {canCreate && (
+                        <div className="flex sm:hidden items-center gap-1.5">
+                          {userRole !== ROLES.SECRE_ESTUDIOS && (
+                            <button
+                              onClick={() => handleOpenNewSurgery('CIRUGIA')}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black rounded-xl shadow-sm transition-all cursor-pointer"
+                            >
+                              <PlusCircle size={14} />
+                              <span>Nueva Cirugía</span>
+                            </button>
+                          )}
                           <button
-                            onClick={() => handleOpenNewSurgery('CIRUGIA')}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
-                            title="Crear nueva solicitud de cirugía"
+                            onClick={() => handleOpenNewSurgery('ESTUDIO')}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-[var(--bg-secondary)] text-blue-600 border border-blue-500/20 text-xs font-black rounded-xl transition-all cursor-pointer"
                           >
                             <PlusCircle size={14} />
-                            <span>Nueva Cirugía</span>
+                            <span>Nuevo Estudio</span>
                           </button>
-                        )}
-                        <button
-                          onClick={() => handleOpenNewSurgery('ESTUDIO')}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
-                          title="Crear nueva solicitud de estudio bajo anestesia"
-                        >
-                          <PlusCircle size={14} />
-                          <span>Nuevo Estudio</span>
-                        </button>
-                      </div>
-                    )}
+                        </div>
+                      )}
 
-                    {/* Sub-filtros para Auditoría (Admin y Directora) */}
-                    {currentTab === 'Auditoría' && (userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN) && (
-                      <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 ml-2">
-                        <button
-                          onClick={() => setDirectoraFilter('Todas')}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${directoraFilter === 'Todas' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                          Todas ({surgeries.length})
-                        </button>
-                        <button
-                          onClick={() => setDirectoraFilter('Auditadas')}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${directoraFilter === 'Auditadas' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                          Auditadas / En curso ({surgeries.filter(s => s.estado !== 'SOLICITADA').length})
-                        </button>
-                        <button
-                          onClick={() => setDirectoraFilter('Sin auditar')}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${directoraFilter === 'Sin auditar' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                          <span>Sin auditar</span>
-                          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${surgeries.filter(s => s.estado === 'SOLICITADA').length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-500'}`}>
-                            {surgeries.filter(s => s.estado === 'SOLICITADA').length}
-                          </span>
-                        </button>
-                      </div>
-                    )}
+                      {/* Sub-filtros para Auditoría (Admin y Directora) */}
+                      {currentTab === 'Auditoría' && (userRole === ROLES.DIRECTORA || userRole === ROLES.ADMIN) && (
+                        <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-2xl border border-[var(--border-main)]">
+                          <button
+                            onClick={() => setDirectoraFilter('Todas')}
+                            className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all ${directoraFilter === 'Todas' ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`}
+                          >
+                            Todas ({surgeries.length})
+                          </button>
+                          <button
+                            onClick={() => setDirectoraFilter('Auditadas')}
+                            className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all ${directoraFilter === 'Auditadas' ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`}
+                          >
+                            Auditadas ({surgeries.filter(s => s.estado !== 'SOLICITADA').length})
+                          </button>
+                          <button
+                            onClick={() => setDirectoraFilter('Sin auditar')}
+                            className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 ${directoraFilter === 'Sin auditar' ? 'bg-amber-500 text-white shadow-sm' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`}
+                          >
+                            <span>Sin auditar</span>
+                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${directoraFilter === 'Sin auditar' ? 'bg-white/20 text-white' : 'bg-amber-500/15 text-amber-600'}`}>
+                              {surgeries.filter(s => s.estado === 'SOLICITADA').length}
+                            </span>
+                          </button>
+                        </div>
+                      )}
 
-                    {/* Sub-filtros para Secretaría (Gestión) */}
-                    {currentTab === 'Gestión' && userRole === ROLES.SECRE && (
-                      <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 ml-2">
-                        <button
-                          onClick={() => setEncargadoFilter('Auditadas')}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${encargadoFilter === 'Auditadas' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                          Auditadas para Enviar/Autorizar
-                        </button>
-                        <button
-                          onClick={() => setEncargadoFilter('Pendientes')}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${encargadoFilter === 'Pendientes' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                          Pendientes Auditoría
-                        </button>
-                        <button
-                          onClick={() => setEncargadoFilter('Todas')}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${encargadoFilter === 'Todas' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                          Todas
-                        </button>
-                      </div>
-                    )}
+                      {/* Sub-filtros para Secretaría (Gestión) */}
+                      {currentTab === 'Gestión' && userRole === ROLES.SECRE && (
+                        <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-2xl border border-[var(--border-main)]">
+                          <button
+                            onClick={() => setEncargadoFilter('Auditadas')}
+                            className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all ${encargadoFilter === 'Auditadas' ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`}
+                          >
+                            Auditadas para Enviar/Autorizar
+                          </button>
+                          <button
+                            onClick={() => setEncargadoFilter('Pendientes')}
+                            className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all ${encargadoFilter === 'Pendientes' ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`}
+                          >
+                            Pendientes Auditoría
+                          </button>
+                          <button
+                            onClick={() => setEncargadoFilter('Todas')}
+                            className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all ${encargadoFilter === 'Todas' ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'}`}
+                          >
+                            Todas
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Botón Imprimir Grilla Quirófano del día */}
+                    <button
+                      onClick={() => setQuirofanoModalDate(dateFilter || new Date().toISOString().split('T')[0])}
+                      className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 text-xs font-black uppercase tracking-wider border border-blue-500/20 transition-all active:scale-95 self-start sm:self-auto"
+                      title="Generar e imprimir grilla diaria para quirófano"
+                    >
+                      <Printer size={14} />
+                      <span>Grilla Quirófano</span>
+                    </button>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap">
+                  {/* Filter Bar */}
+                  <div className="flex items-center gap-2.5 flex-wrap pt-1">
                     {/* Search */}
-                    <div className="relative">
+                    <div className="relative flex-1 min-w-[200px]">
                       <input
-                        className="w-40 pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
-                        placeholder="Buscar paciente, DNI o Dr..."
+                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] text-xs font-bold text-[var(--text-main)] outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 focus:bg-[var(--bg-card)] transition-all"
+                        placeholder="Buscar paciente, DNI o profesional..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                       />
-                      <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                     </div>
 
-                    {/* Filtro Período: Próximas / Esta semana / Realizadas / Canceladas / Todas */}
+                    {/* Filtro Período */}
                     <select
-                      className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 outline-none px-2.5 py-1.5 rounded-lg cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                      className="text-xs font-black text-blue-600 bg-blue-500/10 border border-blue-500/20 outline-none px-3 py-2 rounded-xl cursor-pointer focus:border-blue-600"
                       value={periodoFilter}
                       onChange={e => setPeriodoFilter(e.target.value)}
                     >
@@ -4733,9 +5311,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                       <option value="canceladas">❌ Canceladas / No realizadas</option>
                     </select>
 
-                    {/* Filtro Estado (Solicitada, Codificada, etc.) */}
+                    {/* Filtro Estado */}
                     <select
-                      className="text-xs font-semibold text-slate-600 outline-none px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                      className="text-xs font-bold text-[var(--text-main)] outline-none px-3 py-2 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] cursor-pointer focus:border-blue-600"
                       value={statusFilter}
                       onChange={e => setStatusFilter(e.target.value)}
                     >
@@ -4745,9 +5323,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                       ))}
                     </select>
 
-                    {/* Professional Filter - Desplegable con todos los profesionales */}
+                    {/* Professional Filter */}
                     <select
-                      className="text-xs font-semibold text-slate-600 outline-none px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                      className="text-xs font-bold text-[var(--text-main)] outline-none px-3 py-2 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] cursor-pointer focus:border-blue-600"
                       value={profFilter}
                       onChange={e => setProfFilter(e.target.value)}
                     >
@@ -4759,7 +5337,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
                     {/* OS Filter */}
                     <select
-                      className="text-xs font-semibold text-slate-600 outline-none px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                      className="text-xs font-bold text-[var(--text-main)] outline-none px-3 py-2 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] cursor-pointer focus:border-blue-600"
                       value={obraSocialFilter}
                       onChange={e => setObraSocialFilter(e.target.value)}
                     >
@@ -4772,25 +5350,15 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     {/* Date Filter */}
                     <input
                       type="date"
-                      className="text-xs font-semibold text-slate-600 outline-none px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                      className="text-xs font-bold text-[var(--text-main)] outline-none px-3 py-2 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] cursor-pointer focus:border-blue-600"
                       value={dateFilter}
                       onChange={e => setDateFilter(e.target.value)}
                       title="Filtrar por fecha específica"
                     />
 
-                    {/* Botón Imprimir Grilla Quirófano del día */}
-                    <button
-                      onClick={() => setQuirofanoModalDate(dateFilter || new Date().toISOString().split('T')[0])}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-colors shadow-sm active:scale-95"
-                      title="Generar e imprimir grilla diaria para quirófano"
-                    >
-                      <Printer size={13} />
-                      <span>Grilla Quirófano</span>
-                    </button>
-
                     {/* Tipo Filter */}
                     <select
-                      className="text-xs font-semibold text-slate-600 outline-none px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                      className="text-xs font-bold text-[var(--text-main)] outline-none px-3 py-2 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] cursor-pointer focus:border-blue-600"
                       value={tipoFilter}
                       onChange={e => setTipoFilter(e.target.value)}
                     >
@@ -4801,7 +5369,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
                     {/* Material Filter */}
                     <select
-                      className="text-xs font-semibold text-slate-600 outline-none px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                      className="text-xs font-bold text-[var(--text-main)] outline-none px-3 py-2 rounded-xl border border-[var(--border-main)] bg-[var(--bg-secondary)] cursor-pointer focus:border-blue-600"
                       value={materialFilter}
                       onChange={e => setMaterialFilter(e.target.value)}
                     >
@@ -4823,7 +5391,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                           setTipoFilter('TODOS');
                           setSearchTerm('');
                         }}
-                        className="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 text-xs font-bold transition-colors"
+                        className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-xs font-black uppercase tracking-wider transition-colors"
                         title="Limpiar filtros"
                       >
                         Limpiar
@@ -4836,42 +5404,47 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 <div className={`overflow-x-auto ${viewMode !== 'table' ? 'hidden' : ''}`}>
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-50/50 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                      <tr className="bg-[var(--bg-secondary)] text-[var(--text-sub)] text-[10px] font-black uppercase tracking-[0.15em] border-b border-[var(--border-main)]">
                         <th className="px-6 py-4">Paciente & Diagnóstico</th>
                         <th className="px-6 py-4">Profesional</th>
                         <th className="px-6 py-4">Fecha</th>
                         <th className="px-6 py-4">Creador</th>
                         <th className="px-6 py-4">Estado</th>
-                        <th className="px-6 py-4">Material</th>
+                        <th className="px-6 py-4">Material / Presupuesto</th>
                         <th className="px-6 py-4 text-right">Acciones</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-[var(--border-main)]">
                       {getFilteredSurgeries().slice(0, visibleCount).map(s => (
-                        <tr key={s.id} className={`group hover:bg-slate-50/80 transition-all ${s.pinned ? 'bg-amber-50/30' : ''}`}>
+                        <tr key={s.id} className={`group hover:bg-blue-600/5 transition-all ${s.pinned ? 'bg-amber-500/5' : ''}`}>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 flex-wrap">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{s.paciente}</div>
+                                <div className="font-bold text-[var(--text-main)] group-hover:text-blue-600 transition-colors">{s.paciente}</div>
                                 {s.dni && (
-                                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 font-mono">
+                                  <span className="text-[10px] font-bold text-[var(--text-sub)] bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded-lg border border-[var(--border-main)] font-mono">
                                     DNI {s.dni}
                                   </span>
                                 )}
                                 {s.nroAfiliado && (
-                                  <span className="text-[10px] font-semibold text-slate-600 bg-slate-50 px-1.5 py-0.2 rounded border border-slate-200">
+                                  <span className="text-[10px] font-semibold text-[var(--text-sub)] bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded-lg border border-[var(--border-main)]">
                                     AF: {s.nroAfiliado}
                                   </span>
                                 )}
                                 {s.pinned && (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-xs shrink-0" title="Pedido fijado">
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 border border-amber-500/30 shadow-xs shrink-0" title="Pedido fijado">
                                     <Pin size={10} className="fill-amber-500 text-amber-700" />
                                     Fijado
                                   </span>
                                 )}
                                 {(s.tipoProcedimiento === 'ESTUDIO' || s.estudioBajoAnestesia) && (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200">
+                                  <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-blue-600/10 text-blue-600 border border-blue-500/20">
                                     ESTUDIO
+                                  </span>
+                                )}
+                                {s.requierePresupuesto === 'SI' && (
+                                  <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                    PRESUPUESTO
                                   </span>
                                 )}
                               </div>
@@ -5115,7 +5688,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                               </button>
 
                               {/* IMPRIMIR */}
-                              {(canEditSurgery(s) || isAdmin || canManageStatus) && (
+                              {(canEditSurgery(s) || isAdmin || canManageStatus || isConsulta) && (
                                 <button 
                                   onClick={() => handlePrint(s)}
                                   className="p-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200"
@@ -5174,30 +5747,35 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 </div>
 
                 {/* VISTA TARJETAS */}
-                <div className={`p-3 space-y-3 ${viewMode !== 'cards' ? 'hidden' : ''}`}>
+                <div className={`p-4 md:p-6 space-y-3.5 ${viewMode !== 'cards' ? 'hidden' : ''}`}>
                   {getFilteredSurgeries().slice(0, visibleCount).map(s => {
                     const shortCodes = extractShortCodes(s);
                     return (
-                      <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 space-y-3 transition-all ${s.pinned ? 'border-amber-300 ring-1 ring-amber-300/50 bg-gradient-to-r from-amber-50/30 via-white to-white' : 'border-slate-200'}`}>
+                      <div key={s.id} className={`bg-[var(--bg-card)] rounded-2xl border shadow-2xs hover:shadow-md p-5 space-y-3.5 transition-all ${s.pinned ? 'border-amber-400/60 ring-1 ring-amber-400/30 bg-amber-500/[0.03]' : 'border-[var(--border-main)] hover:border-blue-500/30'}`}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                                <p className="font-bold text-slate-800 text-sm truncate">{s.paciente}</p>
+                                <p className="font-black text-[var(--text-main)] text-sm truncate">{s.paciente}</p>
                                 {s.dni && (
-                                  <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono shrink-0">
+                                  <span className="text-[11px] font-bold text-[var(--text-sub)] bg-[var(--bg-secondary)] px-2 py-0.5 rounded-lg border border-[var(--border-main)] font-mono shrink-0">
                                     DNI {s.dni}
                                   </span>
                                 )}
                                 {s.pinned && (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-xs shrink-0" title="Pedido fijado">
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 border border-amber-500/30 shadow-xs shrink-0" title="Pedido fijado">
                                     <Pin size={10} className="fill-amber-500 text-amber-700" />
                                     Fijado
                                   </span>
                                 )}
                                 {(s.tipoProcedimiento === 'ESTUDIO' || s.estudioBajoAnestesia) && (
-                                  <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200 shrink-0">
+                                  <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-blue-600/10 text-blue-600 border border-blue-500/20 shrink-0">
                                     ESTUDIO
+                                  </span>
+                                )}
+                                {s.requierePresupuesto === 'SI' && (
+                                  <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                                    PRESUPUESTO
                                   </span>
                                 )}
                               </div>
@@ -5419,10 +5997,18 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                           </button>
 
                           {/* IMPRIMIR */}
-                          {(canEditSurgery(s) || isAdmin || canManageStatus) && (
+                          {(canEditSurgery(s) || isAdmin || canManageStatus || isConsulta) && (
                             <button onClick={() => handlePrint(s)} title="Imprimir"
                               className="p-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 transition-all active:scale-95">
                               <Printer size={15} />
+                            </button>
+                          )}
+
+                          {/* PRESUPUESTOS */}
+                          {canAccessPresupuestos && (
+                            <button type="button" onClick={() => setPresupuestoModalSurgery(s)} title="Presupuestos"
+                              className="p-1.5 rounded-md bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-all active:scale-95">
+                              <DollarSign size={15} />
                             </button>
                           )}
 
@@ -5467,14 +6053,14 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
                 {/* BOTÓN CARGAR MÁS / PAGINACIÓN */}
                 {getFilteredSurgeries().length > visibleCount && (
-                  <div className="p-6 text-center border-t border-slate-100 bg-slate-50/50">
+                  <div className="p-6 text-center border-t border-[var(--border-main)] bg-[var(--bg-secondary)]/40">
                     <button
                       onClick={() => setVisibleCount(prev => prev + 15)}
-                      className="px-6 py-2.5 bg-white border border-indigo-200 hover:border-indigo-400 text-indigo-600 font-bold text-xs rounded-xl shadow-sm hover:shadow transition-all active:scale-95"
+                      className="px-6 py-3 bg-[var(--bg-card)] border-2 border-blue-500/30 hover:border-blue-600 text-blue-600 font-black uppercase tracking-wider text-xs rounded-2xl shadow-sm hover:shadow transition-all active:scale-95"
                     >
                       Cargar más ({getFilteredSurgeries().length - visibleCount} restantes)
                     </button>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-2">
+                    <p className="text-[10px] text-[var(--text-sub)] font-black uppercase tracking-widest mt-2">
                       Mostrando {visibleCount} de {getFilteredSurgeries().length} registros
                     </p>
                   </div>
@@ -5484,23 +6070,25 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
           )}
         </>
         )}
-      </main>
+            </div>
+          </main>
+        </div>
 
       {/* MODAL DE RECHAZO */}
       {rejectModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => { setRejectModal(null); setRejectMotivo(''); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center"><XCircle size={20} className="text-rose-600" /></div>
-              <div><h3 className="font-bold text-slate-800">Rechazar Cirugía</h3><p className="text-[10px] text-slate-400">{rejectModal.paciente}</p></div>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm" onClick={() => { setRejectModal(null); setRejectMotivo(''); }}>
+          <div className="bg-[var(--bg-card)] rounded-[2rem] border border-[var(--border-main)] shadow-2xl w-full max-w-md p-6 md:p-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-11 h-11 bg-rose-500/10 rounded-2xl flex items-center justify-center border border-rose-500/20"><XCircle size={22} className="text-rose-600" /></div>
+              <div><h3 className="font-black text-base text-[var(--text-main)]">Rechazar Cirugía</h3><p className="text-xs text-[var(--text-sub)] font-medium">{rejectModal.paciente}</p></div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Motivo del rechazo</label>
-              <textarea className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm min-h-[100px] resize-none" placeholder="Indique el motivo para informar al profesional..." value={rejectMotivo} onChange={e => setRejectMotivo(e.target.value)} autoFocus />
+              <label className="block text-[10px] font-black text-[var(--text-sub)] uppercase tracking-widest mb-1.5">Motivo del rechazo</label>
+              <textarea className="w-full px-4 py-3 rounded-2xl border border-[var(--border-main)] bg-[var(--bg-secondary)] focus:bg-[var(--bg-card)] focus:border-rose-500 outline-none transition-all text-sm font-medium min-h-[100px] resize-none text-[var(--text-main)]" placeholder="Indique el motivo para informar al profesional..." value={rejectMotivo} onChange={e => setRejectMotivo(e.target.value)} autoFocus />
             </div>
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => { setRejectModal(null); setRejectMotivo(''); }} className="flex-1 py-2.5 text-slate-500 font-bold text-xs uppercase rounded-lg hover:bg-slate-50">Cancelar</button>
-              <button onClick={() => { updateStatus(rejectModal.id, 'RECHAZADA', rejectMotivo); setRejectModal(null); setRejectMotivo(''); }} disabled={!rejectMotivo.trim()} className="flex-1 py-2.5 bg-rose-600 text-white font-bold text-xs uppercase rounded-lg shadow-md hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setRejectModal(null); setRejectMotivo(''); }} className="flex-1 py-3 text-[var(--text-sub)] font-black text-xs uppercase tracking-wider rounded-2xl hover:bg-[var(--bg-secondary)] transition-all">Cancelar</button>
+              <button onClick={() => { updateStatus(rejectModal.id, 'RECHAZADA', rejectMotivo); setRejectModal(null); setRejectMotivo(''); }} disabled={!rejectMotivo.trim()} className="flex-1 py-3 bg-rose-600 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-rose-500/20 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all">Rechazar</button>
             </div>
           </div>
         </div>
@@ -5508,19 +6096,19 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
       {/* MODAL DE CANCELACIÓN */}
       {cancelModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => { setCancelModal(null); setCancelMotivo(''); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center"><XCircle size={20} className="text-slate-600" /></div>
-              <div><h3 className="font-bold text-slate-800">Cancelar Cirugía</h3><p className="text-[10px] text-slate-400">{cancelModal.paciente}</p></div>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm" onClick={() => { setCancelModal(null); setCancelMotivo(''); }}>
+          <div className="bg-[var(--bg-card)] rounded-[2rem] border border-[var(--border-main)] shadow-2xl w-full max-w-md p-6 md:p-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-11 h-11 bg-[var(--bg-secondary)] rounded-2xl flex items-center justify-center border border-[var(--border-main)]"><XCircle size={22} className="text-[var(--text-sub)]" /></div>
+              <div><h3 className="font-black text-base text-[var(--text-main)]">Cancelar Cirugía</h3><p className="text-xs text-[var(--text-sub)] font-medium">{cancelModal.paciente}</p></div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Motivo de cancelación</label>
-              <textarea className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-slate-400 outline-none transition-all text-sm min-h-[100px] resize-none" placeholder="Indique el motivo de la cancelación..." value={cancelMotivo} onChange={e => setCancelMotivo(e.target.value)} autoFocus />
+              <label className="block text-[10px] font-black text-[var(--text-sub)] uppercase tracking-widest mb-1.5">Motivo de cancelación</label>
+              <textarea className="w-full px-4 py-3 rounded-2xl border border-[var(--border-main)] bg-[var(--bg-secondary)] focus:bg-[var(--bg-card)] focus:border-blue-500 outline-none transition-all text-sm font-medium min-h-[100px] resize-none text-[var(--text-main)]" placeholder="Indique el motivo de la cancelación..." value={cancelMotivo} onChange={e => setCancelMotivo(e.target.value)} autoFocus />
             </div>
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => { setCancelModal(null); setCancelMotivo(''); }} className="flex-1 py-2.5 text-slate-500 font-bold text-xs uppercase rounded-lg hover:bg-slate-50">Cancelar</button>
-              <button onClick={() => { updateStatus(cancelModal.id, 'CANCELADA', cancelMotivo); setCancelModal(null); setCancelMotivo(''); }} disabled={!cancelMotivo.trim()} className="flex-1 py-2.5 bg-slate-600 text-white font-bold text-xs uppercase rounded-lg shadow-md hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">Confirmar</button>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setCancelModal(null); setCancelMotivo(''); }} className="flex-1 py-3 text-[var(--text-sub)] font-black text-xs uppercase tracking-wider rounded-2xl hover:bg-[var(--bg-secondary)] transition-all">Cancelar</button>
+              <button onClick={() => { updateStatus(cancelModal.id, 'CANCELADA', cancelMotivo); setCancelModal(null); setCancelMotivo(''); }} disabled={!cancelMotivo.trim()} className="flex-1 py-3 bg-slate-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">Confirmar</button>
             </div>
           </div>
         </div>
@@ -5528,46 +6116,64 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
       {/* MODAL DE AUDITORÍA */}
       {selectedSurgery && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2">
-                <ShieldCheck size={20} className="text-indigo-600" />
-                <h3 className="font-bold text-slate-800">Auditoría de Solicitud</h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[var(--bg-card)] rounded-[2.5rem] border border-[var(--border-main)] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="px-6 md:px-8 py-5 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-secondary)]/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-[var(--text-main)]">Auditoría Médica y Presupuesto</h3>
+                  <p className="text-[11px] text-[var(--text-sub)] font-medium">Revisión clínica y asignación de códigos</p>
+                </div>
               </div>
-              <button onClick={() => setSelectedSurgery(null)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
-                <XCircle size={20} className="text-slate-400" />
-              </button>
+              <div className="flex items-center gap-2">
+                {canAccessPresupuestos && (
+                  <button
+                    type="button"
+                    onClick={() => setPresupuestoModalSurgery(selectedSurgery)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs font-bold transition-colors"
+                  >
+                    <DollarSign size={14} /> Ver Presupuestos
+                  </button>
+                )}
+                <button onClick={() => setSelectedSurgery(null)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                  <XCircle size={20} className="text-slate-400" />
+                </button>
+              </div>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-6">
+            <div className="p-6 md:p-8 overflow-y-auto space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Datos del Profesional</h4>
+                  <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Datos del Profesional</h4>
                   <div className="space-y-2">
-                    <p className="text-xs text-slate-500">Nombre: <span className="text-slate-800 font-medium">{selectedSurgery.nombreProfesional}</span></p>
-                    <p className="text-xs text-slate-500">Email: <span className="text-slate-800 font-medium">{selectedSurgery.emailProfesional}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Nombre: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.nombreProfesional}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Email: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.emailProfesional}</span></p>
                   </div>
 
-                  <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest pt-2">Datos del Paciente</h4>
+                  <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest pt-2">Datos del Paciente</h4>
                   <div className="space-y-2">
-                    <p className="text-xs text-slate-500">Nombre: <span className="text-slate-800 font-medium">{selectedSurgery.paciente}</span></p>
-                    <p className="text-xs text-slate-500">Edad/DNI: <span className="text-slate-800 font-medium">{selectedSurgery.edad} años / {selectedSurgery.dni}</span></p>
-                    <p className="text-xs text-slate-500">Contacto: <span className="text-slate-800 font-medium">{selectedSurgery.contactoFamiliar}</span></p>
-                    <p className="text-xs text-slate-500">Clínica: <span className="text-slate-800 font-medium">{selectedSurgery.esPacienteClinica}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Nombre: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.paciente}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Edad/DNI: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.edad} años / {selectedSurgery.dni}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Contacto: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.contactoFamiliar}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Clínica: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.esPacienteClinica}</span></p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Detalles Técnicos</h4>
+                  <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Detalles Técnicos y Presupuesto</h4>
                   <div className="space-y-2">
-                    <p className="text-xs text-slate-500">Fecha: <span className="text-slate-800 font-medium">{selectedSurgery.fecha}</span></p>
-                    <p className="text-xs text-slate-500">Duración: <span className="text-slate-800 font-medium">{selectedSurgery.duracion} hs</span></p>
-                    <p className="text-xs text-slate-500">Obra Social: <span className="text-slate-800 font-medium">{selectedSurgery.obraSocial}</span></p>
-                    <p className="text-xs text-slate-500">Psicoprofilaxis: <span className="text-slate-800 font-medium">{selectedSurgery.psicoprofilaxis}</span></p>
-                    <p className="text-xs text-slate-500">Anestesia: <span className="text-slate-800 font-medium">{selectedSurgery.anestesia}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Fecha: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.fecha}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Duración: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.duracion} hs</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Obra Social: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.obraSocial}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Psicoprofilaxis: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.psicoprofilaxis}</span></p>
+                    <p className="text-xs text-[var(--text-sub)]">Anestesia: <span className="text-[var(--text-main)] font-bold">{selectedSurgery.anestesia}</span></p>
                     {selectedSurgery.requierePresupuesto === 'SI' && (
-                      <p className="text-xs font-bold text-amber-600">Esta cirugía requiere presupuesto</p>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-xs font-black text-amber-700 dark:text-amber-400">
+                        Esta cirugía requiere presupuesto
+                      </div>
                     )}
                   </div>
                 </div>
@@ -5612,8 +6218,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                         const trimmed = rawCode.trim();
                         const isSM = selectedSurgery.obraSocial?.toUpperCase().includes('SWISS');
                         const isIOSFA = selectedSurgery.obraSocial?.toUpperCase().includes('IOSFA');
-                        const expanded = expandCodes(trimmed, isSM, isIOSFA);
-                        const desc = expanded.length > 0 ? expanded[0] : `${trimmed} — ${getCodeName(trimmed)}`;
+                        const isSancor = selectedSurgery.obraSocial?.toUpperCase().includes('SANCOR');
+                        const expanded = expandCodes(trimmed, isSM, isIOSFA, isSancor);
+                        const desc = expanded.length > 0 ? expanded[0] : `${trimmed} — ${getCodeName(trimmed, selectedSurgery.obraSocial)}`;
                         const osPresupuesto = JSON.parse(localStorage.getItem('os_code_presupuesto') || '{}');
                         const key = `${selectedSurgery.obraSocial}||${trimmed}`;
                         const isPresupuesto = !!osPresupuesto[key];
@@ -5695,21 +6302,23 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
       {/* MODAL DE EDICIÓN COMPLETA */}
       {editModalData && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2">
-                <Pencil size={20} className="text-indigo-600" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="bg-[var(--bg-card)] rounded-[2.5rem] border border-[var(--border-main)] shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="px-6 md:px-8 py-5 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-secondary)]/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+                  <Pencil size={18} />
+                </div>
                 <div>
-                  <h3 className="font-bold text-slate-800">Editar Solicitud</h3>
-                  <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
+                  <h3 className="font-black text-base text-[var(--text-main)]">Editar Solicitud y Presupuesto</h3>
+                  <div className="flex items-center gap-2 text-[11px] text-[var(--text-sub)] font-medium">
                     {editModalData.creador && (
-                      <span>Cargada por: <strong className="text-slate-700">{editModalData.creador}</strong></span>
+                      <span>Cargada por: <strong className="text-[var(--text-main)]">{editModalData.creador}</strong></span>
                     )}
                     {editModalData.modifiedBy && (
                       <>
                         <span>•</span>
-                        <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                        <span className="text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-lg border border-blue-500/20 font-bold">
                           Última modif.: <strong>{editModalData.modifiedBy}</strong>
                           {editModalData.modifiedAt && ` (${new Date(editModalData.modifiedAt).toLocaleDateString([], {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})})`}
                         </span>
@@ -5718,7 +6327,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                   </div>
                 </div>
               </div>
-              <button onClick={() => setEditModalData(null)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+              <button onClick={() => setEditModalData(null)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors">
                 <XCircle size={20} className="text-slate-400" />
               </button>
             </div>
@@ -6069,7 +6678,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                 newInputs[idx] = newVal;
                                 setEditCodeInputs(newInputs);
                                 const isSM = editModalData.obraSocial?.toUpperCase().includes('SWISS');
-                                const matches = searchCodes(newVal, isSM, editModalData.tipoProcedimiento || 'CIRUGIA');
+                                const matches = searchCodes(newVal, isSM, editModalData.tipoProcedimiento || 'CIRUGIA', editModalData.obraSocial);
                                 setEditCodeSuggestions({ ...editCodeSuggestions, [idx]: matches });
                                 setEditActiveCodeField(idx);
                               }}
@@ -6087,7 +6696,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                 setEditActiveCodeField(idx);
                                 if (val.trim().length >= 2) {
                                   const isSM = editModalData.obraSocial?.toUpperCase().includes('SWISS');
-                                  const matches = searchCodes(val, isSM, editModalData.tipoProcedimiento || 'CIRUGIA');
+                                  const matches = searchCodes(val, isSM, editModalData.tipoProcedimiento || 'CIRUGIA', editModalData.obraSocial);
                                   setEditCodeSuggestions({ ...editCodeSuggestions, [idx]: matches });
                                 }
                               }}
@@ -6141,8 +6750,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                               {(() => {
                                 const isSM = editModalData.obraSocial?.toUpperCase().includes('SWISS');
                                 const isIOSFA = editModalData.obraSocial?.toUpperCase().includes('IOSFA');
-                                const expanded = expandCodes(val.trim(), isSM, isIOSFA);
-                                return expanded.length > 0 ? expanded[0] : `${val.trim()} - ${getCodeName(val.trim())}`;
+                                const isSancor = editModalData.obraSocial?.toUpperCase().includes('SANCOR');
+                                const expanded = expandCodes(val.trim(), isSM, isIOSFA, isSancor);
+                                return expanded.length > 0 ? expanded[0] : `${val.trim()} - ${getCodeName(val.trim(), editModalData.obraSocial)}`;
                               })()}
                             </div>
                           )}
@@ -6173,38 +6783,43 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
 
                 {/* SECCIÓN CONVENIO Y VALORES PARA ESTUDIOS */}
                 {(editModalData.tipoProcedimiento === 'ESTUDIO' || editModalData.estudioBajoAnestesia) && editModalData.obraSocial?.trim().toLowerCase() === 'particular' && (
-                  <div className="md:col-span-2 p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
-                    <label className="block text-xs font-black text-purple-900 uppercase tracking-wider">Valor total del estudio *</label>
+                  <div className="md:col-span-2 p-5 bg-blue-500/5 border-2 border-blue-500/20 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-black text-blue-600 uppercase tracking-widest">Presupuesto Particular — Valor total del estudio *</label>
+                      <span className="px-2.5 py-0.5 rounded-lg bg-blue-600/10 text-blue-600 text-[10px] font-black uppercase tracking-wider">Presupuesto</span>
+                    </div>
                     <input
                       required
                       inputMode="decimal"
                       placeholder="Ej: 580000"
                       value={editModalData.valorParticularEstudio || ''}
                       onChange={e => setEditModalData(prev => ({ ...prev, valorParticularEstudio: e.target.value, conveniosEstudios: {} }))}
-                      className="w-full px-3 py-2 rounded-lg border border-purple-300 focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold"
+                      className="w-full px-4 py-2.5 rounded-xl border-2 border-blue-500/30 bg-[var(--bg-card)] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none text-sm font-black text-[var(--text-main)]"
                     />
-                    <p className="text-xs text-purple-700">En la orden: <strong>{formatCurrencyARS(editModalData.valorParticularEstudio) || '$0,00.'}</strong></p>
-                    <label className="flex items-center gap-1.5 text-xs font-bold text-purple-900 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!editModalData.incluyeIva}
-                        onChange={e => setEditModalData(prev => ({ ...prev, incluyeIva: e.target.checked }))}
-                        className="w-4 h-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-                      />
-                      IVA
-                    </label>
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="flex items-center gap-2 text-xs font-black text-[var(--text-main)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!editModalData.incluyeIva}
+                          onChange={e => setEditModalData(prev => ({ ...prev, incluyeIva: e.target.checked }))}
+                          className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Incluir IVA en el presupuesto
+                      </label>
+                      <p className="text-xs text-[var(--text-sub)] font-medium">En la orden: <strong className="text-blue-600 font-black">{formatCurrencyARS(editModalData.valorParticularEstudio) || '$0,00.'}</strong></p>
+                    </div>
                   </div>
                 )}
                 {(editModalData.tipoProcedimiento === 'ESTUDIO' || editModalData.estudioBajoAnestesia) && editModalData.obraSocial?.trim().toLowerCase() !== 'particular' && (
-                  <div className="md:col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div className="md:col-span-2 p-5 bg-blue-500/5 border-2 border-blue-500/20 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-blue-500/20 pb-2.5">
                       <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
-                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                          Convenios y Valores de los Estudios
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                        <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest">
+                          Presupuesto y Convenios de los Estudios
                         </h4>
                       </div>
-                      <span className="text-[10px] text-slate-400 font-medium">Panel de gestión secretaría</span>
+                      <span className="px-2.5 py-0.5 rounded-lg bg-blue-600/10 text-blue-600 text-[10px] font-black uppercase tracking-wider">Gestión de Presupuestos</span>
                     </div>
 
                     <p className="text-[11px] text-slate-500">
@@ -6556,16 +7171,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6 pt-4 border-t border-slate-200">
+              <div className="flex gap-3 mt-6 pt-4 border-t border-[var(--border-main)]">
                 <button
                   onClick={() => handleSaveEditModal(editModalData)}
-                  className="flex-1 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all shadow-md flex items-center justify-center gap-2"
+                  className="flex-1 py-3 rounded-2xl bg-blue-600 text-white text-xs font-black uppercase tracking-wider hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 active:scale-[0.99]"
                 >
                   <CheckCircle2 size={18} /> Guardar Cambios
                 </button>
                 <button
                   onClick={() => setEditModalData(null)}
-                  className="px-6 py-2.5 rounded-lg bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-all"
+                  className="px-6 py-3 rounded-2xl bg-[var(--bg-secondary)] text-[var(--text-sub)] hover:text-[var(--text-main)] text-xs font-black uppercase tracking-wider transition-all"
                 >
                   Cancelar
                 </button>
@@ -6638,7 +7253,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 <div style={{ paddingTop: '10px', paddingBottom: '4px' }}>
                   <p style={{ fontWeight: 700, marginBottom: '6px' }}>Estudios solicitados:</p>
                   <div style={{ paddingLeft: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {buildStudyOrderLines(printSurgery, expandCodes(printSurgery.codigosAuditados || printSurgery.codigos || '', printSurgery.obraSocial?.toUpperCase().includes('SWISS'), printSurgery.obraSocial?.toUpperCase().includes('IOSFA'))).map((line, idx) => (
+                    {buildStudyOrderLines(printSurgery, expandCodes(printSurgery.codigosAuditados || printSurgery.codigos || '', printSurgery.obraSocial?.toUpperCase().includes('SWISS'), printSurgery.obraSocial?.toUpperCase().includes('IOSFA'), printSurgery.obraSocial?.toUpperCase().includes('SANCOR'))).map((line, idx) => (
                       <p key={idx} style={{ lineHeight: 1.4, fontSize: '11pt' }}>
                         <strong>{idx + 1}-</strong> {line}
                       </p>
@@ -6649,7 +7264,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                 <div style={{ paddingTop: '8px', display: 'flex', gap: '8px' }}>
                   <strong style={{ flexShrink: 0 }}>Códigos de cirugía:</strong>
                   <div>
-                    {expandCodes(printSurgery.codigosAuditados || printSurgery.codigos || '', printSurgery.obraSocial?.toUpperCase().includes('SWISS'), printSurgery.obraSocial?.toUpperCase().includes('IOSFA')).map((line, idx) => (
+                    {expandCodes(printSurgery.codigosAuditados || printSurgery.codigos || '', printSurgery.obraSocial?.toUpperCase().includes('SWISS'), printSurgery.obraSocial?.toUpperCase().includes('IOSFA'), printSurgery.obraSocial?.toUpperCase().includes('SANCOR')).map((line, idx) => (
                       <p key={idx} style={{ lineHeight: 1.2 }}>{line}</p>
                     ))}
                   </div>
@@ -6762,6 +7377,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
       {/* PRINT CONSOLE */}
       {printModalData && (
         <PrintConsole surgery={printModalData} onClose={() => setPrintModalData(null)} />
+      )}
+
+      {/* PRESUPUESTOS MODAL */}
+      {presupuestoModalSurgery && canAccessPresupuestos && (
+        <PresupuestoModal
+          surgery={presupuestoModalSurgery}
+          userRole={userRole}
+          currentUser={currentUser}
+          onClose={() => setPresupuestoModalSurgery(null)}
+        />
       )}
 
       {/* MODAL REPORTE DE QUIRÓFANO */}

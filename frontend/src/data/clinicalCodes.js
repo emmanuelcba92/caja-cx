@@ -280,6 +280,13 @@ export const PRACTICAS_MEDICAS = [
   { name: 'ECG con Valoración Cardiovascular y Riesgo ASA' },
 ];
 
+export const CODIGOS_SANCOR = [
+  { code: '030473', name: 'TURBINOPLASTIA / TURBINECTOMIA POR RADIOFRECUENCIA' },
+];
+
+export const isSancorObraSocial = (obraSocial = '') =>
+  String(obraSocial || '').toUpperCase().includes('SANCOR');
+
 export const ESTUDIOS_BAJO_ANESTESIA = [
   { code: 'PEA-CLICK', name: 'Potenciales Evocados por clicks' },
   { code: 'MIC-COC', name: 'Microfónicas cocleares' },
@@ -288,12 +295,17 @@ export const ESTUDIOS_BAJO_ANESTESIA = [
   { code: 'DISE', name: 'DISE (Endoscopía del Sueño Inducida por Fármacos)' }
 ];
 
-export const getCodeName = (code) => {
+export const getCodeName = (code, obraSocial = '') => {
   if (!code) return '';
   const trimmed = code.trim().toUpperCase();
 
   const estudio = ESTUDIOS_BAJO_ANESTESIA.find(e => e.code.toUpperCase() === trimmed || e.name.toUpperCase() === trimmed);
   if (estudio) return estudio.name;
+
+  if (isSancorObraSocial(obraSocial)) {
+    const sancorMatch = CODIGOS_SANCOR.find(c => c.code === trimmed);
+    if (sancorMatch) return sancorMatch.name;
+  }
 
   const match = CLINICAL_NOMENCLADOR.find(c => c.code === trimmed);
   if (match) return match.name;
@@ -320,7 +332,7 @@ export const resolveCodeLine = (code) => {
   return name ? `${trimmed} - ${name}` : trimmed;
 };
 
-export const expandCodes = (codesInput, isSwissMedical = false, isIOSFA = false) => {
+export const expandCodes = (codesInput, isSwissMedical = false, isIOSFA = false, isSancor = false) => {
   if (!codesInput) return [];
   let raw = [];
   if (Array.isArray(codesInput)) {
@@ -368,12 +380,15 @@ export const expandCodes = (codesInput, isSwissMedical = false, isIOSFA = false)
         ? MODULOS_SM.find(m => m.includes && m.includes.includes(trimmed))
         : null;
       const iosfaMatch = isIOSFA ? CODIGOS_IOSFA.find(c => c.generalCode === trimmed || c.code === trimmed) : null;
+      const sancorMatch = isSancor ? CODIGOS_SANCOR.find(c => c.code === trimmed) : null;
       if (parentModule) {
         const name = getCodeName(trimmed);
         result.push(name ? `${parentModule.code} ${parentModule.name} - ${trimmed} ${name}` : `${parentModule.code} ${parentModule.name} - ${trimmed}`);
       } else if (iosfaMatch) {
         const name = getCodeName(trimmed);
         result.push(`${iosfaMatch.code} (${trimmed}) ${name || iosfaMatch.name}`);
+      } else if (sancorMatch) {
+        result.push(`${sancorMatch.code} ${sancorMatch.name}`);
       } else {
         const name = getCodeName(trimmed);
         result.push(name ? `${trimmed} ${name}` : trimmed);
@@ -383,7 +398,7 @@ export const expandCodes = (codesInput, isSwissMedical = false, isIOSFA = false)
   return result;
 };
 
-export const searchCodes = (query, isSwissMedical = false, tipoProcedimiento = 'CIRUGIA') => {
+export const searchCodes = (query, isSwissMedical = false, tipoProcedimiento = 'CIRUGIA', obraSocial = '') => {
   if (!query || query.trim().length < 2) return [];
   const q = query.toLowerCase().trim();
   const results = [];
@@ -401,6 +416,14 @@ export const searchCodes = (query, isSwissMedical = false, tipoProcedimiento = '
     MODULOS_SM.forEach(m => {
       if (m.code.includes(q) || m.name.toLowerCase().includes(q)) {
         results.push({ code: m.code, name: m.name, type: 'modulo', parentModule: null });
+      }
+    });
+  }
+
+  if (isSancorObraSocial(obraSocial)) {
+    CODIGOS_SANCOR.forEach(c => {
+      if (c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)) {
+        results.push({ code: c.code, name: c.name, type: 'sancor', parentModule: null });
       }
     });
   }
