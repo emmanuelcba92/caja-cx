@@ -2386,7 +2386,8 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
             medico: 'Medico', 
             direccion_medica: 'Directora', 
             coat: 'Admin', 
-            residente: 'Residente' 
+            residente: 'Residente',
+            consulta: 'Consulta'
           };
           const uniqueByEmail = new Map();
           usersFromDb.forEach(u => {
