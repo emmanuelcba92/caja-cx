@@ -77,6 +77,7 @@ import ConsentimientosView from './components/ConsentimientosView';
 import QuirofanoReportModal from './components/QuirofanoReportModal';
 import WhatsAppModal from './components/WhatsAppModal';
 import WhatsAppTemplatesAdmin from './components/WhatsAppTemplatesAdmin';
+import SurgicalDashboardView from './components/SurgicalDashboardView';
 import { SURGICAL_TEMPLATES } from './data/surgicalTemplates';
 import { DEFAULT_OBRAS_SOCIALES } from './data/obrasSociales';
 import { getCodeName, expandCodes, searchCodes, CLINICAL_NOMENCLADOR, MODULOS_SM, CODIGOS_IOSFA, CODIGOS_SANCOR, ESTUDIOS_BAJO_ANESTESIA } from './data/clinicalCodes';
@@ -328,6 +329,144 @@ const CardInlineField = ({ label, value, placeholder, isUppercase = false, isSal
         title={`Click para editar ${label}`}
       />
       {isSaved && <Check size={12} className="text-emerald-600 shrink-0 stroke-[3]" />}
+    </div>
+  );
+};
+
+const CardInlineObservation = ({ value, canEdit, onSave, compact = false }) => {
+  const [isEditingObs, setIsEditingObs] = useState(false);
+  const [draftVal, setDraftVal] = useState(value || '');
+  const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    if (!isEditingObs) {
+      setDraftVal(value || '');
+    }
+  }, [value, isEditingObs]);
+
+  if (!canEdit && !value) return null;
+
+  if (isEditingObs && !canEdit && compact && value) {
+    return (
+      <div className="mt-1.5 p-2.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 space-y-1.5 max-w-xs">
+        <p className="text-[11px] text-teal-900 dark:text-teal-200 whitespace-pre-wrap break-words">
+          <span className="font-bold">Obs. admin:</span> {value}
+        </p>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setIsEditingObs(false)}
+            className="px-2 py-0.5 rounded text-[10px] font-bold text-[var(--text-sub)] hover:bg-[var(--bg-secondary)] cursor-pointer"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isEditingObs && canEdit) {
+    return (
+      <div className={`mt-1 p-2.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 space-y-2 ${compact ? 'max-w-xs' : ''}`}>
+        <textarea
+          rows={2}
+          autoFocus
+          value={draftVal}
+          onChange={(e) => setDraftVal(e.target.value)}
+          placeholder="Escribir observación administrativa..."
+          className="w-full px-2.5 py-1.5 rounded-lg border border-teal-300 dark:border-teal-700 bg-[var(--bg-card)] text-xs text-[var(--text-main)] outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+        />
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setDraftVal(value || '');
+              setIsEditingObs(false);
+            }}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-[var(--text-sub)] hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const trimmed = String(draftVal || '').trim();
+              if (trimmed !== String(value || '').trim()) {
+                onSave(trimmed);
+                setIsSaved(true);
+                setTimeout(() => setIsSaved(false), 1800);
+              }
+              setIsEditingObs(false);
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-black transition-colors cursor-pointer"
+          >
+            <Check size={12} />
+            Guardar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (value) {
+    if (compact) {
+      return (
+        <div className="mt-1 flex items-center gap-1.5 max-w-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setDraftVal(value || '');
+              setIsEditingObs(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/40 hover:bg-teal-100 text-teal-800 dark:text-teal-300 border border-teal-200/80 dark:border-teal-800 text-[11px] font-medium text-left max-w-full transition-colors cursor-pointer"
+            title={canEdit ? 'Click para ver o editar observación administrativa' : 'Click para ver observación administrativa'}
+          >
+            <span className="font-bold shrink-0">Obs. admin:</span>
+            <span className="truncate">{value}</span>
+          </button>
+          {isSaved && <Check size={12} className="text-emerald-600 shrink-0 stroke-[3]" />}
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-start justify-between gap-2 text-[11px] text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/30 rounded-lg px-3 py-1.5 border border-teal-200/80 dark:border-teal-800">
+        <p className="flex-1 min-w-0">
+          <span className="font-bold">Obs. admin:</span> {value}
+        </p>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isSaved && <Check size={12} className="text-emerald-600 stroke-[3]" />}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setDraftVal(value || '');
+                setIsEditingObs(true);
+              }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800 hover:bg-teal-100 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-700 text-[10px] font-bold transition-colors cursor-pointer"
+              title="Editar observación administrativa"
+            >
+              <Pencil size={10} />
+              Editar
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 pt-0.5">
+      <button
+        type="button"
+        onClick={() => {
+          setDraftVal('');
+          setIsEditingObs(true);
+        }}
+        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-400 border border-teal-500/20 text-[11px] font-bold transition-colors cursor-pointer"
+      >
+        + Observación
+      </button>
+      {isSaved && <Check size={12} className="text-emerald-600 stroke-[3]" />}
     </div>
   );
 };
@@ -2041,7 +2180,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [encargadoFilter, setEncargadoFilter] = useState('Auditadas');
   const [directoraFilter, setDirectoraFilter] = useState('Sin auditar');
-  const [currentTab, setCurrentTab] = useState('Solicitud');
+  const [currentTab, setCurrentTab] = useState('Dashboard');
   const [cirugiasSubTab, setCirugiasSubTab] = useState('Solicitud');
   const [searchTerm, setSearchTerm] = useState('');
   const [obraSocialFilter, setObraSocialFilter] = useState('');
@@ -2349,6 +2488,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
               fechaCreacion: orden.createdAt || new Date().toISOString(),
               codigosAuditados: codigos || orden.codigosAuditados || orden.codigos || '',
               notasDirectora: orden.notasDirectora || '',
+              observacionesGestion: orden.observacionesGestion || '',
               motivoRechazo: orden.motivoRechazo || '',
               motivoCancelacion: orden.motivoCancelacion || '',
               reactivada: orden.reactivada || false,
@@ -2614,6 +2754,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
     if (cleanUpdates.nroAfiliado !== undefined) {
       cleanUpdates.nroAfiliado = String(cleanUpdates.nroAfiliado || '').trim();
     }
+    if (cleanUpdates.observacionesGestion !== undefined) {
+      cleanUpdates.observacionesGestion = String(cleanUpdates.observacionesGestion || '').trim();
+    }
 
     setSurgeries(prev => prev.map(s => s.id === surgeryId ? { ...s, ...cleanUpdates } : s));
 
@@ -2628,6 +2771,9 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         if (cleanUpdates.habitacion !== undefined) {
           firestoreUpdates.salaCirugia = cleanUpdates.habitacion;
           firestoreUpdates.habitacion = cleanUpdates.habitacion;
+        }
+        if (cleanUpdates.observacionesGestion !== undefined) {
+          firestoreUpdates.observacionesGestion = cleanUpdates.observacionesGestion;
         }
         await apiService.updateDocument('ordenes_internacion', String(surgeryId), firestoreUpdates);
 
@@ -3574,6 +3720,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         incluyeMaterial: fullData.requiereMaterial === 'SI',
         descripcionMaterial: fullData.materiales,
         anotacionCalendario: fullData.notasDoctor,
+        observacionesGestion: fullData.observacionesGestion || '',
         salaCirugia: fullData.habitacion,
         codigosCirugia: codigosArray,
         adjuntos: fullData.adjuntos || [],
@@ -3921,6 +4068,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
   }, [currentTab, canAccessMetricas, allowedCirugiasSubTabs, canAccessCaja]);
 
   const navItems = [
+    { id: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard, isActive: currentTab === 'Dashboard', onClick: () => setCurrentTab('Dashboard') },
     ...(canAccessCaja
       ? [{ id: 'Caja', label: 'Caja', icon: DollarSign, isActive: currentTab === 'Caja', onClick: () => setCurrentTab('Caja') }]
       : []),
@@ -4023,6 +4171,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
               <img src="/coat_logo.png" alt="COAT" className="w-8 h-8 object-contain md:hidden shrink-0" />
               <div className="flex items-center gap-3 min-w-0">
                 <h1 className="text-lg md:text-xl font-black tracking-tight text-[var(--text-main)] truncate">
+                  {currentTab === 'Dashboard' && 'Dashboard Quirúrgico'}
                   {currentTab === 'Solicitud' && (userRole === ROLES.SECRE_ESTUDIOS ? 'Estudios Bajo Anestesia' : 'Solicitudes y Presupuestos')}
                   {currentTab === 'Auditoría' && 'Auditoría Médica'}
                   {currentTab === 'Gestión' && 'Gestión Quirúrgica y Presupuestos'}
@@ -4137,6 +4286,15 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
         {/* NOTAS TAB */}
         {currentTab === 'Notas' && (
           <NotesView />
+        )}
+
+        {/* DASHBOARD QUIRÚRGICO TAB (Solo lectura, todos los roles autenticados) */}
+        {currentTab === 'Dashboard' && (
+          <SurgicalDashboardView
+            surgeries={surgeries}
+            professionals={professionals}
+            statusMap={STATUS}
+          />
         )}
 
         {/* MÉTRICAS TAB */}
@@ -5146,7 +5304,7 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
             document.body
           )}
 
-          {currentTab !== 'Caja' && currentTab !== 'Métricas' && currentTab !== 'Calendario' && currentTab !== 'Pacientes' && currentTab !== 'Notas' && (
+          {currentTab !== 'Dashboard' && currentTab !== 'Caja' && currentTab !== 'Métricas' && currentTab !== 'Calendario' && currentTab !== 'Pacientes' && currentTab !== 'Notas' && (
           <div className="w-full space-y-6">
             {/* SUBMENÚ HORIZONTAL DE CIRUGÍAS (mismo patrón visual que Caja) */}
             {allowedCirugiasSubTabs.length > 1 && (
@@ -5489,6 +5647,12 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                                 <span className="font-medium">Nota de la directora:</span> {s.notasDirectora}
                               </div>
                             )}
+                            <CardInlineObservation
+                              value={s.observacionesGestion}
+                              canEdit={Boolean(canManageStatus || isAdmin || canEditSurgery(s))}
+                              compact={true}
+                              onSave={(val) => handleUpdateSurgeryQuickField(s.id, { observacionesGestion: val })}
+                            />
                             {s.motivoRechazo && (
                               <div className="text-xs text-rose-600 mt-1 line-clamp-1">
                                 <span className="font-medium">Rechazo:</span> {s.motivoRechazo}
@@ -5908,6 +6072,11 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                             <span className="font-medium">Dir:</span> {s.notasDirectora}
                           </p>
                         )}
+                        <CardInlineObservation
+                          value={s.observacionesGestion}
+                          canEdit={Boolean(canManageStatus || isAdmin || canEditSurgery(s))}
+                          onSave={(val) => handleUpdateSurgeryQuickField(s.id, { observacionesGestion: val })}
+                        />
                         {s.motivoRechazo && (
                           <p className="text-[11px] text-rose-600 bg-rose-50 rounded-lg px-3 py-1.5 border border-rose-100">
                             <span className="font-medium">Rechazo:</span> {s.motivoRechazo}
@@ -7087,6 +7256,16 @@ export default function SurgeryApp({ initialTab, lowPerfMode }) {
                     onChange={e => setEditModalData({...editModalData, notasDirectora: e.target.value})}
                   />
                 </div>
+                {(canManageStatus || isAdmin || canEditSurgery(editModalData)) && (
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-teal-700 uppercase mb-1">Observaciones administrativas</label>
+                    <textarea className="w-full px-3 py-2 rounded-lg border border-teal-200 bg-teal-50/30 focus:ring-2 focus:ring-teal-500 outline-none text-sm h-20"
+                      placeholder="Seguimiento administrativo de Gestión (autorización, presupuestos, contacto con obra social...)"
+                      value={editModalData.observacionesGestion || ''}
+                      onChange={e => setEditModalData({...editModalData, observacionesGestion: e.target.value})}
+                    />
+                  </div>
+                )}
                 {editModalData.estado === 'RECHAZADA' && (
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-rose-600 uppercase mb-1">Motivo de rechazo</label>
